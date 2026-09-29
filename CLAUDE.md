@@ -1,0 +1,169 @@
+Anime Server : serveur de streaming d'animés auto-hébergé
+
+Projet privé pour un petit groupe (~10 utilisateurs), destiné à tourner sur un NAS Synology DS923+ via Docker. Il remplace à terme l'usage de Plex pour l'anime. Ce n'est PAS un clone de Plex.
+
+Ce document contient les règles stables du projet et le scope de la première étape. Le reste (Android, TV, etc.) sera traité plus tard et est volontairement absent.
+
+Contexte important
+Le développeur a ~10 ans d'expérience en dev, mais aucune compétence en vidéo (codecs, conteneurs, sous-titres). Explique brièvement tes choix vidéo et signale les risques de compatibilité au lieu de les supposer connus.
+Les fichiers vidéo appartiennent à un tiers (le propriétaire du NAS) et existent déjà. Leur nommage réel n'est pas encore connu : ne pas supposer un format unique (voir section Bibliothèque).
+Les utilisateurs regardent surtout sur téléphone Android, parfois sur navigateur. Pas d'Apple. Les TV (Samsung/LG/Android TV) sont hors scope pour l'instant.
+Scope de cette étape
+
+Inclus :
+
+spike vidéo (Range Requests + lecteur Android minimal) pour valider la faisabilité ;
+monorepo, Docker Compose, PostgreSQL, Quarkus, Angular ;
+authentification, utilisateurs, rôles, admin ;
+scan du dossier média et modèle Anime / Season / Episode ;
+interface web : login, bibliothèque, fiche anime, admin.
+
+Exclu pour l'instant (à noter dans docs/FUTURE.md si le sujet revient, sans l'implémenter) : application Android complète, Android TV, Samsung Tizen, LG webOS, iOS, Chromecast, offline, transcodage, sous-titres, métadonnées AniList, progression / "continuer à regarder", recommandations, MyAnimeList, multi-serveurs, microservices, plugins.
+
+Stack imposée
+Backend : Java 21, Quarkus, Maven, REST JSON, Hibernate ORM with Panache, PostgreSQL, JWT, OpenAPI/Swagger, Flyway, JUnit.
+Web : Angular, TypeScript, standalone components, Angular Router, HttpClient, responsive, thème sombre, pas de bibliothèque UI lourde sans justification forte.
+Infra : Docker, Docker Compose, PostgreSQL en conteneur, backend en conteneur, frontend servi par nginx, configuration par variables d'environnement.
+
+Monorepo :
+
+text
+anime-server/
+├── backend/
+├── web/
+├── android/        (créé seulement pour le spike, voir phase 0)
+├── docs/
+├── docker-compose.yml
+├── .env.example
+└── README.md
+
+Le backend est la source de vérité. Aucune logique métier dupliquée côté client.
+
+Règles médias (non négociables)
+Le dossier média est monté en lecture seule dans le conteneur (${MEDIA_PATH}:/media:ro). Ne jamais hardcoder /volume1/animes, le chemin hôte vient de .env.
+L'application ne supprime, ne renomme, ne déplace ni ne modifie jamais un fichier média.
+Toutes les données applicatives vivent en base.
+Un client ne fournit jamais un chemin fichier : l'accès se fait uniquement via des IDs connus en base. Protection path traversal obligatoire, avec test.
+En développement local, dossier média de test : ./dev-media.
+Bibliothèque
+
+Le backend scanne récursivement /media.
+
+Le nommage réel des fichiers n'est pas connu. Implémenter le parsing derrière une interface (FilenameParser ou équivalent) avec une première stratégie simple, en gardant à l'esprit que les vrais fichiers ressemblent souvent à :
+
+text
+Frieren/Season 01/Frieren - S01E01.mkv          (propre)
+[SubsPlease] Frieren - 05 [1080p].mkv            (release group, numérotation absolue)
+
+Dans un premier temps, gérer le cas propre Titre/Season XX/... SxxExx ... et prévoir clairement les extensions possibles. Les fichiers non reconnus ne doivent pas faire échouer le scan : ils sont listés dans un rapport de scan (fichiers ignorés + raison) consultable par l'admin.
+
+Concepts : Anime, Season, Episode, MediaFile.
+
+Anime : id, title, alternativeTitle, synopsis, posterUrl, year, metadataProviderId (les 4 derniers restent vides à cette étape)
+Season : id, animeId, seasonNumber
+Episode : id, seasonId, episodeNumber, title, synopsis, duration, mediaFileId
+MediaFile : id, absolutePath, fileName, fileSize, container (codecs et durée : plus tard, via ffprobe)
+
+Le rescan est idempotent : aucun doublon, détection des fichiers ajoutés, et marquage (sans suppression physique) des fichiers disparus. Test obligatoire.
+
+Authentification et sécurité
+
+Le projet sera exposé à Internet derrière un reverse proxy qui termine le HTTPS (pas de HTTPS dans Quarkus).
+
+User, rôles ADMIN et USER, login par username/email + mot de passe.
+Mots de passe hashés (bcrypt ou argon2), jamais loggés.
+JWT à durée de vie courte + refresh token révocable (stocké hashé en base). Pas de sur-ingénierie au-delà.
+Rate limiting / protection brute force sur le login (simple, en mémoire ou en base, suffisant pour ce contexte).
+Admin : créer et désactiver des utilisateurs. Pas d'inscription publique.
+Admin initial créé au premier lancement via INITIAL_ADMIN_USERNAME et INITIAL_ADMIN_PASSWORD.
+Côté Angular : ne pas stocker le JWT d'accès dans localStorage (risque XSS). Préférer un access token en mémoire + refresh token en cookie HttpOnly; Secure; SameSite. Documenter le choix retenu dans ARCHITECTURE.md.
+CORS restrictif, validation des entrées, secrets uniquement par variables d'environnement, logs sans mots de passe ni tokens.
+Aucun accès aux médias sans authentification (sauf l'endpoint de spike en dev, voir phase 0).
+
+Décision à trancher dans ARCHITECTURE.md (phase 1) : une balise <video> ne peut pas envoyer de header Authorization. Le futur endpoint de streaming devra donc utiliser une URL signée à courte durée de vie (recommandé), ou un cookie. Ne pas implémenter le streaming définitif maintenant, mais choisir le mécanisme dès l'architecture pour ne pas avoir à tout reprendre.
+
+API (à cette étape)
+
+Noms améliorables :
+
+text
+POST /api/auth/login
+POST /api/auth/refresh
+POST /api/auth/logout
+
+GET  /api/anime
+GET  /api/anime/{id}
+GET  /api/anime/{id}/seasons
+GET  /api/seasons/{id}/episodes
+GET  /api/episodes/{id}
+
+POST /api/admin/library/scan
+GET  /api/admin/library/scan-report
+GET  /api/admin/users
+POST /api/admin/users
+PATCH /api/admin/users/{id}
+
+Documentée avec OpenAPI.
+
+Interface web (à cette étape)
+
+Pages : /login, / (récemment ajoutés + bibliothèque), /anime, /anime/:id, /admin (utilisateurs, lancement du scan, rapport de scan).
+
+Propre, sombre, lisible, responsive. Ne pas imiter visuellement Plex. Concevoir dès maintenant avec une navigation clavier correcte (focus visible, éléments larges), c'est presque gratuit et ça prépare un usage sur navigateur de TV.
+
+Pas de lecteur vidéo web à cette étape.
+
+Docker
+
+docker-compose.yml utilisable sur Synology (Container Manager) : backend, web (nginx), postgres. Configuration par .env (.env.example fourni), dont MEDIA_PATH. Le README explique : prérequis, lancement backend, lancement Angular, lancement Docker complet, dossier média, création de l'admin, scan, accès à Swagger.
+
+Méthode de travail
+
+Avant d'écrire beaucoup de code :
+
+inspecter le repository ;
+créer docs/ARCHITECTURE.md (architecture concrète, décisions techniques, choix du mécanisme d'auth du streaming) ;
+créer docs/ROADMAP.md ;
+t'arrêter et attendre ma validation de ARCHITECTURE.md avant d'implémenter.
+
+Ensuite :
+
+Une phase à la fois. Fin de phase = tests verts + commit + court résumé + attente de ma validation avant la phase suivante.
+Le projet doit rester compilable à chaque étape.
+Me demander confirmation uniquement pour les décisions structurantes ou bloquantes ; sinon choisir la solution la plus simple et documenter le choix.
+Toute amélioration non essentielle va dans docs/FUTURE.md.
+Ne pas : refaire du code fonctionnel pour l'esthétique, multiplier les abstractions, optimiser prématurément, écrire de la documentation redondante.
+
+Règle finale : serveur privé pour quelques amis sur un NAS, pas une plateforme pour des millions d'utilisateurs. Entre simplicité et sophistication, choisir la simplicité tant que la sécurité n'est pas compromise.
+
+Phases
+Phase 0 : spike vidéo (jetable, ~une demi-journée)
+
+But : savoir si la lecture de vraies vidéos fonctionne sur un téléphone Android, avant d'investir dans le reste. Le code du spike est jetable, mais l'endpoint Range sera réutilisé et raffiné plus tard.
+
+Backend Quarkus minimal avec un endpoint qui sert un fichier de dev-media avec les HTTP Range Requests : Range, Content-Range, Accept-Ranges, réponses 206, type MIME correct, streaming depuis le disque sans jamais charger le fichier en mémoire.
+Endpoint désactivé par défaut, activé par une variable d'environnement de dev uniquement.
+Le fichier est désigné par un identifiant simple ou un nom résolu dans dev-media, avec protection path traversal. Aucun chemin arbitraire.
+Test automatisé des Range Requests (début, milieu, fin, plage invalide).
+Mini app Android (android/spike/, Kotlin + Media3/ExoPlayer) : un écran, une URL configurable, un lecteur plein écran. Rien d'autre.
+Documenter dans docs/SPIKE.md comment lancer le tout et comment tester avec 5 à 10 vrais fichiers (à mettre dans dev-media), avec une grille de résultats à remplir : fichier, conteneur, codec vidéo, codec audio, image OK, son OK, seek OK, remarques.
+
+Sortie attendue : le résultat du test sur les vrais fichiers décide de la suite (Direct Play suffisant, fallback ffmpeg nécessaire, ou remise en question). Ne pas construire de transcodage.
+
+Phase 1 : socle
+
+Structure du monorepo, Docker Compose, PostgreSQL, Quarkus, Angular, Flyway avec schéma initial, ARCHITECTURE.md et ROADMAP.md (validation demandée).
+
+Phase 2 : authentification
+
+Users, rôles, login, refresh, rate limiting, admin initial, gestion des utilisateurs par l'admin. Tests : auth, permissions, brute force.
+
+Phase 3 : bibliothèque
+
+Scan de /media, parsing des noms, Anime / Season / Episode / MediaFile, rapport de scan, endpoints de lecture. Tests : parsing, idempotence du rescan, permissions.
+
+Phase 4 : interface web
+
+Login, accueil, bibliothèque, fiche anime, admin. Quelques tests utiles seulement.
+
+Fin de l'étape. Bilan et décision ensemble avant d'aborder le streaming définitif, le lecteur web, la progression, les métadonnées puis Android complet.

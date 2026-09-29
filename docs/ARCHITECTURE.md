@@ -149,6 +149,7 @@ client ──► reverse proxy DSM ──► nginx (web) ──► backend
 - **Tests** :
   - backend (`@QuarkusTest`) : un `X-Forwarded-For` venant d'un proxy de confiance est pris en compte (deux IP falsifiées différentes → compteurs séparés) ; avec un profil où l'appelant n'est pas de confiance, le header est ignoré ;
   - chaîne complète (phase 2, script `scripts/check-client-ip.sh` sur `docker compose`) : appel direct à nginx avec un faux `X-Forwarded-For` → le backend voit l'IP réelle ; appel « comme depuis le DSM » (IP de confiance) → le backend voit l'IP du header. Le backend expose pour cela `GET /api/admin/debug/client-ip` (ADMIN uniquement).
+- ⚠️ Valeur par défaut de `TRUSTED_PROXY_IPS` en phase 1 : `172.16.0.0/12` (réseaux Docker). Limite connue : avec le *userland proxy* de Docker, une connexion directe depuis le LAN sur le port publié arrive aussi depuis la passerelle Docker, donc depuis une IP « de confiance ». À resserrer (IP exacte vue par nginx) et à tester en phase 2 avec `scripts/check-client-ip.sh`.
 - ⚠️ À vérifier une fois sur le NAS : que le reverse proxy DSM ajoute bien `X-Forwarded-For` (il le fait par défaut ; sinon, en-tête personnalisé à ajouter dans DSM) et quelle IP il présente à nginx.
 
 ### 5.5 Admin initial
@@ -239,6 +240,7 @@ Extensions prévues (non implémentées, notées dans FUTURE) : `ReleaseGroupAbs
 
 | Méthode | Route | Accès |
 |---|---|---|
+| GET | `/api/status` | public (`{"status":"UP"}`, vérifie la chaîne navigateur → nginx → backend) |
 | POST | `/api/auth/login` | public (rate limited) |
 | POST | `/api/auth/refresh` | cookie refresh |
 | POST | `/api/auth/logout` | cookie refresh |
@@ -254,11 +256,11 @@ Extensions prévues (non implémentées, notées dans FUTURE) : `ReleaseGroupAbs
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |
 
 Pas de pagination au départ (quelques centaines d'animes au plus) ; à ajouter si besoin. Un admin ne peut pas se désactiver ni retirer son propre rôle ADMIN (évite de se verrouiller dehors).
-OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquement** par défaut (`SWAGGER_ENABLED`).
+OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquement** par défaut (`SWAGGER_ENABLED`). nginx relaie ces deux chemins (avec une CSP assouplie pour la page Swagger) : `SWAGGER_ENABLED=true` suffit pour s'en servir sur le NAS. Le health check `/q/health` reste interne (healthcheck Docker).
 
 ## 9. Front Angular
 
-- Dernière version stable, **standalone components**, signals pour l'état local, `HttpClient`, Router avec lazy loading par page. SCSS avec variables CSS (thème sombre unique).
+- Angular 22 (dernière stable en phase 1, Node.js 24 LTS), **standalone components**, signals pour l'état local, `HttpClient`, Router avec lazy loading par page. SCSS avec variables CSS (thème sombre unique).
 - Pas de bibliothèque UI. Éventuellement `@angular/cdk` (a11y : focus trap, gestion clavier) si le besoin apparaît — c'est léger et maintenu par Angular.
 - Structure :
   ```
@@ -292,6 +294,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 
 ## 12. Tests
 - Backend : JUnit 5 + RestAssured + `@QuarkusTest`. PostgreSQL de test via **Quarkus Dev Services** (Testcontainers) → nécessite Docker Desktop lancé sur la machine de dev. Pas de H2 (comportement différent de PostgreSQL).
+  Quarkus 3.20.0 embarque Testcontainers 1.20.6, qui ne sait pas parler à Docker Engine 29+ (« client version 1.32 is too old ») : le `pom.xml` force Testcontainers 1.21.4, à retirer quand Quarkus fournira une version plus récente.
 - Tests obligatoires : Range Requests, path traversal, auth / permissions / brute force (dont : l'admin reste connectable depuis une autre IP), tolérance de rotation, chaîne d'IP, parsing, idempotence du rescan (dont : /media vide, scan orphelin, rebranchement d'épisode).
 - Front : quelques tests unitaires ciblés (AuthService, interceptor, guards). Pas d'e2e à cette étape.
 

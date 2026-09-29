@@ -7,7 +7,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 |---|---|---|
 | — | Documents d'architecture | ✅ validés le 2026-09-29 |
 | 0 | Spike vidéo | ✅ validé le 2026-09-29 sur fichiers synthétiques (Galaxy S24) — vrais fichiers, téléphone du propriétaire et sous-titres encore à tester (voir SPIKE.md §8) |
-| 1 | Socle | 🔧 en cours |
+| 1 | Socle | 🔧 livrée — en attente de validation |
 | 2 | Authentification | à faire |
 | 3 | Bibliothèque | à faire |
 | 4 | Interface web | à faire |

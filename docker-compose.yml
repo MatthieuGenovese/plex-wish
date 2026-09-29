@@ -1,0 +1,62 @@
+# Anime Server : postgres + backend (Quarkus) + web (nginx + Angular).
+# Toute la configuration vient du fichier .env (copier .env.example).
+# Seul le service web publie un port sur l'hôte.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-anime}
+      POSTGRES_USER: ${POSTGRES_USER:-anime}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    image: anime-server-backend
+    restart: unless-stopped
+    # Utilisateur qui a le droit de LIRE le dossier média sur le NAS (voir README).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      DB_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-anime}
+      POSTGRES_USER: ${POSTGRES_USER:-anime}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+      JWT_SECRET: ${JWT_SECRET:-}
+      STREAM_SIGNING_SECRET: ${STREAM_SIGNING_SECRET:-}
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      REFRESH_REUSE_GRACE_SECONDS: ${REFRESH_REUSE_GRACE_SECONDS:-20}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
+    volumes:
+      # Lecture seule : l'application ne modifie jamais les fichiers média.
+      - ${MEDIA_PATH:?MEDIA_PATH manquant dans .env}:/media:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    image: anime-server-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.16.0.0/12}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:

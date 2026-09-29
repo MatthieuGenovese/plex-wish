@@ -33,7 +33,9 @@ L'endpoint de spike est **désactivé par défaut** et n'a **aucune authentifica
 
 ### 3.a Avec le Maven Wrapper (Java 21 requis, Maven non requis)
 
-Le wrapper (`mvnw` / `mvnw.cmd`) télécharge Maven 3.9.11 au premier lancement. Il faut seulement un JDK 21 (`java -version`, ou `JAVA_HOME` renseigné).
+Le wrapper (`mvnw` / `mvnw.cmd`) télécharge Maven 3.9.11 au premier lancement. Il faut un JDK 21 (`java -version`, ou `JAVA_HOME` renseigné).
+
+**Depuis la phase 1**, le backend a une base PostgreSQL : en mode dev, Quarkus la démarre tout seul dans Docker. **Docker Desktop doit donc être lancé** avant `quarkus:dev`.
 
 PowerShell :
 

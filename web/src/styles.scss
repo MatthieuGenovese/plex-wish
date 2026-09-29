@@ -1,0 +1,92 @@
+// Thème sombre unique. Toutes les couleurs passent par ces variables.
+:root {
+  --bg: #101218;
+  --surface: #171a22;
+  --surface-raised: #212531;
+  --border: #2c3140;
+  --text: #eceef3;
+  --text-muted: #a3a9b8;
+  --accent: #7aa2ff;
+  --success: #5fd49a;
+  --danger: #ff7b7b;
+  --focus: #ffd24d;
+
+  --radius: 8px;
+  --space-1: 0.25rem;
+  --space-2: 0.75rem;
+  --space-3: 1.5rem;
+  // Cibles tactiles / télécommande : au moins 48 px.
+  --target-size: 48px;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+h1,
+h2 {
+  line-height: 1.2;
+}
+
+a {
+  color: var(--accent);
+}
+
+// Focus très visible (clavier, et plus tard télécommande de TV).
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+button {
+  min-height: var(--target-size);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+// Lien d'évitement : invisible tant qu'il n'a pas le focus clavier.
+.skip-link {
+  position: absolute;
+  left: var(--space-2);
+  top: -100px;
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  color: var(--text);
+  z-index: 10;
+}
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

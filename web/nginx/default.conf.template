@@ -1,0 +1,66 @@
+# Modèle traité au démarrage par l'image nginx officielle (envsubst) :
+# seules les variables d'environnement définies (ex. TRUSTED_PROXY_IPS) sont remplacées.
+
+# Journal sans query string ($uri au lieu de $request) : les futures URL de
+# streaming signées (?sig=...) ne doivent jamais apparaître dans les logs.
+log_format anime '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '
+                 '$status $body_bytes_sent "$http_user_agent" $request_time';
+
+server {
+    listen 80;
+    server_name _;
+    server_tokens off;
+    access_log /var/log/nginx/access.log anime;
+
+    # --- Vraie IP du client (ARCHITECTURE §5.4.1) ---------------------------------
+    # On ne croit X-Forwarded-For que s'il vient du reverse proxy (DSM).
+    set_real_ip_from ${TRUSTED_PROXY_IPS};
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+
+    # --- En-têtes de sécurité (aussi sur les erreurs) --------------------------------
+    include /etc/nginx/snippets/security-headers.conf;
+
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # --- API -> backend ---------------------------------------------------------------------
+    location /api/ {
+        proxy_pass http://backend:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        # On REMPLACE l'en-tête : le backend ne voit que l'IP établie ci-dessus,
+        # jamais une valeur fournie (et potentiellement falsifiée) par le client.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        client_max_body_size 1m;
+    }
+
+    # --- Swagger (404 côté backend tant que SWAGGER_ENABLED=false) --------------------
+    # La page Swagger UI contient du JavaScript inline : CSP assouplie ici seulement.
+    location ~ ^/q/(swagger-ui|openapi) {
+        proxy_pass http://backend:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # --- Front Angular -----------------------------------------------------------------------
+    # Fichiers avec empreinte dans le nom : cache long.
+    location ~* \.(?:js|css|ico|png|svg|woff2?)$ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include /etc/nginx/snippets/security-headers.conf;
+    }
+
+    # Routes de la SPA (/anime/12, /admin…) : toujours index.html, jamais mis en cache.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache" always;
+        include /etc/nginx/snippets/security-headers.conf;
+    }
+}

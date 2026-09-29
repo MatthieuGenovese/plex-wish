@@ -31,13 +31,30 @@ Varier autant que possible :
 
 L'endpoint de spike est **désactivé par défaut** et n'a **aucune authentification**. Il ne s'active qu'avec `DEV_SPIKE_STREAM_ENABLED=true`. Ne jamais l'activer sur le NAS.
 
-### 3.a Avec Maven (PowerShell)
+### 3.a Avec le Maven Wrapper (Java 21 requis, Maven non requis)
+
+Le wrapper (`mvnw` / `mvnw.cmd`) télécharge Maven 3.9.11 au premier lancement. Il faut seulement un JDK 21 (`java -version`, ou `JAVA_HOME` renseigné).
+
+PowerShell :
 
 ```powershell
 cd backend
 $env:DEV_SPIKE_STREAM_ENABLED = "true"
-mvn quarkus:dev
+.\mvnw.cmd quarkus:dev "-Dquarkus.http.host=0.0.0.0"
 ```
+
+Invite de commandes (cmd) :
+
+```bat
+cd backend
+set DEV_SPIKE_STREAM_ENABLED=true
+mvnw.cmd quarkus:dev -Dquarkus.http.host=0.0.0.0
+```
+
+Notes :
+- en PowerShell, `.\` est obligatoire (le dossier courant n'est pas dans le PATH) et l'option `-D...` doit être **entre guillemets**, sinon PowerShell la découpe au niveau des points ;
+- `-Dquarkus.http.host=0.0.0.0` est redondant avec `application.properties` (`%dev.quarkus.http.host=0.0.0.0`) mais rend l'écoute réseau explicite ;
+- `set` (cmd) et `$env:` (PowerShell) ne valent que pour la fenêtre en cours.
 
 Au démarrage, un avertissement indique le dossier servi et le nombre de vidéos trouvées.
 
@@ -46,12 +63,12 @@ Au démarrage, un avertissement indique le dossier servi et le nombre de vidéos
 ```powershell
 docker run --rm -it -p 8080:8080 -e DEV_SPIKE_STREAM_ENABLED=true `
   -v "${PWD}:/app" -v anime-m2:/root/.m2 -w /app/backend `
-  maven:3.9-eclipse-temurin-21 mvn quarkus:dev
+  maven:3.9-eclipse-temurin-21 mvn quarkus:dev -Dquarkus.http.host=0.0.0.0
 ```
 
 ### 3.c Tests automatisés
 
-`mvn test` (ou la commande Docker ci-dessus en remplaçant `quarkus:dev` par `test`).
+`.\mvnw.cmd test` (PowerShell) ou `mvnw.cmd test` (cmd), depuis `backend/` (ou la commande Docker ci-dessus en remplaçant `quarkus:dev` par `test`).
 Ils couvrent : plage au début, au milieu, à la fin (`bytes=9900-` et `bytes=-500`), fin de plage au-delà du fichier, plage invalide (416), header mal formé (ignoré → 200), types MIME, fichiers cachés/non vidéo, liens symboliques qui sortent du dossier, tentatives de path traversal, endpoint désactivé (404).
 
 ### 3.d Vérifier sur le PC

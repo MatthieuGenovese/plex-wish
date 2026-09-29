@@ -1,0 +1,27 @@
+# Vidéos de test : jamais versionnées
+dev-media/*
+!dev-media/.gitkeep
+
+# Secrets
+.env
+
+# Backend
+backend/target/
+
+# Android
+android/**/build/
+android/**/.gradle/
+android/**/local.properties
+android/**/.kotlin/
+
+# Web (phases suivantes)
+web/node_modules/
+web/dist/
+web/.angular/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

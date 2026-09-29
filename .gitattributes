@@ -1,0 +1,13 @@
+# Fins de ligne normalisées dans git (dev sous Windows, build/Docker sous Linux)
+* text=auto
+*.sh      text eol=lf
+gradlew   text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+*.jar  binary
+*.png  binary
+*.jpg  binary
+*.mkv  binary
+*.mp4  binary
+*.webm binary

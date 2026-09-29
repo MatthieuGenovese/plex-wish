@@ -6,8 +6,8 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | # | Phase | Statut |
 |---|---|---|
 | — | Documents d'architecture | ✅ validés le 2026-09-29 |
-| 0 | Spike vidéo | 🔧 code livré — tests Maven et essais sur vrais fichiers à faire |
-| 1 | Socle | à faire |
+| 0 | Spike vidéo | ✅ validé le 2026-09-29 sur fichiers synthétiques (Galaxy S24) — vrais fichiers, téléphone du propriétaire et sous-titres encore à tester (voir SPIKE.md §8) |
+| 1 | Socle | 🔧 en cours |
 | 2 | Authentification | à faire |
 | 3 | Bibliothèque | à faire |
 | 4 | Interface web | à faire |

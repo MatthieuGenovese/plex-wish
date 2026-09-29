@@ -140,13 +140,16 @@ MediaInfo donne les mêmes informations sans ligne de commande.
 
 ## 8. Grille de résultats
 
-Téléphone testé : _modèle, version d'Android_
+Téléphone testé : Samsung Galaxy S24 (SM-S921B/DS), version d'Android non relevée.
+Date : 29/09/2026. Codecs relevés avec `ffprobe`.
+
+> **Portée limitée.** Ces 3 fichiers sont **synthétiques** (générés pour le test, 60 s, audio mono) et **sans sous-titres**. Ils valident la chaîne technique (Range Requests, réseau, ExoPlayer) et le décodage de ces codecs sur ce téléphone, pas la compatibilité avec la vraie bibliothèque.
 
 | # | Fichier | Conteneur | Codec vidéo | Codec audio | Image OK | Son OK | Seek OK | Remarques |
 |---|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | | |
-| 2 | | | | | | | | |
-| 3 | | | | | | | | |
+| 1 | h264.mp4 | MP4 | H.264 High, 8 bits, 1280×720 | AAC-LC | Oui | Oui | Oui | Synthétique, sans sous-titres |
+| 2 | hevc10bit.mkv | MKV | HEVC Main 10 (10 bits), 1280×720 | FLAC | Oui | Oui | Oui | Synthétique, sans sous-titres. HEVC 10 bits et FLAC décodés nativement |
+| 3 | test.avi | AVI | MPEG-4 Part 2 Simple (FMP4), 640×480 | MP3 | Oui | Oui | Oui | Synthétique, sans sous-titres |
 | 4 | | | | | | | | |
 | 5 | | | | | | | | |
 | 6 | | | | | | | | |
@@ -154,6 +157,13 @@ Téléphone testé : _modèle, version d'Android_
 | 8 | | | | | | | | |
 | 9 | | | | | | | | |
 | 10 | | | | | | | | |
+
+**Conclusion provisoire** : Direct Play suffit pour ces codecs sur un Galaxy S24. Pas de transcodage à prévoir à ce stade.
+
+**Reste à faire** avant de considérer la compatibilité comme acquise :
+- tester **5 à 10 vrais fichiers** de la bibliothèque du NAS (vrais encodages, pistes audio multiples, AC3/E-AC3/DTS/TrueHD éventuels) ;
+- tester sur le **téléphone du propriétaire du NAS** (le S24 est haut de gamme : un téléphone plus ancien peut ne pas décoder le HEVC 10 bits en matériel) ;
+- tester les **sous-titres** : **ASS** (styles, polices intégrées) et **VobSub** (sous-titres image, souvent en MKV/AVI). Hors scope de l'étape actuelle, mais ils conditionneront le choix du lecteur.
 
 Dans *Remarques* : erreur affichée, sous-titres visibles ou non, temps de démarrage, saccades, test navigateur.
 

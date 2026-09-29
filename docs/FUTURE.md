@@ -11,6 +11,4 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 ## Lecture
 - Extension ffmpeg de Media3 côté Android si le spike montre des pistes audio AC3/DTS non décodées.
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.
-
-## Outillage
-- Maven Wrapper (`mvnw`) pour ne pas imposer Maven installé.
+- Sous-titres image VobSub (et PGS) : à tester sur le téléphone ; les navigateurs ne les lisent pas du tout (incrustation ou OCR à étudier).

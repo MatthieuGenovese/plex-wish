@@ -211,12 +211,15 @@ Relevé complet du NAS : 32 940 fichiers, **28 254 vidéos**, **1 317 animés** 
 
 | Constat | Chiffre | Conséquence |
 |---|---|---|
-| Vidéos sans dossier de saison | 18 703 / 28 254 (≈ 2/3) | Le dossier ne peut pas être une condition d'import |
-| Dossier de saison qui contredit le nom du fichier | 116 / 6 058 | Le nom du fichier gagne, le désaccord va au rapport |
-| Épisodes `S00` rangés dans un dossier OAV / Special / Bonus | 186 | Saison 0 = « Spéciaux » |
-| Vrais épisodes numérotés dont le nom contient « OAV », « Bonus » ou « Extra » | 115 | Un numéro d'épisode l'emporte sur ces mots |
-| Doublons d'épisode (même animé, saison, épisode) | 13 (dont Devilman Crybaby) | Un fichier gardé, l'autre signalé |
+| Vidéos sans dossier de saison (aucun dossier dont le nom commence par `Season`, `Saison` ou `S` + numéro) | 21 666 / 28 254 (≈ 3/4) | Le dossier ne peut pas être une condition d'import |
+| Dossier de saison qui contredit le nom du fichier (`SxxExx` / `NxEE`) | 116 / 6 081 | Le nom du fichier gagne, le désaccord va au rapport |
+| Épisodes `S00` rangés dans un dossier OAV / OVA / Special / Bonus | 190 | Saison 0 = « Spéciaux » |
+| Vrais épisodes numérotés dont le nom contient « OAV », « OVA », « Bonus » ou « Extra » | 62 | Un numéro d'épisode l'emporte sur ces mots |
+| Doublons d'épisode `SxxExx` / `NxEE` (même animé, saison, épisode) | 12, dont 10 pour Devilman Crybaby | Un fichier gardé, l'autre signalé |
+| Fichiers qui dépendent de la règle « numéro seul » précisée en §7.2 (nombre précédé d'un espace ou d'un `_`) | ≈ 210 (One Piece de Kaerizaki-Fansub, Naruto Kai…) | Règle documentée exactement, tests dédiés |
 | Sous-titres externes (`.ass`, `.sup`, `.srt`) | 434, dont 24 avec le même nom de base qu'une vidéo | Pas d'association dans le MVP |
+
+Chiffres mesurés par un script d'analyse jetable (hors dépôt) sur le relevé : ce sont des ordres de grandeur, qui bougent de quelques unités selon la définition exacte retenue. Les chiffres qui font foi seront ceux des tests de la phase 3.
 
 Extensions vidéo trouvées : `mkv` (21 174), `mp4` (6 148), `avi` (895), `ogm` (28), `ts` (10). ⚠️ Compatibilité : AVI et MPEG-TS sont lus par ExoPlayer (AVI validé par le spike) ; **OGM** (vieux format vidéo dans un conteneur Ogg) n'est probablement lu ni par ExoPlayer ni par les navigateurs → ces 28 fichiers sont importés normalement, leur lecture sera à tester.
 
@@ -242,32 +245,64 @@ Il n'est **jamais** une condition d'import. Le **titre de l'animé** vient du **
 
 Avant d'appliquer les stratégies, on neutralise les éléments techniques qui contiennent des chiffres : groupes entre crochets/parenthèses en début de nom (`[SubsPlease]`), résolutions (`1080p`, `1920x1080`), codecs (`x264`, `x265`, `H.264`, `10bits`, `AAC2.0`…), empreintes CRC (`[DBB79FF9]`). Sinon « One Piece Kaï - 098 - … - 1080p.x264 » donnerait l'épisode 264.
 
-`CompositeFilenameParser` essaie les stratégies **dans cet ordre** ; la première qui répond gagne :
+Ordre d'évaluation (`CompositeFilenameParser`), la première étape qui répond gagne :
+
+1. `SxxExx` ;
+2. `NxEE` ;
+3. `E\d+` seul ;
+4. **test d'extras** (§7.4) : uniquement pour un fichier qui n'a pas de numéro d'épisode d'après les étapes 1 à 3 ;
+5. **numéro seul**.
+
+Les étapes 1 à 3 passent **avant** le test d'extras : un fichier numéroté reste un épisode quels que soient son dossier (`OAV/`, `Bonus/`, `Extras/`) et les mots de son nom. Le test d'extras ne protège que l'étape 5, où un nombre peut être un numéro de générique ou de menu.
 
 | # | Stratégie | Exemples | Saison | Épisode |
 |---|---|---|---|---|
 | 1 | `SxxExx` (casse indifférente, séparateur `.`, `_`, `-` ou espace toléré) | `Frieren - S01E05`, `s2e11` | du nom | du nom |
 | 2 | `NxEE` (casse indifférente, saison sur 1 ou 2 chiffres, épisode sur 2 ou 3) | `2x06`, `Genshiken 01X01` | du nom | du nom |
 | 3 | `E\d+` seul | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **dossier**, sinon 1 | du nom |
-| 4 | Numéro seul (numérotation absolue acceptée) | `Titre - 04`, `[Grp] Titre - 05 [1080p]` | comme la stratégie 3 | le **dernier** nombre qui suit un « ` - ` », ou à défaut le dernier nombre juste avant les crochets de fin |
+| 5 | Numéro seul (numérotation absolue acceptée) | voir ci-dessous | comme la stratégie 3 | voir ci-dessous |
 
-Règle 4, précisions : « `Slime 300 S1 - 01` » → épisode 1 (300 fait partie du titre) ; « `One Piece Kaï - 098 - Totto Land - 1080p…` » → épisode 98. Si aucun « ` - ` » ni crochet n'encadre le nombre (« `Naruto Kai 74 - La volonté du feu` »), le fichier n'est **pas** résolu : il va au rapport (correction manuelle).
+**Règle « numéro seul », exactement** :
+1. partir du nom de fichier **sans l'extension** ;
+2. retirer les groupes entre crochets, parenthèses ou accolades (`[Kaerizaki-Fansub]`, `[VOSTFR]`, `(2019)`, `{…}`) ;
+3. retirer les éléments techniques : résolutions (`1080p`, `720p`, `1920x1080`), codecs (`x264`, `x265`, `H264`, `HEVC`, `AVC`), profondeur (`10bits`, `8bit`), audio (`AAC`, `AAC2.0`, `AC3`, `FLAC`, `Opus`, `DTS`, `MP3`, `DDP5.1`, `5.1`), sources (`WEB-DL`, `BDRip`, `BluRay`) ;
+4. **candidats** : les nombres de **2 à 4 chiffres** précédés d'un **espace** ou d'un **underscore** (donc aussi « ` - 04` ») et suivis de la fin du nom, d'un espace, d'un `_`, d'un `.`, d'un `-`, d'une parenthèse ou d'un crochet, ou d'un suffixe de version `v2` ;
+5. l'épisode est le **dernier candidat** (zéros initiaux ignorés : `098` → 98) ;
+6. aucun candidat → **non résolu** (rapport). Un nombre à 1 chiffre n'est jamais candidat (`Little Witch Academia 1`).
 
-Sans indication de saison (stratégies 3 et 4, ni `S\d` dans le nom ni dossier de saison) : **saison 1**. Exemple : `One Piece/Saison 9/One Piece Kaï - 098 - …` → saison 9, épisode 98.
+Avant cette règle, un motif de double épisode (`05-06`, `03-04`) ou un numéro décimal (`0.89`, `24.5`) envoie le fichier au rapport (§7.5).
+
+| Nom de fichier | Candidats | Épisode |
+|---|---|---|
+| `[matheousse] Slime 300 S1 - 01 MULTi [BD 1080p AAC Opus] [DBB79FF9]` | 300, 01 | **1** (300 fait partie du titre) |
+| `One Piece Kaï - 098 - Totto Land - 1080p.VOSTFR.x264 [Sacha]` | 098 (1080p et x264 retirés) | **98** |
+| `[Kaerizaki-Fansub]_One_Piece_Fish_Man_Island_01_[VERSION_LIGHT][VOSTFR][FHD_1920x1080]` | 01 | **1** |
+| `[Kaerizaki-Fansub]_One_Piece_1124_[VOSTFR][FHD_1080p][HEVC_x265][10Bit]` | 1124 | **1124** |
+| `Naruto Shippuden Kai 113 - Hebi` | 113 | **113** |
+| `[Erai-raws] Hataage Kemono Michi - 06 [1080p][HEVC][78DBC505]` | 06 | **6** |
+
+⚠️ Limite connue : un nombre de 2 à 4 chiffres dans le titre de l'épisode, **après** le numéro (« `Titre - 05 - Les 100 jours` »), serait pris à tort. Le seuil global des tests mesure ce risque sur la vraie liste.
+
+Sans indication de saison (stratégies 3 et 5, ni `S\d` dans le nom ni dossier de saison) : **saison 1**. Exemple : `One Piece/Saison 9/One Piece Kaï - 098 - …` → saison 9, épisode 98.
 
 Si un nom contient plusieurs motifs, le **premier** l'emporte et la suite est ignorée : `11 Eyes - S01E13 (OAV S1E01)` → S1 E13.
 
 ### 7.3 Spéciaux (saison 0)
 - Saison 0 = « Spéciaux » : `S00Exx`, `0xNN`, ou fichier numéroté (stratégies 3–4) dans un dossier `OAV`, `OVA`, `Special(s)`, `Spéciaux`, `Bonus`.
+- Un `S00Exx` rangé dans un dossier OAV / Bonus reste un **épisode de la saison Spéciaux**, jamais un extra.
 - Un fichier qui porte un **numéro d'épisode reste un épisode**, même si son dossier ou son nom contient « OAV », « Bonus » ou « Extra » : `OAV/L'Attaque des Titans - S00E18 - Lost Girls…` est l'épisode 18 de la saison 0 ; `Sekai Seifuku S01E13 OVA …` est l'épisode 13 de la saison 1, `Fate⁄EXTRA Last Encore S01E01 …` l'épisode 1.
 
 ### 7.4 Extras (hors liste des épisodes)
-Sont des extras **uniquement les vidéos sans numéro d'épisode** au sens des stratégies 1 à 3, reconnues par un marqueur : `NCOP`, `NCED`, `NC OP/ED`, `OP`/`ED` (+ numéro de générique : `OP01`, `NCED2`, `ED 02`), `Opening`, `Ending`, `Creditless`, menus BD (`Menu`), `Trailer`, `Teaser`, `PV`, `CM`, `Preview`, `AMV`, ou un dossier de musique / génériques (`OST`, `OP - ED`, `NC`, `Extras`). Ces marqueurs sont testés **avant** la stratégie 4 : dans « `Titre - NCOP 01` » ou « `Menu - 05` », 01 et 05 ne sont pas des numéros d'épisode.
+Le test d'extras est l'**étape 4** : il ne s'applique qu'aux vidéos **sans numéro d'épisode** d'après `SxxExx`, `NxEE` et `E\d+`, et seulement **avant** la stratégie « numéro seul ». Un extra est reconnu par :
+- un marqueur dans le nom (après retrait des crochets et des éléments techniques) : `NCOP`, `NCED`, `NC OP`, `NC ED` (+ numéro et version : `NCED4`, `NCOPv2`), `OP` / `ED` **en majuscules** (+ numéro : `OP01`, `ED 02`), `Opening`, `Ending`, `Creditless`, `Menu` (menus BD), `Trailer`, `Teaser`, `Preview`, `AMV`, `OST` ;
+- ou un dossier dédié : `OST`, `Music`, `OP - ED…`, `NC`, `Extra(s)`, `Menus`, `Trailers`, `PV`.
 
-Les extras sont enregistrés (`media_file.kind = EXTRA`), comptés au rapport, mais n'apparaissent pas dans la liste des épisodes.
+`OP` et `ED` sont sensibles à la casse : « `Takt Op. Destiny - 11` » est l'épisode 11, pas un générique.
+
+Dans « `Nyan Koi! Menu - 05` » ou « `Blend S NCED4` », 05 et 4 ne sont donc pas des numéros d'épisode. Les extras sont enregistrés (`media_file.kind = EXTRA`), comptés au rapport, mais n'apparaissent pas dans la liste des épisodes.
 
 ### 7.5 Cas signalés au rapport (correction manuelle)
-- **Doublon d'épisode** (même animé, saison, épisode ; 13 cas connus dont Devilman Crybaby) : le fichier déjà lié est gardé (au premier scan : le premier par ordre de chemin), l'autre est signalé. Le choix de la meilleure version → FUTURE.
+- **Doublon d'épisode** (même animé, saison, épisode ; 12 cas `SxxExx`/`NxEE` relevés, dont 10 pour Devilman Crybaby ; d'autres apparaîtront avec les stratégies 3 et 5) : le fichier déjà lié est gardé (au premier scan : le premier par ordre de chemin), l'autre est signalé. Le choix de la meilleure version → FUTURE.
 - **Double épisode** (`03-04`, `S01E03-E04`) et **numéro décimal** (`E05.5`, `0.89`, `Épisode 24.5`) : pas d'interprétation automatique, signalés.
 - **Désaccord dossier / fichier** : importé selon le fichier, signalé.
 - **Non résolu** : aucune stratégie ne répond et aucun marqueur d'extra.
@@ -302,7 +337,7 @@ Le parser ne touche jamais au disque : il ne reçoit que des chaînes. C'est ce 
 
 ### 7.11 Tests du parser (phase 3)
 Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains noms contiennent des caractères interdits sous Windows : `:`, `?`, `"`…) :
-- **seuil global** : au moins **97 %** d'épisodes reconnus, calculé sur les vidéos hors extras (`épisodes / (vidéos − extras)`). Garde-fou contre un parser qui classerait tout en extra : extras < 2 % des vidéos ;
+- **seuil global** : au moins **97 %** d'épisodes reconnus, calculé sur les vidéos hors extras (`épisodes / (vidéos − extras)`). Garde-fou contre un parser qui classerait tout en extra : extras **< 3 %** des vidéos (le prototype en trouve 2,0 %) ;
 - **un test par piège**, avec le résultat attendu :
 
 | Chemin (extrait de l'échantillon) | Attendu |
@@ -310,11 +345,16 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | `I've Been Killing Slimes for 300 Years…/Saison 1/[matheousse] Slime 300 S1 - 01 MULTi [BD 1080p AAC Opus] [DBB79FF9].mkv` | S1 E1 (pas l'épisode 300) |
 | `Genshiken/Saison 1/Genshiken 01X01.mkv` | S1 E1 (stratégie `NxEE`, X majuscule) |
 | `AH! My Goddess/Saison 1/[Elecman] Ah! My Goddess E12 […].mkv` et `…/Saison 2/[Elecman] Ah My Goddess E12 […].mkv` | S1 E12 et S2 E12 (saison prise dans le dossier) ; **pas** un doublon |
-| `Shingeki No Kyojin/OAV/L'Attaque des Titans - S00E18 - Lost Girls…mkv` | S0 E18 : un épisode, pas un extra |
+| `Shingeki No Kyojin/OAV/L'Attaque des Titans - S00E18 - Lost Girls…mkv` | S0 E18 : un épisode de la saison Spéciaux, pas un extra (étape 1 avant l'étape 4) |
 | `Devilman Crybaby/…` (deux fichiers par épisode) | un fichier gardé par épisode, les autres signalés « doublon » |
+| `One Piece/Saison 7/[Kaerizaki-Fansub]_One_Piece_Fish_Man_Island_01_[VERSION_LIGHT][VOSTFR][FHD_1920x1080].mp4` | S7 E1 (nombre précédé d'un `_`) |
+| `Naruto Shippuden/Naruto Shippuden Kai Intégrale VOSTFR/Naruto Shippuden Kai 113 - Hebi.mkv` | S1 E113 (nombre précédé d'un espace, sans « ` - ` » avant) |
+| `One Piece/Saison 11/[Kaerizaki-Fansub]_One_Piece_1124_[VOSTFR][FHD_1080p][HEVC_x265][10Bit].mkv` | S11 E1124 (4 chiffres ; 1080 et x265 ignorés) |
 | `One Piece/Saison 9/One Piece Kaï - 098 - Totto Land - 1080p.VOSTFR.x264 [Sacha].mp4` | S9 E98 (pas 264, pas 1080) |
-| `[Natsumi no Sekai] Isekai Quartet S2 - NCOP VOSTFR [BD 1080p AAC].mkv`, `[matheousse] Fruits Basket (2019) The Final Season - NCED4 […].mkv`, `Nyan Koi! Menu - 05 (…).mkv` | extras (les numéros de générique ou de menu ne sont pas des épisodes) |
-| `Naruto Kai 74 - La volonté du feu.avi` | non résolu |
+| `Takt.OP Destiny/[Erai-raws] Takt Op. Destiny - 11 […].mkv` | E11 : épisode (« Op. » n'est pas un marqueur d'extra) |
+| `Isekai Quartet/S2/NC/[Natsumi no Sekai] Isekai Quartet S2 - NCOP VOSTFR [BD 1080p AAC].mkv`, `Blend S/Extras/Blend S NCED4 […].mkv`, `Nyan Koi!/EXTRA/Nyan Koi! Menu - 05 (…).mkv` | extras (les numéros de générique ou de menu ne sont pas des épisodes) |
+| `Little Witch/Little Witch Academia 1.mp4` | non résolu (1 seul chiffre) |
+| `Macross Delta/[Lumen] Macross Delta 0.89.mkv` | signalé « numéro décimal » |
 
 ## 8. API (étape 1)
 
@@ -389,7 +429,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 
 ## 14. Décisions sur la bibliothèque (2026-09-30, d'après la vraie bibliothèque)
 1. Le nom du fichier fait foi ; le dossier de saison sert de secours et de vérification, jamais de condition d'import (§7.2).
-2. Quatre stratégies de parsing, dans l'ordre : `SxxExx`, `NxEE`, `E\d+`, numéro seul (§7.2).
+2. Ordre de parsing : `SxxExx`, `NxEE`, `E\d+`, puis test d'extras, puis numéro seul (dernier nombre de 2 à 4 chiffres précédé d'un espace ou d'un `_`, éléments techniques ignorés) (§7.2, précisé le 2026-09-30).
 3. Saison 0 = Spéciaux ; un numéro d'épisode l'emporte sur les mots OAV / Bonus / Extra (§7.3).
 4. Extras = vidéos sans numéro d'épisode, exclues de la liste des épisodes (§7.4).
 5. Doublons, doubles épisodes, décimaux et désaccords : rapport + correction manuelle, stockée en base et jamais écrasée (§7.5–7.7).

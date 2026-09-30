@@ -51,16 +51,16 @@ Le backend scanne récursivement /media. La vraie bibliothèque est connue (rele
 
 Règles :
 
-1. Le nom du fichier est la source de vérité. Le dossier de saison manque pour deux tiers des vidéos et contredit parfois le fichier : il sert de secours et de vérification, jamais de condition d'import. Un désaccord va dans le rapport de scan. Le titre de l'animé vient du dossier de premier niveau.
-2. Parsing derrière une interface FilenameParser, stratégies dans l'ordre : SxxExx ; NxEE (casse indifférente, saison sur 1 ou 2 chiffres : 2x06, 01X01) ; E\d+ seul (saison prise dans le dossier) ; numéro seul (numérotation absolue acceptée) = le DERNIER nombre après un " - " ou avant les crochets ("Slime 300 S1 - 01" → épisode 1). Ignorer les éléments techniques (1080p, x264, CRC…). Sans indication de saison : saison 1.
+1. Le nom du fichier est la source de vérité. Le dossier de saison manque pour environ trois quarts des vidéos (21 666 sur 28 254) et contredit parfois le fichier : il sert de secours et de vérification, jamais de condition d'import. Un désaccord va dans le rapport de scan. Le titre de l'animé vient du dossier de premier niveau.
+2. Parsing derrière une interface FilenameParser, dans l'ordre : SxxExx ; NxEE (casse indifférente, saison sur 1 ou 2 chiffres : 2x06, 01X01) ; E\d+ seul (saison prise dans le dossier) ; puis test d'extras (règle 4) ; puis numéro seul (numérotation absolue acceptée) = le DERNIER nombre de 2 à 4 chiffres précédé d'un espace ou d'un underscore, après retrait des crochets/parenthèses et des éléments techniques (1080p, x264, HEVC, 10bits, AAC…). Exemples : "Slime 300 S1 - 01" → 1 ; "[Kaerizaki-Fansub]_One_Piece_Fish_Man_Island_01_[...]" → 1 ; "Naruto Shippuden Kai 113 - Hebi" → 113. Règle exacte : ARCHITECTURE §7.2. Sans indication de saison : saison 1.
 3. Saison 0 = "Spéciaux" (S00Exx, 0xNN, dossiers OAV / Special / Bonus). Un fichier qui porte un numéro d'épisode reste un épisode, même si son dossier ou son nom contient "OAV", "Bonus" ou "Extra".
-4. Extras (exclus de la liste des épisodes) : uniquement les fichiers SANS numéro d'épisode (NCOP/NCED, OP/ED, menus BD, AMV, trailers, dossiers de musique OST).
+4. Extras (exclus de la liste des épisodes) : uniquement les fichiers SANS numéro d'épisode (NCOP/NCED, OP/ED, menus BD, AMV, trailers, dossiers de musique OST). Le test d'extras passe APRÈS SxxExx, NxEE et E\d+, et AVANT la stratégie numéro seul uniquement : un S00Exx dans un dossier OAV/Bonus reste un épisode de la saison Spéciaux.
 5. Doublons d'épisode (même animé, saison, épisode) : garder un fichier, signaler l'autre. Doubles épisodes ("03-04") et numéros décimaux ("E05.5", "0.89") : signalés, correction manuelle.
 6. Rapport de scan : résumé par catégorie (reconnus, extras, non résolus, doublons, désaccords dossier/fichier) et liste filtrable.
 7. Correction manuelle par l'admin (fichier → animé, saison, épisode), stockée en base, jamais écrasée par un rescan.
 8. Sous-titres externes (.ass, .sup, .srt) : comptés, pas associés dans le MVP. La lecture s'appuie sur les sous-titres muxés dans la vidéo.
 9. Performance : scan par lots (jamais une requête par fichier), ffprobe hors du scan (à la demande ou tâche séparée). Le scan ne suit pas les liens symboliques qui sortent de /media.
-10. Tests du parser sur library-sample.txt, sur des chaînes (jamais de vrais fichiers : certains noms sont interdits sous Windows) : au moins 97 % d'épisodes reconnus, plus un test par piège (Slime 300 S1 - 01 ; Genshiken 01X01 ; AH! My Goddess E12 ; S00E18 dans un dossier OAV ; Devilman Crybaby en doublon).
+10. Tests du parser sur library-sample.txt, sur des chaînes (jamais de vrais fichiers : certains noms sont interdits sous Windows) : au moins 97 % d'épisodes reconnus, plus un test par piège (Slime 300 S1 - 01 ; Genshiken 01X01 ; AH! My Goddess E12 ; S00E18 dans un dossier OAV ; Devilman Crybaby en doublon ; One_Piece_Fish_Man_Island_01_ ; Naruto Shippuden Kai 113 - Hebi ; liste complète : ARCHITECTURE §7.11).
 
 Les fichiers non reconnus ne font jamais échouer le scan.
 

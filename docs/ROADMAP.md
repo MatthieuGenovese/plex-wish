@@ -7,9 +7,9 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 |---|---|---|
 | — | Documents d'architecture | ✅ validés le 2026-09-29 |
 | 0 | Spike vidéo | ✅ validé le 2026-09-29 sur fichiers synthétiques (Galaxy S24) — vrais fichiers, téléphone du propriétaire et sous-titres encore à tester (voir SPIKE.md §8) |
-| 1 | Socle | 🔧 livrée — en attente de validation |
+| 1 | Socle | ✅ validée le 2026-09-30 |
 | 2 | Authentification | à faire |
-| 3 | Bibliothèque | à faire |
+| 3 | Bibliothèque | à faire — règles révisées le 2026-09-30 d'après la vraie bibliothèque (ARCHITECTURE §7), en attente de relecture |
 | 4 | Interface web | à faire |
 
 ---
@@ -44,10 +44,12 @@ But : vérifier que de vrais fichiers se lisent sur un téléphone Android **ava
 - Tests : login OK/KO, refresh + rotation + réutilisation d'un token révoqué, logout, utilisateur désactivé, 401/403 par endpoint, blocage brute force, absence de mot de passe/token dans les logs.
 
 ## Phase 3 — Bibliothèque
-- Flyway `V2__library.sql` : anime, season, episode, media_file, scan_run, scan_issue.
-- `FilenameParser` + `SeasonFolderParser` ; scan asynchrone, un seul à la fois ; rapport de scan.
-- Endpoints de lecture `/api/anime…`, `/api/seasons…`, `/api/episodes…` ; endpoints admin de scan.
-- Tests : parsing (cas propres, variantes de casse, incohérences, fichiers non vidéo), idempotence (rescan sans doublon, ajout, disparition, réapparition), path traversal, permissions.
+Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéos, 1 317 animés).
+- Flyway `V2__library.sql` : anime, season, episode, media_file (avec `kind`), media_file_override, scan_run, scan_issue.
+- `FilenameParser` (chaînes uniquement) : `SxxExx` → `NxEE` → `E\d+` → numéro seul ; nom du fichier prioritaire, dossier de saison en secours et vérification ; saison 0 ; extras.
+- Scan asynchrone par lots, un seul à la fois, sans ffprobe ; rapport par catégorie + liste filtrable ; corrections manuelles jamais écrasées.
+- Endpoints de lecture `/api/anime…`, `/api/seasons…`, `/api/episodes…` ; endpoints admin de scan, de rapport et de correction.
+- Tests : parser sur `backend/src/test/resources/library-sample.txt` (≥ 97 % d'épisodes reconnus + un test par piège), idempotence (rescan sans doublon, ajout, disparition, réapparition, correction conservée), garde-fous (/media vide, scan orphelin), path traversal, permissions.
 
 ## Phase 4 — Interface web
 - Login, accueil (récemment ajoutés + bibliothèque), liste des animes, fiche anime (saisons/épisodes), admin (utilisateurs, lancement du scan, rapport).

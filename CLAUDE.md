@@ -47,22 +47,29 @@ Un client ne fournit jamais un chemin fichier : l'accès se fait uniquement via 
 En développement local, dossier média de test : ./dev-media.
 Bibliothèque
 
-Le backend scanne récursivement /media.
+Le backend scanne récursivement /media. La vraie bibliothèque est connue (relevé du 2026-09-30 : 28 254 vidéos, 1 317 animés, un dossier de premier niveau par animé). Le relevé brut est dans docs/private/ (contient un nom de personne : jamais versionné). Jeu de test dérivé : backend/src/test/resources/library-sample.txt (chemins relatifs, un par ligne). Détails et exemples : docs/ARCHITECTURE.md §7.
 
-Le nommage réel des fichiers n'est pas connu. Implémenter le parsing derrière une interface (FilenameParser ou équivalent) avec une première stratégie simple, en gardant à l'esprit que les vrais fichiers ressemblent souvent à :
+Règles :
 
-text
-Frieren/Season 01/Frieren - S01E01.mkv          (propre)
-[SubsPlease] Frieren - 05 [1080p].mkv            (release group, numérotation absolue)
+1. Le nom du fichier est la source de vérité. Le dossier de saison manque pour deux tiers des vidéos et contredit parfois le fichier : il sert de secours et de vérification, jamais de condition d'import. Un désaccord va dans le rapport de scan. Le titre de l'animé vient du dossier de premier niveau.
+2. Parsing derrière une interface FilenameParser, stratégies dans l'ordre : SxxExx ; NxEE (casse indifférente, saison sur 1 ou 2 chiffres : 2x06, 01X01) ; E\d+ seul (saison prise dans le dossier) ; numéro seul (numérotation absolue acceptée) = le DERNIER nombre après un " - " ou avant les crochets ("Slime 300 S1 - 01" → épisode 1). Ignorer les éléments techniques (1080p, x264, CRC…). Sans indication de saison : saison 1.
+3. Saison 0 = "Spéciaux" (S00Exx, 0xNN, dossiers OAV / Special / Bonus). Un fichier qui porte un numéro d'épisode reste un épisode, même si son dossier ou son nom contient "OAV", "Bonus" ou "Extra".
+4. Extras (exclus de la liste des épisodes) : uniquement les fichiers SANS numéro d'épisode (NCOP/NCED, OP/ED, menus BD, AMV, trailers, dossiers de musique OST).
+5. Doublons d'épisode (même animé, saison, épisode) : garder un fichier, signaler l'autre. Doubles épisodes ("03-04") et numéros décimaux ("E05.5", "0.89") : signalés, correction manuelle.
+6. Rapport de scan : résumé par catégorie (reconnus, extras, non résolus, doublons, désaccords dossier/fichier) et liste filtrable.
+7. Correction manuelle par l'admin (fichier → animé, saison, épisode), stockée en base, jamais écrasée par un rescan.
+8. Sous-titres externes (.ass, .sup, .srt) : comptés, pas associés dans le MVP. La lecture s'appuie sur les sous-titres muxés dans la vidéo.
+9. Performance : scan par lots (jamais une requête par fichier), ffprobe hors du scan (à la demande ou tâche séparée). Le scan ne suit pas les liens symboliques qui sortent de /media.
+10. Tests du parser sur library-sample.txt, sur des chaînes (jamais de vrais fichiers : certains noms sont interdits sous Windows) : au moins 97 % d'épisodes reconnus, plus un test par piège (Slime 300 S1 - 01 ; Genshiken 01X01 ; AH! My Goddess E12 ; S00E18 dans un dossier OAV ; Devilman Crybaby en doublon).
 
-Dans un premier temps, gérer le cas propre Titre/Season XX/... SxxExx ... et prévoir clairement les extensions possibles. Les fichiers non reconnus ne doivent pas faire échouer le scan : ils sont listés dans un rapport de scan (fichiers ignorés + raison) consultable par l'admin.
+Les fichiers non reconnus ne font jamais échouer le scan.
 
 Concepts : Anime, Season, Episode, MediaFile.
 
 Anime : id, title, alternativeTitle, synopsis, posterUrl, year, metadataProviderId (les 4 derniers restent vides à cette étape)
 Season : id, animeId, seasonNumber
 Episode : id, seasonId, episodeNumber, title, synopsis, duration, mediaFileId
-MediaFile : id, absolutePath, fileName, fileSize, container (codecs et durée : plus tard, via ffprobe)
+MediaFile : id, relativePath (chemin relatif à /media, décision ARCHITECTURE §4.2), fileName, fileSize, container (codecs et durée : plus tard, via ffprobe)
 
 Le rescan est idempotent : aucun doublon, détection des fichiers ajoutés, et marquage (sans suppression physique) des fichiers disparus. Test obligatoire.
 

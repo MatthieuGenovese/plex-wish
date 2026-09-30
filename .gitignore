@@ -25,3 +25,6 @@ web/.angular/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Données réelles (noms de personnes dans les chemins) : jamais versionnées
+docs/private/

@@ -1,6 +1,7 @@
 # Architecture — Anime Server
 
 > Statut : **validé** le 2026-09-29, avec les ajustements demandés (anti brute force, tolérance de rotation, chaîne d'IP, robustesse du scan, rebranchement d'épisode).
+> §7 réécrite le 2026-09-30 d'après la vraie bibliothèque (décisions en §14) : **en attente de relecture**.
 
 ## 1. Vue d'ensemble
 
@@ -87,10 +88,11 @@ PostgreSQL 16 en conteneur, schéma géré **uniquement par Flyway** (`quarkus.h
 | `refresh_token` | id, user_id, token_hash (unique), expires_at, revoked_at, revoked_reason (`ROTATED`/`LOGOUT`/`USER_DISABLED`/`REUSE_DETECTED`), created_at, last_used_at | le token en clair n'est jamais stocké |
 | `anime` | id, title, normalized_title (unique), alternative_title, synopsis, poster_url, year, metadata_provider_id, created_at | 5 dernières colonnes vides à cette étape |
 | `season` | id, anime_id, season_number | unique (anime_id, season_number) |
-| `media_file` | id, relative_path (unique), file_name, file_size, last_modified, container, available, missing_since, first_seen_at, last_seen_at | voir 4.2 |
+| `media_file` | id, relative_path (unique), file_name, file_size, last_modified, container, kind (`EPISODE`/`EXTRA`/`UNRESOLVED`), available, missing_since, first_seen_at, last_seen_at | voir 4.2 et §7 |
+| `media_file_override` | id, relative_path (unique), action (`EPISODE`/`EXTRA`/`IGNORE`), anime_id, season_number, episode_number, created_by, created_at | correction manuelle, jamais écrasée par un scan (§7.7) |
 | `episode` | id, season_id, episode_number, title, synopsis, duration_seconds, media_file_id, created_at | unique (season_id, episode_number) |
-| `scan_run` | id, started_at, finished_at, status (`RUNNING`/`SUCCESS`/`FAILED`), stats (compteurs), triggered_by | un seul scan à la fois |
-| `scan_issue` | id, scan_run_id, relative_path, reason | fichiers ignorés + raison |
+| `scan_run` | id, started_at, finished_at, status (`RUNNING`/`SUCCESS`/`FAILED`), stats (compteurs par catégorie, JSON), triggered_by | un seul scan à la fois |
+| `scan_issue` | id, scan_run_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`), anime_title, detail | liste filtrable du rapport (§7.6) |
 
 Migrations : `V1__auth.sql` (app_user, refresh_token) en phase 1, `V2__library.sql` en phase 3. On ne modifie jamais une migration déjà commitée.
 
@@ -184,7 +186,7 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Réponses `200` (sans Range), `206` + `Content-Range` (Range valide), `416` + `Content-Range: bytes */taille` (Range invalide), toujours `Accept-Ranges: bytes`.
 - Une seule plage par requête (les lecteurs n'envoient jamais de multi-range ; on renvoie la première).
 - Envoi depuis le disque sans charger le fichier en mémoire : Vert.x `HttpServerResponse.sendFile(path, offset, length)` (zero-copy côté OS). Repli : `StreamingOutput` avec `FileChannel.transferTo`.
-- Types MIME : `.mp4/.m4v` → `video/mp4`, `.mkv` → `video/x-matroska`, `.webm` → `video/webm`, `.avi` → `video/x-msvideo`.
+- Types MIME : `.mp4/.m4v` → `video/mp4`, `.mkv` → `video/x-matroska`, `.webm` → `video/webm`, `.avi` → `video/x-msvideo`, `.ts` → `video/mp2t`, `.ogm` → `video/ogg`.
 
 ### 6.2 Risques de compatibilité vidéo (à vérifier par le spike)
 Pour situer : un fichier vidéo = un **conteneur** (MKV, MP4…) qui contient des **pistes** encodées avec des **codecs** (vidéo, audio, sous-titres). Le lecteur doit comprendre le conteneur **et** chaque codec ; sinon il faut transcoder (convertir à la volée avec ffmpeg), ce qui est coûteux pour le Ryzen R1600 sans GPU.
@@ -204,37 +206,115 @@ Conclusion : **Android est la cible la plus favorable** ; le navigateur est le p
 
 ## 7. Bibliothèque
 
-### 7.1 Scan
-- Parcours récursif de `/media` (`Files.walkFileTree`), sans suivre les liens symboliques qui sortent de `/media`.
-- Extensions vidéo reconnues : `mkv, mp4, m4v, webm, avi`. Les fichiers annexes connus (`.nfo, .jpg, .png, .srt, .ass, .txt`…) sont comptés mais pas listés individuellement dans le rapport ; les vidéos non reconnues et les extensions inconnues le sont, avec la raison.
-- **Asynchrone** : `POST /api/admin/library/scan` renvoie `202` + l'id du `scan_run` ; un seul scan à la fois (`409` sinon). L'admin consulte `GET /api/admin/library/scan-report` (dernier scan : statut, compteurs, fichiers ignorés).
-- Un fichier illisible ou mal nommé ne fait jamais échouer le scan.
-- **Garde-fou montage** : avant de parcourir, le scan vérifie que `/media` existe, est lisible et **n'est pas vide**. Sinon il s'arrête en `FAILED` avec la raison (« /media vide ou illisible — montage NAS absent ? ») **sans rien marquer comme disparu**. Sans ce garde-fou, un volume non monté ferait passer toute la bibliothèque en indisponible. Même règle si le parcours lui-même échoue en cours de route (erreur d'I/O sur la racine) : aucun marquage « disparu » n'est appliqué pour ce scan.
-- **Scans orphelins** : au démarrage du backend, tout `scan_run` resté `RUNNING` (conteneur arrêté pendant un scan) passe en `FAILED` avec la raison « interrompu par un redémarrage ». Sinon le verrou « un seul scan à la fois » resterait bloqué pour toujours.
+### 7.0 Ce que montre la vraie bibliothèque (2026-09-30)
+Relevé complet du NAS : 32 940 fichiers, **28 254 vidéos**, **1 317 animés** (un dossier de premier niveau par animé, aucun fichier à la racine). Le relevé brut contient un nom de personne : il reste dans `docs/private/` (ignoré par git). Le jeu de test versionné en est dérivé : `backend/src/test/resources/library-sample.txt` (chemins relatifs à la racine, UTF-8 sans BOM, un chemin par ligne).
 
-### 7.2 Idempotence
+| Constat | Chiffre | Conséquence |
+|---|---|---|
+| Vidéos sans dossier de saison | 18 703 / 28 254 (≈ 2/3) | Le dossier ne peut pas être une condition d'import |
+| Dossier de saison qui contredit le nom du fichier | 116 / 6 058 | Le nom du fichier gagne, le désaccord va au rapport |
+| Épisodes `S00` rangés dans un dossier OAV / Special / Bonus | 186 | Saison 0 = « Spéciaux » |
+| Vrais épisodes numérotés dont le nom contient « OAV », « Bonus » ou « Extra » | 115 | Un numéro d'épisode l'emporte sur ces mots |
+| Doublons d'épisode (même animé, saison, épisode) | 13 (dont Devilman Crybaby) | Un fichier gardé, l'autre signalé |
+| Sous-titres externes (`.ass`, `.sup`, `.srt`) | 434, dont 24 avec le même nom de base qu'une vidéo | Pas d'association dans le MVP |
+
+Extensions vidéo trouvées : `mkv` (21 174), `mp4` (6 148), `avi` (895), `ogm` (28), `ts` (10). ⚠️ Compatibilité : AVI et MPEG-TS sont lus par ExoPlayer (AVI validé par le spike) ; **OGM** (vieux format vidéo dans un conteneur Ogg) n'est probablement lu ni par ExoPlayer ni par les navigateurs → ces 28 fichiers sont importés normalement, leur lecture sera à tester.
+
+### 7.1 Scan
+- Parcours récursif de `/media` (`Files.walkFileTree`), **sans suivre les liens symboliques** qui sortent de `/media`.
+- Ignorés sans bruit : dossiers techniques Synology `@eaDir`, `#recycle`, `#snapshot` ; fichiers AppleDouble `._*` ; fichier dont le nom se réduit à l'extension (`.mkv`).
+- Vidéos : `mkv, mp4, avi, ogm, ts, m4v, webm`. Les autres fichiers (images, musique, polices, archives, sous-titres…) sont **comptés par type** dans le rapport, pas listés un par un.
+- **Asynchrone** : `POST /api/admin/library/scan` renvoie `202` + l'id du `scan_run` ; un seul scan à la fois (`409` sinon). L'admin consulte `GET /api/admin/library/scan-report`.
+- Un fichier illisible ou mal nommé ne fait jamais échouer le scan.
+- **Garde-fou montage** : avant de parcourir, le scan vérifie que `/media` existe, est lisible et **n'est pas vide**. Sinon il s'arrête en `FAILED` avec la raison (« /media vide ou illisible — montage NAS absent ? ») **sans rien marquer comme disparu**. Même règle si le parcours échoue en cours de route (erreur d'I/O sur la racine).
+- **Scans orphelins** : au démarrage, tout `scan_run` resté `RUNNING` passe en `FAILED` (« interrompu par un redémarrage »).
+- **Performance** (premier scan ≈ 28 000 vidéos) :
+  - traitement **par lots** (ex. 500 fichiers) : chargement en mémoire des chemins déjà connus en une requête, puis insertions / mises à jour groupées (batch JDBC), une transaction par lot. Jamais une requête par fichier ;
+  - le parsing est pur calcul sur des chaînes (aucun accès disque au-delà du `stat` du parcours) ;
+  - **ffprobe n'est pas appelé pendant le scan** (plusieurs heures sur 28 000 fichiers) : codecs et durée seront lus plus tard, à la demande ou par une tâche séparée (voir FUTURE).
+
+### 7.2 Identification d'un épisode — le nom du fichier fait foi
+Le **nom du fichier** est la source de vérité. Le **dossier de saison** (`Season 2`, `Saison 02`, `S2`…) ne sert que :
+- de **secours**, quand le nom ne donne pas la saison (stratégie 3) ;
+- de **vérification** : si nom et dossier donnent deux saisons différentes, le nom l'emporte et le désaccord est ajouté au rapport.
+
+Il n'est **jamais** une condition d'import. Le **titre de l'animé** vient du **dossier de premier niveau** (`Frieren/…` → « Frieren »), jamais du nom de fichier.
+
+Avant d'appliquer les stratégies, on neutralise les éléments techniques qui contiennent des chiffres : groupes entre crochets/parenthèses en début de nom (`[SubsPlease]`), résolutions (`1080p`, `1920x1080`), codecs (`x264`, `x265`, `H.264`, `10bits`, `AAC2.0`…), empreintes CRC (`[DBB79FF9]`). Sinon « One Piece Kaï - 098 - … - 1080p.x264 » donnerait l'épisode 264.
+
+`CompositeFilenameParser` essaie les stratégies **dans cet ordre** ; la première qui répond gagne :
+
+| # | Stratégie | Exemples | Saison | Épisode |
+|---|---|---|---|---|
+| 1 | `SxxExx` (casse indifférente, séparateur `.`, `_`, `-` ou espace toléré) | `Frieren - S01E05`, `s2e11` | du nom | du nom |
+| 2 | `NxEE` (casse indifférente, saison sur 1 ou 2 chiffres, épisode sur 2 ou 3) | `2x06`, `Genshiken 01X01` | du nom | du nom |
+| 3 | `E\d+` seul | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **dossier**, sinon 1 | du nom |
+| 4 | Numéro seul (numérotation absolue acceptée) | `Titre - 04`, `[Grp] Titre - 05 [1080p]` | comme la stratégie 3 | le **dernier** nombre qui suit un « ` - ` », ou à défaut le dernier nombre juste avant les crochets de fin |
+
+Règle 4, précisions : « `Slime 300 S1 - 01` » → épisode 1 (300 fait partie du titre) ; « `One Piece Kaï - 098 - Totto Land - 1080p…` » → épisode 98. Si aucun « ` - ` » ni crochet n'encadre le nombre (« `Naruto Kai 74 - La volonté du feu` »), le fichier n'est **pas** résolu : il va au rapport (correction manuelle).
+
+Sans indication de saison (stratégies 3 et 4, ni `S\d` dans le nom ni dossier de saison) : **saison 1**. Exemple : `One Piece/Saison 9/One Piece Kaï - 098 - …` → saison 9, épisode 98.
+
+Si un nom contient plusieurs motifs, le **premier** l'emporte et la suite est ignorée : `11 Eyes - S01E13 (OAV S1E01)` → S1 E13.
+
+### 7.3 Spéciaux (saison 0)
+- Saison 0 = « Spéciaux » : `S00Exx`, `0xNN`, ou fichier numéroté (stratégies 3–4) dans un dossier `OAV`, `OVA`, `Special(s)`, `Spéciaux`, `Bonus`.
+- Un fichier qui porte un **numéro d'épisode reste un épisode**, même si son dossier ou son nom contient « OAV », « Bonus » ou « Extra » : `OAV/L'Attaque des Titans - S00E18 - Lost Girls…` est l'épisode 18 de la saison 0 ; `Sekai Seifuku S01E13 OVA …` est l'épisode 13 de la saison 1, `Fate⁄EXTRA Last Encore S01E01 …` l'épisode 1.
+
+### 7.4 Extras (hors liste des épisodes)
+Sont des extras **uniquement les vidéos sans numéro d'épisode** au sens des stratégies 1 à 3, reconnues par un marqueur : `NCOP`, `NCED`, `NC OP/ED`, `OP`/`ED` (+ numéro de générique : `OP01`, `NCED2`, `ED 02`), `Opening`, `Ending`, `Creditless`, menus BD (`Menu`), `Trailer`, `Teaser`, `PV`, `CM`, `Preview`, `AMV`, ou un dossier de musique / génériques (`OST`, `OP - ED`, `NC`, `Extras`). Ces marqueurs sont testés **avant** la stratégie 4 : dans « `Titre - NCOP 01` » ou « `Menu - 05` », 01 et 05 ne sont pas des numéros d'épisode.
+
+Les extras sont enregistrés (`media_file.kind = EXTRA`), comptés au rapport, mais n'apparaissent pas dans la liste des épisodes.
+
+### 7.5 Cas signalés au rapport (correction manuelle)
+- **Doublon d'épisode** (même animé, saison, épisode ; 13 cas connus dont Devilman Crybaby) : le fichier déjà lié est gardé (au premier scan : le premier par ordre de chemin), l'autre est signalé. Le choix de la meilleure version → FUTURE.
+- **Double épisode** (`03-04`, `S01E03-E04`) et **numéro décimal** (`E05.5`, `0.89`, `Épisode 24.5`) : pas d'interprétation automatique, signalés.
+- **Désaccord dossier / fichier** : importé selon le fichier, signalé.
+- **Non résolu** : aucune stratégie ne répond et aucun marqueur d'extra.
+
+### 7.6 Rapport de scan
+- **Résumé par catégorie** : vidéos vues, épisodes reconnus, extras, non résolus, doublons, doubles épisodes / décimaux, désaccords dossier/fichier, fichiers disparus, autres fichiers (par type, dont sous-titres externes).
+- **Liste filtrable** (par catégorie et par animé) des fichiers signalés, avec la raison et le chemin relatif. Réservé à l'admin.
+
+### 7.7 Correction manuelle
+L'admin peut associer un fichier à un animé, une saison et un numéro d'épisode (ou le marquer comme extra / ignoré). La correction est **stockée en base** (table `media_file_override`, clé : `relative_path`) et appliquée **à la place du parser** à chaque scan : un rescan ne l'écrase jamais. Si le fichier disparaît, la correction est conservée (elle resservira s'il réapparaît au même chemin).
+
+### 7.8 Sous-titres externes
+Seuls 24 des 434 sous-titres externes ont le même nom de base qu'une vidéo ; beaucoup sont rangés dans des dossiers du type `sous-titres + police/` avec des polices. Le MVP **ne les associe pas** : il les compte. La lecture s'appuie sur les sous-titres **intégrés (muxés) dans la vidéo**. L'association externe → FUTURE.
+
+### 7.9 Idempotence
 - Clé d'un fichier : `relative_path`. Nouveau chemin → création ; chemin connu → mise à jour de `file_size`, `last_modified`, `last_seen_at`.
 - Fichier connu absent du scan → `available=false`, `missing_since=now` (aucune suppression). S'il réapparaît → `available=true`, `missing_since=null`.
 - Anime identifié par `normalized_title` (minuscules, espaces/ponctuation normalisés) ; saison par (anime, numéro) ; épisode par (saison, numéro).
-- Deux fichiers **disponibles** pour le même épisode (ex. 720p + 1080p) : celui déjà lié est gardé, l'autre part dans le rapport (« doublon d'épisode »). Le choix de version → FUTURE.
-- **Rebranchement** : si le `media_file` lié à un épisode est indisponible (`available=false`) et qu'un nouveau fichier est reconnu pour le même (anime, saison, numéro) — cas typique : fichier renommé ou remplacé par une meilleure version —, l'épisode est **rebranché** sur le nouveau fichier. L'ancien `media_file` reste en base, marqué indisponible. L'épisode garde son id (utile plus tard pour la progression de visionnage).
+- **Rebranchement** : si le `media_file` lié à un épisode est indisponible et qu'un nouveau fichier est reconnu pour le même (anime, saison, numéro) — fichier renommé ou remplacé —, l'épisode est rebranché sur le nouveau fichier ; l'ancien reste en base, indisponible. L'épisode garde son id (utile plus tard pour la progression).
 - L'API de lecture n'expose que les épisodes dont le fichier est `available`.
 
-### 7.3 Parsing des noms
+### 7.10 Interface du parser
 ```java
 interface FilenameParser {
-    Optional<ParsedEpisode> parse(Path relativePath);   // relatif à /media
+    ParseResult parse(String relativePath);   // chemin relatif à /media, séparateur "/"
 }
-record ParsedEpisode(String animeTitle, int seasonNumber, int episodeNumber, String episodeTitle) {}
+// ParseResult = Episode(animeTitle, season, episode, strategy, warnings)
+//             | Extra(animeTitle, marker)
+//             | Unresolved(animeTitle, reason)
 ```
-`CompositeFilenameParser` essaie les stratégies dans l'ordre ; la première qui reconnaît gagne, sinon le fichier va dans le rapport avec la raison « nom non reconnu ».
+Le parser ne touche jamais au disque : il ne reçoit que des chaînes. C'est ce qui permet de le tester sur `library-sample.txt`.
 
-Stratégie livrée en phase 3 — `SeasonFolderParser` :
-- `Titre/Season 01/<n'importe quoi> S01E05 <…>.mkv` (aussi `Saison 1`, `S1`, `s01e05`, casse indifférente) ;
-- le titre vient du **dossier de premier niveau**, pas du nom de fichier ;
-- incohérence dossier/nom (`Season 01` mais `S02E03`) → rapport.
+### 7.11 Tests du parser (phase 3)
+Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains noms contiennent des caractères interdits sous Windows : `:`, `?`, `"`…) :
+- **seuil global** : au moins **97 %** d'épisodes reconnus, calculé sur les vidéos hors extras (`épisodes / (vidéos − extras)`). Garde-fou contre un parser qui classerait tout en extra : extras < 2 % des vidéos ;
+- **un test par piège**, avec le résultat attendu :
 
-Extensions prévues (non implémentées, notées dans FUTURE) : `ReleaseGroupAbsoluteParser` pour `[Groupe] Titre - 05 [1080p].mkv` (numérotation absolue → saison 1 par défaut), dossier `Specials`/`Season 00`, fichiers à plat sans dossier de saison.
+| Chemin (extrait de l'échantillon) | Attendu |
+|---|---|
+| `I've Been Killing Slimes for 300 Years…/Saison 1/[matheousse] Slime 300 S1 - 01 MULTi [BD 1080p AAC Opus] [DBB79FF9].mkv` | S1 E1 (pas l'épisode 300) |
+| `Genshiken/Saison 1/Genshiken 01X01.mkv` | S1 E1 (stratégie `NxEE`, X majuscule) |
+| `AH! My Goddess/Saison 1/[Elecman] Ah! My Goddess E12 […].mkv` et `…/Saison 2/[Elecman] Ah My Goddess E12 […].mkv` | S1 E12 et S2 E12 (saison prise dans le dossier) ; **pas** un doublon |
+| `Shingeki No Kyojin/OAV/L'Attaque des Titans - S00E18 - Lost Girls…mkv` | S0 E18 : un épisode, pas un extra |
+| `Devilman Crybaby/…` (deux fichiers par épisode) | un fichier gardé par épisode, les autres signalés « doublon » |
+| `One Piece/Saison 9/One Piece Kaï - 098 - Totto Land - 1080p.VOSTFR.x264 [Sacha].mp4` | S9 E98 (pas 264, pas 1080) |
+| `[Natsumi no Sekai] Isekai Quartet S2 - NCOP VOSTFR [BD 1080p AAC].mkv`, `[matheousse] Fruits Basket (2019) The Final Season - NCED4 […].mkv`, `Nyan Koi! Menu - 05 (…).mkv` | extras (les numéros de générique ou de menu ne sont pas des épisodes) |
+| `Naruto Kai 74 - La volonté du feu.avi` | non résolu |
 
 ## 8. API (étape 1)
 
@@ -251,7 +331,9 @@ Extensions prévues (non implémentées, notées dans FUTURE) : `ReleaseGroupAbs
 | GET | `/api/seasons/{id}/episodes` | authentifié |
 | GET | `/api/episodes/{id}` | authentifié |
 | POST | `/api/admin/library/scan` | ADMIN |
-| GET | `/api/admin/library/scan-report` | ADMIN |
+| GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan) |
+| GET | `/api/admin/library/issues?category=&anime=` | ADMIN (liste filtrable du rapport) |
+| PUT / DELETE | `/api/admin/library/overrides` | ADMIN (correction manuelle d'un fichier, §7.7) |
 | GET / POST | `/api/admin/users` | ADMIN |
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |
 
@@ -295,7 +377,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 ## 12. Tests
 - Backend : JUnit 5 + RestAssured + `@QuarkusTest`. PostgreSQL de test via **Quarkus Dev Services** (Testcontainers) → nécessite Docker Desktop lancé sur la machine de dev. Pas de H2 (comportement différent de PostgreSQL).
   Quarkus 3.20.0 embarque Testcontainers 1.20.6, qui ne sait pas parler à Docker Engine 29+ (« client version 1.32 is too old ») : le `pom.xml` force Testcontainers 1.21.4, à retirer quand Quarkus fournira une version plus récente.
-- Tests obligatoires : Range Requests, path traversal, auth / permissions / brute force (dont : l'admin reste connectable depuis une autre IP), tolérance de rotation, chaîne d'IP, parsing, idempotence du rescan (dont : /media vide, scan orphelin, rebranchement d'épisode).
+- Tests obligatoires : Range Requests, path traversal, auth / permissions / brute force (dont : l'admin reste connectable depuis une autre IP), tolérance de rotation, chaîne d'IP, parsing sur `library-sample.txt` (seuil ≥ 97 % + un test par piège, §7.11), idempotence du rescan (dont : /media vide, scan orphelin, rebranchement d'épisode, correction manuelle conservée).
 - Front : quelques tests unitaires ciblés (AuthService, interceptor, guards). Pas d'e2e à cette étape.
 
 ## 13. Décisions validées (2026-09-29)
@@ -304,3 +386,13 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 3. Streaming par URL signée, durée 6 h, liée à l'utilisateur (§6).
 4. Spike vidéo (phase 0) avant le socle.
 5. Ajustements : brute force par (IP, username) + IP seule (§5.4), tolérance de rotation 20 s (§5.1), chaîne d'IP testée (§5.4.1), garde-fous du scan (§7.1), rebranchement d'épisode (§7.2).
+
+## 14. Décisions sur la bibliothèque (2026-09-30, d'après la vraie bibliothèque)
+1. Le nom du fichier fait foi ; le dossier de saison sert de secours et de vérification, jamais de condition d'import (§7.2).
+2. Quatre stratégies de parsing, dans l'ordre : `SxxExx`, `NxEE`, `E\d+`, numéro seul (§7.2).
+3. Saison 0 = Spéciaux ; un numéro d'épisode l'emporte sur les mots OAV / Bonus / Extra (§7.3).
+4. Extras = vidéos sans numéro d'épisode, exclues de la liste des épisodes (§7.4).
+5. Doublons, doubles épisodes, décimaux et désaccords : rapport + correction manuelle, stockée en base et jamais écrasée (§7.5–7.7).
+6. Sous-titres externes comptés, pas associés (§7.8).
+7. Scan par lots, ffprobe hors du scan (§7.1).
+8. Tests du parser sur chaînes, seuil ≥ 97 % (§7.11).

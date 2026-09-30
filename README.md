@@ -112,7 +112,7 @@ Le scan lit `/media` (en lecture seule), reconnaît animés, saisons et épisode
 4. `GET /api/admin/library/issues?category=UNRESOLVED&anime=naruto` → liste des fichiers signalés (catégories : `UNRESOLVED`, `DUPLICATE`, `MULTI_EPISODE`, `DECIMAL_EPISODE`, `SEASON_MISMATCH`, `MISSING`, `UNREADABLE`), avec leur `mediaFileId`.
 5. Correction : `PUT /api/admin/library/files/{mediaFileId}/override` avec `{"action":"EPISODE","animeTitle":"…","seasonNumber":1,"episodeNumber":7}` (ou `{"action":"EXTRA"}`, `{"action":"IGNORE"}`), puis relancer un scan. La correction n'est jamais écrasée ; `DELETE` sur la même URL l'annule.
 
-Un scan abandonné (dossier média absent, vide ou illisible) ne marque rien comme disparu. Un fichier disparu est seulement masqué : s'il revient, son épisode réapparaît avec le même id.
+Un scan abandonné (dossier média absent, vide ou illisible) ne marque rien comme disparu. Si un scan rendrait indisponibles **plus de la moitié** des fichiers connus (mauvais dossier monté, partage absent…), il s'arrête aussi sans rien modifier et le rapport l'explique ; si c'est voulu : `POST /api/admin/library/scan?confirmMassRemoval=true`. Un fichier disparu est seulement masqué : s'il revient, son épisode réapparaît avec le même id.
 
 ## Tester le scan complet (bibliothèque factice)
 
@@ -123,7 +123,7 @@ Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **f
 docker compose -f docker-compose.yml -f docker-compose.fake-media.yml up -d --build
 ```
 
-⚠️ Tant que vous testez avec le volume factice, **passez toujours les deux `-f`**, à chaque commande `docker compose` (`up`, `restart`, `logs`…). Sinon Compose recrée le backend avec `MEDIA_PATH`, et le scan suivant marque toute la bibliothèque factice comme disparue (rien n'est supprimé : un scan avec le volume factice rétablit tout). Pour ne pas y penser, ajouter dans `.env` : `COMPOSE_FILE=docker-compose.yml;docker-compose.fake-media.yml` (séparateur `;` sous Windows, `:` sous Linux).
+⚠️ Tant que vous testez avec le volume factice, **passez toujours les deux `-f`**, à chaque commande `docker compose` (`up`, `restart`, `logs`…). Sinon Compose recrée le backend avec `MEDIA_PATH` et le scan suivant s'arrête sur le garde-fou de disparition massive (rien n'est modifié). Pour ne pas y penser, ajouter dans `.env` : `COMPOSE_FILE=docker-compose.yml;docker-compose.fake-media.yml` (séparateur `;` sous Windows, `:` sous Linux).
 
 Puis lancer un scan (voir ci-dessus) et regarder dans le rapport : durée (`stats.durationMs`), compteurs, problèmes. Relancer un scan : `newFiles` et `missing` doivent valoir 0. Pour simuler un fichier renommé ou disparu, modifier le volume depuis un conteneur :
 

@@ -58,7 +58,7 @@ public class ScanService {
     }
 
     /** Crée le scan_run et lance le scan en tâche de fond ; 409 si un scan tourne déjà. */
-    public long start(String triggeredBy) {
+    public long start(String triggeredBy, boolean confirmMassRemoval) {
         long runId;
         try (Connection c = dataSource.getConnection();
              PreparedStatement st = c.prepareStatement(
@@ -74,14 +74,15 @@ public class ScanService {
             }
             throw new IllegalStateException(e);
         }
-        LOG.infof("Scan %d lancé par '%s'", runId, triggeredBy);
-        executor.runAsync(() -> run(runId));
+        LOG.infof("Scan %d lancé par '%s'%s", runId, triggeredBy,
+                confirmMassRemoval ? " (disparition massive confirmée)" : "");
+        executor.runAsync(() -> run(runId, confirmMassRemoval));
         return runId;
     }
 
-    void run(long runId) {
+    void run(long runId, boolean confirmMassRemoval) {
         try {
-            ScanStats stats = scanner.scan(runId);
+            ScanStats stats = scanner.scan(runId, confirmMassRemoval);
             finish(runId, "SUCCESS", stats, null);
             LOG.infof("Scan %d terminé en %d ms : %d vidéos, %d épisodes, %d extras, %d non résolues, %d doublons, %d disparues",
                     runId, stats.durationMs, stats.videos, stats.episodes, stats.extras, stats.unresolved,

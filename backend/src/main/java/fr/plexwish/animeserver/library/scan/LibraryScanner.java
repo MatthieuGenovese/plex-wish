@@ -79,12 +79,14 @@ public class LibraryScanner {
     }
 
     /** Caches chargés une fois au début du scan (quelques milliers de lignes). */
-    private static final class State {
+    static final class State {
         final Map<String, ManualOverride> overrides = new HashMap<>();
         final Map<String, Long> animeIds = new HashMap<>();
         final Map<String, Long> seasonIds = new HashMap<>();
         final Map<String, EpisodeRef> episodes = new HashMap<>();
         final Map<Long, String> fileToEpisode = new HashMap<>();
+        /** Fichiers disponibles avant ce scan : sert au garde-fou de disparition massive. */
+        final Set<String> availablePaths = new HashSet<>();
     }
 
     @Inject
@@ -94,7 +96,11 @@ public class LibraryScanner {
     @Inject
     LibraryConfig config;
 
-    public ScanStats scan(long runId) throws SQLException {
+    /**
+     * @param confirmMassRemoval l'admin a confirmé qu'une disparition de plus de la moitié des fichiers
+     *                           connus est normale (sinon le scan s'arrête avant d'écrire quoi que ce soit).
+     */
+    public ScanStats scan(long runId, boolean confirmMassRemoval) throws SQLException {
         long start = System.nanoTime();
         Path root = Path.of(config.mediaRoot());
         checkMediaRoot(root);
@@ -116,6 +122,7 @@ public class LibraryScanner {
             c.setAutoCommit(false);
             try {
                 State state = load(c);
+                checkMassRemoval(state, seen, confirmMassRemoval, stats);
                 int batch = Math.max(1, config.batchSize());
                 for (int i = 0; i < videos.size(); i += batch) {
                     processBatch(c, videos.subList(i, Math.min(i + batch, videos.size())), seen, state, stats, runId, scanTime);
@@ -212,6 +219,28 @@ public class LibraryScanner {
         return slash < 0 ? null : relativePath.substring(0, slash);
     }
 
+    /**
+     * Garde-fou de disparition massive : si ce scan rendrait indisponibles plus de la moitié des fichiers
+     * connus (mauvais dossier monté, sous-dossier non monté…), il s'arrête AVANT toute écriture,
+     * sauf confirmation explicite de l'admin. Appelé avant le premier lot.
+     */
+    static void checkMassRemoval(State state, Set<String> seen, boolean confirmed, ScanStats stats) {
+        int known = state.availablePaths.size();
+        long disappearing = state.availablePaths.stream().filter(p -> !seen.contains(p)).count();
+        stats.knownFiles = known;
+        if (known == 0 || disappearing * 2 <= known) {
+            return;
+        }
+        long percent = Math.round(100.0 * disappearing / known);
+        if (!confirmed) {
+            throw new ScanAbortedException(disappearing + " fichiers connus sur " + known + " (" + percent
+                    + " %) seraient marqués indisponibles : mauvais dossier monté ou partage NAS absent ? "
+                    + "Rien n'a été modifié. Si c'est voulu, relancer le scan avec confirmMassRemoval=true.");
+        }
+        stats.massRemovalConfirmed = true;
+        LOG.warnf("Disparition massive confirmée par l'admin : %d fichiers sur %d (%d %%)", disappearing, known, percent);
+    }
+
     // --- Chargement des caches ---------------------------------------------------------------------
 
     private State load(Connection c) throws SQLException {
@@ -222,6 +251,11 @@ public class LibraryScanner {
                 while (rs.next()) {
                     s.overrides.put(rs.getString(1), new ManualOverride(rs.getString(2), rs.getString(3),
                             (Integer) rs.getObject(4), (Integer) rs.getObject(5)));
+                }
+            }
+            try (ResultSet rs = st.executeQuery("SELECT relative_path FROM media_file WHERE available")) {
+                while (rs.next()) {
+                    s.availablePaths.add(rs.getString(1));
                 }
             }
             try (ResultSet rs = st.executeQuery("SELECT id, normalized_title FROM anime")) {

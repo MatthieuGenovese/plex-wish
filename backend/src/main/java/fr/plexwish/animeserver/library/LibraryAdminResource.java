@@ -87,11 +87,15 @@ public class LibraryAdminResource {
     @Inject
     JsonWebToken jwt;
 
-    /** Lance un scan en tâche de fond : 202 + id ; 409 si un scan tourne déjà. */
+    /**
+     * Lance un scan en tâche de fond : 202 + id ; 409 si un scan tourne déjà.
+     * {@code confirmMassRemoval=true} : accepter qu'il rende indisponibles plus de la moitié des fichiers
+     * connus (sinon le scan s'arrête en FAILED sans rien modifier).
+     */
     @POST
     @Path("/scan")
-    public Response scan() {
-        return Response.accepted(new ScanStarted(scans.start(jwt.getName()))).build();
+    public Response scan(@QueryParam("confirmMassRemoval") @DefaultValue("false") boolean confirmMassRemoval) {
+        return Response.accepted(new ScanStarted(scans.start(jwt.getName(), confirmMassRemoval))).build();
     }
 
     /** Dernier scan (ou celui demandé) : statut, compteurs par catégorie, nombre de problèmes par catégorie. */

@@ -30,6 +30,10 @@ public class ScanStats {
     public int unreadable;
     /** Autres fichiers, comptés par type (sous-titres externes compris, §7.8). */
     public Map<String, Integer> otherFiles = new TreeMap<>();
+    /** Fichiers disponibles avant ce scan. */
+    public int knownFiles;
+    /** Plus de la moitié des fichiers connus ont disparu, et l'admin l'a confirmé. */
+    public boolean massRemovalConfirmed;
     public int animeCount;
     public long durationMs;
 

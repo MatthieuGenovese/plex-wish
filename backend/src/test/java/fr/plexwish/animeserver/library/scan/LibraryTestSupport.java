@@ -66,8 +66,13 @@ public final class LibraryTestSupport {
 
     /** Lance un scan et attend sa fin ; renvoie le rapport. */
     public static JsonPath scan() {
+        return scan(false);
+    }
+
+    public static JsonPath scan(boolean confirmMassRemoval) {
         String token = adminToken();
-        long id = ((Number) given().auth().oauth2(token).post("/api/admin/library/scan")
+        long id = ((Number) given().auth().oauth2(token).queryParam("confirmMassRemoval", confirmMassRemoval)
+                .post("/api/admin/library/scan")
                 .then().statusCode(202).extract().path("scanId")).longValue();
         return waitFor(token, id, Duration.ofMinutes(5));
     }

@@ -8,8 +8,8 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | — | Documents d'architecture | ✅ validés le 2026-09-29 |
 | 0 | Spike vidéo | ✅ validé le 2026-09-29 sur fichiers synthétiques (Galaxy S24) — vrais fichiers, téléphone du propriétaire et sous-titres encore à tester (voir SPIKE.md §8) |
 | 1 | Socle | ✅ validée le 2026-09-30 |
-| 2 | Authentification | 🔧 livrée — en attente de validation |
-| 3 | Bibliothèque | à faire — règles révisées le 2026-09-30 d'après la vraie bibliothèque (ARCHITECTURE §7), en attente de relecture |
+| 2 | Authentification | ✅ validée le 2026-09-30 |
+| 3 | Bibliothèque | 🔧 livrée — en attente de validation |
 | 4 | Interface web | à faire |
 
 ---
@@ -46,6 +46,7 @@ But : vérifier que de vrais fichiers se lisent sur un téléphone Android **ava
 ## Phase 3 — Bibliothèque
 Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéos, 1 317 animés).
 - Flyway `V3__library.sql` : anime, season, episode, media_file (avec `kind`), media_file_override, scan_run, scan_issue.
+- `scripts/generate-fake-library.*` : bibliothèque factice (≈ 33 000 fichiers vides) dans un volume Docker, pour tester le scan complet.
 - `FilenameParser` (chaînes uniquement) : `SxxExx` → `NxEE` → `E\d+` → numéro seul ; nom du fichier prioritaire, dossier de saison en secours et vérification ; saison 0 ; extras.
 - Scan asynchrone par lots, un seul à la fois, sans ffprobe ; rapport par catégorie + liste filtrable ; corrections manuelles jamais écrasées.
 - Endpoints de lecture `/api/anime…`, `/api/seasons…`, `/api/episodes…` ; endpoints admin de scan, de rapport et de correction.

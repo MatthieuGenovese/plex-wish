@@ -89,10 +89,10 @@ PostgreSQL 16 en conteneur, schéma géré **uniquement par Flyway** (`quarkus.h
 | `anime` | id, title, normalized_title (unique), alternative_title, synopsis, poster_url, year, metadata_provider_id, created_at | 5 dernières colonnes vides à cette étape |
 | `season` | id, anime_id, season_number | unique (anime_id, season_number) |
 | `media_file` | id, relative_path (unique), file_name, file_size, last_modified, container, kind (`EPISODE`/`EXTRA`/`UNRESOLVED`), available, missing_since, first_seen_at, last_seen_at | voir 4.2 et §7 |
-| `media_file_override` | id, relative_path (unique), action (`EPISODE`/`EXTRA`/`IGNORE`), anime_id, season_number, episode_number, created_by, created_at | correction manuelle, jamais écrasée par un scan (§7.7) |
+| `media_file_override` | id, relative_path (unique), action (`EPISODE`/`EXTRA`/`IGNORE`), anime_title, season_number, episode_number, created_by, created_at | correction manuelle, jamais écrasée par un scan (§7.7) |
 | `episode` | id, season_id, episode_number, title, synopsis, duration_seconds, media_file_id, created_at | unique (season_id, episode_number) |
 | `scan_run` | id, started_at, finished_at, status (`RUNNING`/`SUCCESS`/`FAILED`), stats (compteurs par catégorie, JSON), triggered_by | un seul scan à la fois |
-| `scan_issue` | id, scan_run_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`), anime_title, detail | liste filtrable du rapport (§7.6) |
+| `scan_issue` | id, scan_run_id, media_file_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`/`UNREADABLE`), anime_title, detail | liste filtrable du rapport (§7.6) |
 
 Migrations : `V1__auth.sql` (app_user, refresh_token) en phase 1, `V2__refresh_token_password_reset.sql` en phase 2 (motif de révocation `PASSWORD_RESET`), `V3__library.sql` en phase 3. On ne modifie jamais une migration déjà commitée.
 
@@ -227,15 +227,18 @@ Chiffres mesurés par un script d'analyse jetable (hors dépôt) sur le relevé 
 Extensions vidéo trouvées : `mkv` (21 174), `mp4` (6 148), `avi` (895), `ogm` (28), `ts` (10). ⚠️ Compatibilité : AVI et MPEG-TS sont lus par ExoPlayer (AVI validé par le spike) ; **OGM** (vieux format vidéo dans un conteneur Ogg) n'est probablement lu ni par ExoPlayer ni par les navigateurs → ces 28 fichiers sont importés normalement, leur lecture sera à tester.
 
 ### 7.1 Scan
-- Parcours récursif de `/media` (`Files.walkFileTree`), **sans suivre les liens symboliques** qui sortent de `/media`.
+- Parcours récursif de `/media` (`Files.walkFileTree`) **sans suivre aucun lien symbolique** (ceux qui sortent de `/media` compris) : ils sont seulement comptés (`symlinksSkipped`). Plus simple et plus sûr que de vérifier la cible de chacun.
+- La JVM doit encoder les noms de fichiers en UTF-8 (`sun.jnu.encoding`) : c'est le cas dans l'image Docker (`LANG=en_US.UTF-8`) ; sinon un avertissement est loggé au démarrage, car les noms accentués ou japonais seraient illisibles sous Linux.
 - Ignorés sans bruit : dossiers techniques Synology `@eaDir`, `#recycle`, `#snapshot` ; fichiers AppleDouble `._*` ; fichier dont le nom se réduit à l'extension (`.mkv`).
 - Vidéos : `mkv, mp4, avi, ogm, ts, m4v, webm`. Les autres fichiers (images, musique, polices, archives, sous-titres…) sont **comptés par type** dans le rapport, pas listés un par un.
-- **Asynchrone** : `POST /api/admin/library/scan` renvoie `202` + l'id du `scan_run` ; un seul scan à la fois (`409` sinon). L'admin consulte `GET /api/admin/library/scan-report`.
+- **Asynchrone** : `POST /api/admin/library/scan` renvoie `202` + l'id du `scan_run` ; un seul scan à la fois (`409` sinon), garanti par la base (index unique partiel sur `status = 'RUNNING'`). L'admin consulte `GET /api/admin/library/scan-report`.
 - Un fichier illisible ou mal nommé ne fait jamais échouer le scan.
-- **Garde-fou montage** : avant de parcourir, le scan vérifie que `/media` existe, est lisible et **n'est pas vide**. Sinon il s'arrête en `FAILED` avec la raison (« /media vide ou illisible — montage NAS absent ? ») **sans rien marquer comme disparu**. Même règle si le parcours échoue en cours de route (erreur d'I/O sur la racine).
+- **Garde-fou montage** : avant de parcourir, le scan vérifie que `/media` existe, est lisible et **n'est pas vide**. Sinon il s'arrête en `FAILED` avec la raison (« /media vide ou illisible — montage NAS absent ? ») **sans rien marquer comme disparu**. Même règle si le parcours échoue sur la racine, ou s'il ne trouve **aucune vidéo**. ⚠️ Limite : un `/media` qui contient d'autres vidéos (mauvais dossier monté) passe le garde-fou, et tous les fichiers connus sont marqués disparus. Rien n'est supprimé et un scan avec le bon dossier rétablit tout ; le garde-fou « disparition massive » reste dans FUTURE.
 - **Scans orphelins** : au démarrage, tout `scan_run` resté `RUNNING` passe en `FAILED` (« interrompu par un redémarrage »).
 - **Performance** (premier scan ≈ 28 000 vidéos) :
-  - traitement **par lots** (ex. 500 fichiers) : chargement en mémoire des chemins déjà connus en une requête, puis insertions / mises à jour groupées (batch JDBC), une transaction par lot. Jamais une requête par fichier ;
+  - traitement **par lots** de 500 vidéos (`library.batch-size`), une transaction par lot. Animés, saisons, épisodes et corrections sont chargés en mémoire une fois au début ; chaque lot écrit avec quelques requêtes **multi-lignes** en JDBC (`INSERT … ON CONFLICT … RETURNING`, `UPDATE … FROM (VALUES …)`). Hibernate n'est pas utilisé pour le scan : il ne sait pas regrouper des insertions sur des clés `IDENTITY` ;
+  - fichiers disparus : **une seule** requête en fin de scan (`last_seen_at` antérieur au début du scan) ;
+  - mesuré sur la vraie liste (28 254 vidéos en fichiers vides) : **≈ 4,5 s** pour le premier scan, **≈ 3 s** pour un rescan, sur la machine de développement (le NAS sera plus lent, surtout pour le parcours du disque) ;
   - le parsing est pur calcul sur des chaînes (aucun accès disque au-delà du `stat` du parcours) ;
   - **ffprobe n'est pas appelé pendant le scan** (plusieurs heures sur 28 000 fichiers) : codecs et durée seront lus plus tard, à la demande ou par une tâche séparée (voir FUTURE).
 
@@ -315,7 +318,7 @@ Dans « `Nyan Koi! Menu - 05` » ou « `Blend S NCED4` », 05 et 4 ne sont donc 
 - **Liste filtrable** (par catégorie et par animé) des fichiers signalés, avec la raison et le chemin relatif. Réservé à l'admin.
 
 ### 7.7 Correction manuelle
-L'admin peut associer un fichier à un animé, une saison et un numéro d'épisode (ou le marquer comme extra / ignoré). La correction est **stockée en base** (table `media_file_override`, clé : `relative_path`) et appliquée **à la place du parser** à chaque scan : un rescan ne l'écrase jamais. Si le fichier disparaît, la correction est conservée (elle resservira s'il réapparaît au même chemin).
+L'admin peut associer un fichier à un animé (par son **titre**, existant ou non), une saison et un numéro d'épisode, ou le marquer comme extra / ignoré. Il désigne le fichier par son **id** (`mediaFileId`, fourni par le rapport), jamais par un chemin. La correction est **stockée en base** (table `media_file_override`, clé : `relative_path`) et appliquée **à la place du parser** à chaque scan : un rescan ne l'écrase jamais. Elle prend effet **au scan suivant** (quelques secondes). Si le fichier disparaît, la correction est conservée (elle resservira s'il réapparaît au même chemin). `IGNORE` retire le fichier de la bibliothèque sans le toucher sur le disque.
 
 ### 7.8 Sous-titres externes
 Seuls 24 des 434 sous-titres externes ont le même nom de base qu'une vidéo ; beaucoup sont rangés dans des dossiers du type `sous-titres + police/` avec des polices. Le MVP **ne les associe pas** : il les compte. La lecture s'appuie sur les sous-titres **intégrés (muxés) dans la vidéo**. L'association externe → FUTURE.
@@ -332,9 +335,9 @@ Seuls 24 des 434 sous-titres externes ont le même nom de base qu'une vidéo ; b
 interface FilenameParser {
     ParseResult parse(String relativePath);   // chemin relatif à /media, séparateur "/"
 }
-// ParseResult = Episode(animeTitle, season, episode, strategy, warnings)
+// ParseResult = Episode(animeTitle, season, episode, strategy, folderSeasonConflict)
 //             | Extra(animeTitle, marker)
-//             | Unresolved(animeTitle, reason)
+//             | Unresolved(animeTitle, problem, detail)   // NO_EPISODE_NUMBER, MULTI_EPISODE, DECIMAL_EPISODE, NO_ANIME_FOLDER
 ```
 Le parser ne touche jamais au disque : il ne reçoit que des chaînes. C'est ce qui permet de le tester sur `library-sample.txt`.
 
@@ -359,6 +362,8 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | `Little Witch/Little Witch Academia 1.mp4` | non résolu (1 seul chiffre) |
 | `Macross Delta/[Lumen] Macross Delta 0.89.mkv` | signalé « numéro décimal » |
 
+**Résultats (phase 3)** sur l'échantillon complet : 99,86 % d'épisodes reconnus hors extras (27 651 / 27 690), 2,0 % d'extras. Scan complet des 32 940 chemins recréés en fichiers vides (`FullSampleScanTest`) : 27 597 épisodes, 564 extras, 54 doublons (10 pour Devilman Crybaby, les autres surtout issus des stratégies 3 et 5), 116 désaccords dossier/fichier, 26 non résolus, 8 doubles épisodes, 5 numéros décimaux, 1 316 animés visibles ; rescan identique, sans rien ajouter ni marquer disparu.
+
 ## 8. API (étape 1)
 
 | Méthode | Route | Accès |
@@ -375,12 +380,13 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | GET | `/api/episodes/{id}` | authentifié |
 | POST | `/api/admin/library/scan` | ADMIN |
 | GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan) |
-| GET | `/api/admin/library/issues?category=&anime=` | ADMIN (liste filtrable du rapport) |
-| PUT / DELETE | `/api/admin/library/overrides` | ADMIN (correction manuelle d'un fichier, §7.7) |
+| GET | `/api/admin/library/issues?category=&anime=&scanId=&page=&size=` | ADMIN (liste filtrable et paginée du rapport, avec `mediaFileId` et chemin relatif) |
+| PUT / DELETE | `/api/admin/library/files/{mediaFileId}/override` | ADMIN (correction manuelle d'un fichier, §7.7) |
+| GET | `/api/admin/library/overrides` | ADMIN (liste des corrections) |
 | GET / POST | `/api/admin/users` | ADMIN |
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |
 
-Pas de pagination au départ (quelques centaines d'animes au plus) ; à ajouter si besoin. Un admin ne peut pas se désactiver ni retirer son propre rôle ADMIN (évite de se verrouiller dehors).
+Lecture : seuls les épisodes dont le fichier est disponible sont visibles (sinon 404) ; `/api/anime?sort=title|recent` (recent = dernier fichier ajouté) ; saisons dans l'ordre 1, 2… puis « Spéciaux » (saison 0) ; aucun chemin de fichier dans les réponses. Pas de pagination (≈ 1 300 animés, liste légère) ; à ajouter si besoin. Un admin ne peut pas se désactiver ni retirer son propre rôle ADMIN (évite de se verrouiller dehors).
 OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquement** par défaut (`SWAGGER_ENABLED`). nginx relaie ces deux chemins (avec une CSP assouplie pour la page Swagger) : `SWAGGER_ENABLED=true` suffit pour s'en servir sur le NAS. Le health check `/q/health` reste interne (healthcheck Docker).
 
 ## 9. Front Angular

@@ -7,7 +7,7 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
-> État : **phase 2 (authentification)**. La bibliothèque et les vraies pages arrivent en phases 3 et 4 : pour l'instant, l'API d'authentification s'utilise via Swagger ou `curl`.
+> État : **phase 3 (bibliothèque)**. Les vraies pages arrivent en phase 4 : pour l'instant, l'API (connexion, scan, rapport, lecture de la bibliothèque) s'utilise via Swagger ou `curl`.
 
 ## Prérequis
 
@@ -102,9 +102,36 @@ Les tentatives de connexion sont limitées par IP. Pour que le backend voie la v
 - après chaque changement réseau, lancer depuis la racine du dépôt, sur le NAS :
   `ADMIN_USER=admin ADMIN_PASSWORD='…' scripts/check-client-ip.sh` → trois lignes `OK` attendues.
 
-## Scan de la bibliothèque *(phase 3)*
+## Scan de la bibliothèque
 
-Depuis la page Admin (ou `POST /api/admin/library/scan`), puis consultation du rapport des fichiers ignorés.
+Le scan lit `/media` (en lecture seule), reconnaît animés, saisons et épisodes d'après les noms de fichiers (règles : `docs/ARCHITECTURE.md` §7) et remplit la base. Il ne touche jamais aux fichiers.
+
+1. Se connecter en admin (`POST /api/auth/login`) et récupérer `accessToken`.
+2. `POST /api/admin/library/scan` → `202 {"scanId": …}`. Le scan tourne en tâche de fond ; un second lancement pendant ce temps répond `409`.
+3. `GET /api/admin/library/scan-report` → statut (`RUNNING`, `SUCCESS`, `FAILED` + raison), compteurs par catégorie, durée, nombre de problèmes par catégorie.
+4. `GET /api/admin/library/issues?category=UNRESOLVED&anime=naruto` → liste des fichiers signalés (catégories : `UNRESOLVED`, `DUPLICATE`, `MULTI_EPISODE`, `DECIMAL_EPISODE`, `SEASON_MISMATCH`, `MISSING`, `UNREADABLE`), avec leur `mediaFileId`.
+5. Correction : `PUT /api/admin/library/files/{mediaFileId}/override` avec `{"action":"EPISODE","animeTitle":"…","seasonNumber":1,"episodeNumber":7}` (ou `{"action":"EXTRA"}`, `{"action":"IGNORE"}`), puis relancer un scan. La correction n'est jamais écrasée ; `DELETE` sur la même URL l'annule.
+
+Un scan abandonné (dossier média absent, vide ou illisible) ne marque rien comme disparu. Un fichier disparu est seulement masqué : s'il revient, son épisode réapparaît avec le même id.
+
+## Tester le scan complet (bibliothèque factice)
+
+Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.
+
+```powershell
+.\scripts\generate-fake-library.ps1                          # Linux : scripts/generate-fake-library.sh
+docker compose -f docker-compose.yml -f docker-compose.fake-media.yml up -d --build
+```
+
+⚠️ Tant que vous testez avec le volume factice, **passez toujours les deux `-f`**, à chaque commande `docker compose` (`up`, `restart`, `logs`…). Sinon Compose recrée le backend avec `MEDIA_PATH`, et le scan suivant marque toute la bibliothèque factice comme disparue (rien n'est supprimé : un scan avec le volume factice rétablit tout). Pour ne pas y penser, ajouter dans `.env` : `COMPOSE_FILE=docker-compose.yml;docker-compose.fake-media.yml` (séparateur `;` sous Windows, `:` sous Linux).
+
+Puis lancer un scan (voir ci-dessus) et regarder dans le rapport : durée (`stats.durationMs`), compteurs, problèmes. Relancer un scan : `newFiles` et `missing` doivent valoir 0. Pour simuler un fichier renommé ou disparu, modifier le volume depuis un conteneur :
+
+```powershell
+docker run --rm -v anime-fake-media:/media alpine:3 mv "/media/Genshiken/Saison 1/Genshiken 01X01.mkv" "/media/Genshiken/Saison 1/Genshiken 01X01 [v2].mkv"
+```
+
+Repartir de zéro : relancer le script (il vide le volume) ; supprimer : `docker volume rm anime-fake-media`. Sous Linux, le script accepte aussi un dossier : `scripts/generate-fake-library.sh "$PWD/fake-media"` (`fake-media/` est ignoré par git).
 
 ## Swagger / OpenAPI
 

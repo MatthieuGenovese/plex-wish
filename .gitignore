@@ -28,3 +28,6 @@ Thumbs.db
 
 # Données réelles (noms de personnes dans les chemins) : jamais versionnées
 docs/private/
+
+# Bibliothèque factice (scripts/generate-fake-library.sh)
+fake-media/

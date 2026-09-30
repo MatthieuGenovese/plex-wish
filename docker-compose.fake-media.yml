@@ -1,0 +1,11 @@
+# Test du scan complet sur la bibliothèque factice (scripts/generate-fake-library.*) :
+#   docker compose -f docker-compose.yml -f docker-compose.fake-media.yml up -d --build
+# Remplace le dossier média du backend par le volume "anime-fake-media" (lecture seule, comme en vrai).
+services:
+  backend:
+    volumes:
+      - anime-fake-media:/media:ro
+
+volumes:
+  anime-fake-media:
+    external: true

@@ -138,6 +138,10 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${surefire-plugin.version}</version>
                 <configuration>
+                    <!-- Noms de fichiers non ASCII (accents, japonais) : la JVM doit les encoder en UTF-8. -->
+                    <environmentVariables>
+                        <LANG>C.UTF-8</LANG>
+                    </environmentVariables>
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                         <maven.home>${maven.home}</maven.home>

@@ -38,6 +38,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       REFRESH_REUSE_GRACE_SECONDS: ${REFRESH_REUSE_GRACE_SECONDS:-20}
+      # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
+      BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
     volumes:
       # Lecture seule : l'application ne modifie jamais les fichiers média.
@@ -53,10 +55,20 @@ services:
     ports:
       - "${WEB_PORT:-8080}:80"
     environment:
-      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-172.16.0.0/12}
+      # Qui a le droit de fournir X-Forwarded-For à nginx : le reverse proxy DSM.
+      # Le DSM, qui tourne sur l'hôte, arrive par la passerelle du réseau Docker (x.x.x.1).
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS-172.30.64.1}
     depends_on:
       backend:
         condition: service_healthy
 
 volumes:
   pgdata:
+
+# Sous-réseau fixe : la passerelle (x.x.x.1), par laquelle arrive le reverse proxy DSM,
+# est ainsi connue à l'avance. À changer seulement s'il est déjà utilisé sur la machine.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.30.64.0/24}

@@ -1,5 +1,4 @@
-# Modèle traité au démarrage par l'image nginx officielle (envsubst) :
-# seules les variables d'environnement définies (ex. TRUSTED_PROXY_IPS) sont remplacées.
+# Modèle traité au démarrage par l'image nginx officielle (envsubst).
 
 # Journal sans query string ($uri au lieu de $request) : les futures URL de
 # streaming signées (?sig=...) ne doivent jamais apparaître dans les logs.
@@ -13,8 +12,11 @@ server {
     access_log /var/log/nginx/access.log anime;
 
     # --- Vraie IP du client (ARCHITECTURE §5.4.1) ---------------------------------
-    # On ne croit X-Forwarded-For que s'il vient du reverse proxy (DSM).
-    set_real_ip_from ${TRUSTED_PROXY_IPS};
+    # On ne croit X-Forwarded-For que s'il vient du reverse proxy (DSM) : liste générée
+    # au démarrage depuis TRUSTED_PROXY_IPS par /docker-entrypoint.d/15-real-ip.sh.
+    # real_ip_recursive : on garde l'adresse la plus à droite qui n'est pas un proxy de
+    # confiance, c'est-à-dire celle ajoutée par le DSM, pas une valeur inventée par le client.
+    include /etc/nginx/real-ip.conf;
     real_ip_header X-Forwarded-For;
     real_ip_recursive on;
 

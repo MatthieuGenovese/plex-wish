@@ -12,8 +12,10 @@ RUN npm run build
 
 # --- Exécution : nginx ----------------------------------------------------------------------
 FROM nginx:alpine
-# IP (ou plage CIDR) du reverse proxy autorisée à fournir X-Forwarded-For.
-ENV TRUSTED_PROXY_IPS=172.16.0.0/12
+# Adresses (ou plages CIDR) autorisées à fournir X-Forwarded-For, séparées par des virgules.
+# Vide par défaut : aucune confiance. docker-compose.yml fournit la valeur réelle.
+ENV TRUSTED_PROXY_IPS=""
+COPY --chmod=755 nginx/15-real-ip.sh /docker-entrypoint.d/15-real-ip.sh
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /build/dist/web/browser/ /usr/share/nginx/html/

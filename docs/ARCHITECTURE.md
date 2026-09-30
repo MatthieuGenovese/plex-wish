@@ -94,7 +94,7 @@ PostgreSQL 16 en conteneur, schéma géré **uniquement par Flyway** (`quarkus.h
 | `scan_run` | id, started_at, finished_at, status (`RUNNING`/`SUCCESS`/`FAILED`), stats (compteurs par catégorie, JSON), triggered_by | un seul scan à la fois |
 | `scan_issue` | id, scan_run_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`), anime_title, detail | liste filtrable du rapport (§7.6) |
 
-Migrations : `V1__auth.sql` (app_user, refresh_token) en phase 1, `V2__library.sql` en phase 3. On ne modifie jamais une migration déjà commitée.
+Migrations : `V1__auth.sql` (app_user, refresh_token) en phase 1, `V2__refresh_token_password_reset.sql` en phase 2 (motif de révocation `PASSWORD_RESET`), `V3__library.sql` en phase 3. On ne modifie jamais une migration déjà commitée.
 
 ### 4.2 `relative_path` au lieu de `absolutePath`
 CLAUDE.md prévoit `MediaFile.absolutePath`. Je propose de stocker le chemin **relatif à `/media`** (ex. `Frieren/Season 01/Frieren - S01E01.mkv`) et de reconstruire le chemin absolu avec la racine configurée (`MEDIA_ROOT=/media`).
@@ -116,11 +116,13 @@ Raison : si la racine change (autre point de montage, dev local vs conteneur), r
 
 Pourquoi pas tout en cookie de session ? Le couple « access en mémoire + refresh HttpOnly » protège contre le vol par XSS (le JS ne peut pas lire le refresh token) et reste utilisable plus tard par l'app Android (qui recevra le refresh token dans le corps de la réponse sur demande explicite, et le stockera chiffré — hors scope maintenant).
 
-CSRF : le seul endpoint qui s'appuie sur le cookie est `/api/auth/*` ; `SameSite=Strict` + même origine suffisent. En complément, le backend vérifie que le header `Origin`, s'il est présent, correspond à `PUBLIC_URL`.
+CSRF : le seul endpoint qui s'appuie sur le cookie est `/api/auth/*` ; `SameSite=Strict` + même origine suffisent. En complément, **toute requête d'écriture sur `/api`** (POST, PUT, PATCH, DELETE) dont le header `Origin` est présent doit venir de `PUBLIC_URL` (ou de `CORS_ORIGINS` en dev), sinon `403 ORIGIN_NOT_ALLOWED` (`auth/OriginCheck`). Sans header `Origin` (curl, future app Android), la requête passe : l'authentification suffit.
+
+`PUBLIC_URL` figure aussi dans les origines CORS autorisées. C'est indispensable : derrière nginx, le backend reçoit la requête en `http` alors que le navigateur annonce `Origin: https://…`, et le filtre CORS de Quarkus la traiterait sinon comme une autre origine (login impossible). `PUBLIC_URL` doit donc être l'origine exacte (`https://hôte[:port]`, sans `/` final) : le démarrage échoue sinon, en indiquant la valeur à mettre.
 
 ### 5.2 Signature JWT
 **HS256** avec un secret `JWT_SECRET` (≥ 32 octets) fourni par `.env`. Plus simple à déployer sur Synology qu'une paire de clés RSA (pas de fichiers PEM à monter). Il n'y a qu'un seul service qui émet et vérifie les tokens, donc l'asymétrique n'apporte rien.
-Si la config smallrye-jwt s'avère pénible en HS256, repli : RS256 avec une paire de clés générée au premier démarrage dans un volume.
+Mise en œuvre (phase 2) : l'extension Quarkus ne sait pas lire un secret HS256 brut depuis une variable d'environnement. `auth/JwtKeys` construit donc une seule clé HMAC à partir de `JWT_SECRET` et l'utilise pour signer **et** pour produire la configuration de vérification (`JWTAuthContextInfo` : clé, émetteur `anime-server`, algorithme HS256 seul). Pas de repli RS256 nécessaire.
 
 ### 5.3 Mots de passe
 bcrypt (coût 12) via `BcryptUtil`. Longueur min. 10 caractères, max. 72 octets (limite bcrypt, validée en entrée). Jamais loggés ; les DTO de login ont un `toString()` qui masque le mot de passe.
@@ -146,12 +148,13 @@ client ──► reverse proxy DSM ──► nginx (web) ──► backend
                                  vient du DSM
 ```
 
-- **nginx** (module `realip`) : `set_real_ip_from ${TRUSTED_PROXY_IPS}` (IP du reverse proxy DSM vue depuis le conteneur, en général la passerelle du réseau Docker, ex. `172.17.0.1` ; configurable), `real_ip_header X-Forwarded-For`, `real_ip_recursive on`. Ensuite nginx **remplace** le header vers le backend : `proxy_set_header X-Forwarded-For $remote_addr` (pas `$proxy_add_x_forwarded_for`, qui propagerait des valeurs falsifiées). Une requête qui arrive directement sur nginx (depuis le LAN, sans passer par le DSM) garde son IP réelle : son `X-Forwarded-For` est ignoré.
-- **backend** : `quarkus.http.proxy.proxy-address-forwarding=true`, `allow-x-forwarded=true`, `trusted-proxies` limité au sous-réseau du réseau compose interne. L'IP utilisée par l'anti brute force et les logs est `remoteAddress()` après ce traitement.
+- **Réseau Docker à sous-réseau fixe** (`DOCKER_SUBNET`, défaut `172.30.64.0/24`) : sa passerelle `172.30.64.1` est connue à l'avance. Le reverse proxy DSM tourne sur l'hôte et se connecte au port publié : nginx le voit arriver depuis cette passerelle. Un client du LAN qui appelle directement le port publié garde en revanche sa vraie IP (règles iptables de Docker).
+- **nginx** (module `realip`) : un `set_real_ip_from` par entrée de `TRUSTED_PROXY_IPS` (liste séparée par des virgules, défaut `172.30.64.1` = la passerelle ; générée au démarrage par `15-real-ip.sh`, qui refuse une entrée invalide ou `0.0.0.0/0` ; **vide = aucune confiance**), `real_ip_header X-Forwarded-For`, `real_ip_recursive on`. Ensuite nginx **remplace** le header vers le backend : `proxy_set_header X-Forwarded-For $remote_addr` (pas `$proxy_add_x_forwarded_for`, qui propagerait des valeurs falsifiées). Une requête qui arrive directement sur nginx (depuis le LAN, sans passer par le DSM) garde son IP réelle : son `X-Forwarded-For` est ignoré.
+- **backend** : `quarkus.http.proxy.proxy-address-forwarding=true`, `allow-x-forwarded=true`, `trusted-proxies` = `DOCKER_SUBNET` (seul nginx, dans ce réseau, parle au backend, qui n'est pas publié). En dev (`quarkus:dev`, joignable depuis le LAN pour le spike), la lecture de `X-Forwarded-For` est désactivée. L'IP utilisée par l'anti brute force et les logs est `remoteAddress()` après ce traitement.
 - **Tests** :
   - backend (`@QuarkusTest`) : un `X-Forwarded-For` venant d'un proxy de confiance est pris en compte (deux IP falsifiées différentes → compteurs séparés) ; avec un profil où l'appelant n'est pas de confiance, le header est ignoré ;
-  - chaîne complète (phase 2, script `scripts/check-client-ip.sh` sur `docker compose`) : appel direct à nginx avec un faux `X-Forwarded-For` → le backend voit l'IP réelle ; appel « comme depuis le DSM » (IP de confiance) → le backend voit l'IP du header. Le backend expose pour cela `GET /api/admin/debug/client-ip` (ADMIN uniquement).
-- ⚠️ Valeur par défaut de `TRUSTED_PROXY_IPS` en phase 1 : `172.16.0.0/12` (réseaux Docker). Limite connue : avec le *userland proxy* de Docker, une connexion directe depuis le LAN sur le port publié arrive aussi depuis la passerelle Docker, donc depuis une IP « de confiance ». À resserrer (IP exacte vue par nginx) et à tester en phase 2 avec `scripts/check-client-ip.sh`.
+  - chaîne complète (`scripts/check-client-ip.sh`, stack `docker compose` démarrée ; s'appuie sur `GET /api/admin/debug/client-ip`, ADMIN uniquement) : (1) requête depuis nginx lui-même avec un faux `X-Forwarded-For` → ignoré ; (1b) requête depuis **un autre conteneur du réseau Docker** avec un faux `X-Forwarded-For` → ignoré (avec l'ancienne confiance à `172.16.0.0/12`, elle aurait été crue : vérifié) ; (2) requête depuis l'hôte, comme le DSM, avec `X-Forwarded-For: 6.6.6.6, 203.0.113.9` → le backend lit `203.0.113.9`, l'adresse ajoutée par le proxy, pas la valeur forgée en tête.
+- ⚠️ Limite connue : si Docker fait passer aussi le trafic du LAN par son *userland proxy* (configuration inhabituelle), un client du LAN arriverait par la passerelle, donc « de confiance ». À vérifier une fois sur le NAS : se connecter depuis un téléphone en 4G via le domaine et lire l'IP dans les logs du backend (`Connexion de '…' depuis <ip>`).
 - ⚠️ À vérifier une fois sur le NAS : que le reverse proxy DSM ajoute bien `X-Forwarded-For` (il le fait par défaut ; sinon, en-tête personnalisé à ajouter dans DSM) et quelle IP il présente à nginx.
 
 ### 5.5 Admin initial
@@ -405,11 +408,12 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - Images construites localement ou sur le NAS (`docker compose build`) ; pas de registre à cette étape.
 
 ### Variables d'environnement (`.env.example`)
-`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `COOKIE_SECURE`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `DEV_SPIKE_STREAM_ENABLED` et `DEV_MEDIA_PATH` (dev uniquement).
+`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `COOKIE_SECURE`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `DOCKER_SUBNET`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `JAVA_OPTS`, `DEV_SPIKE_STREAM_ENABLED` et `DEV_MEDIA_PATH` (dev uniquement).
 
 ## 11. Sécurité — récapitulatif
 - Médias : lecture seule (montage `:ro` **et** aucune API d'écriture) ; accès uniquement par ID ; chemin résolu vérifié avec `toRealPath().startsWith(mediaRoot)` → test de path traversal (`../`, encodages, liens symboliques).
-- Secrets uniquement via variables d'environnement ; démarrage refusé en prod si `JWT_SECRET`/`STREAM_SIGNING_SECRET` absents ou trop courts.
+- Secrets uniquement via variables d'environnement ; démarrage refusé en prod si `JWT_SECRET`/`STREAM_SIGNING_SECRET` absents, trop courts (< 32 caractères) ou identiques, ou si `PUBLIC_URL` est absent ou n'est pas une origine exacte. Les messages d'erreur ne contiennent jamais les secrets.
+- Logs : même en DEBUG, les loggers Hibernate qui afficheraient le contenu des entités ou les paramètres SQL (hash de mot de passe, hash de refresh token) restent en INFO (`application.properties`) ; vérifié par `LogLeakTest`.
 - Logs : jamais de mot de passe, de token, de cookie ni de query string de streaming.
 - Validation des entrées (Bean Validation sur tous les DTO).
 - Headers de sécurité posés par nginx : `Content-Security-Policy` stricte, `X-Content-Type-Options`, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`.

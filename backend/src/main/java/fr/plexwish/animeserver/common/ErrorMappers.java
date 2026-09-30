@@ -34,6 +34,11 @@ public class ErrorMappers {
     }
 
     @ServerExceptionMapper
+    public Response api(ApiException e) {
+        return ErrorResponse.of(e.status(), e.code(), e.getMessage());
+    }
+
+    @ServerExceptionMapper
     public Response validation(ConstraintViolationException e) {
         String message = e.getConstraintViolations().stream()
                 .map(ErrorMappers::describe)

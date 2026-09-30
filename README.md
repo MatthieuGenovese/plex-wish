@@ -7,7 +7,7 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
-> État : **phase 1 (socle)**. L'authentification, la bibliothèque et les vraies pages arrivent en phases 2 à 4.
+> État : **phase 2 (authentification)**. La bibliothèque et les vraies pages arrivent en phases 3 et 4 : pour l'instant, l'API d'authentification s'utilise via Swagger ou `curl`.
 
 ## Prérequis
 
@@ -25,6 +25,7 @@ cd backend
 ```
 
 - API sur <http://localhost:8080>, Swagger UI sur <http://localhost:8080/q/swagger-ui>.
+- En dev, un admin est créé automatiquement : `admin` / `admin-dev-password` (secrets et `PUBLIC_URL=http://localhost:4200` ont aussi des valeurs de dev ; ils ne servent jamais en prod).
 - PostgreSQL : pas d'installation, Quarkus **Dev Services** démarre un conteneur `postgres:16-alpine` jetable et applique les migrations Flyway.
 - Tests : `.\mvnw.cmd test` (Docker Desktop doit tourner).
 
@@ -42,7 +43,8 @@ npm start                        # http://localhost:4200
 
 ```powershell
 copy .env.example .env           # Linux : cp .env.example .env
-# éditer .env : au minimum POSTGRES_PASSWORD et MEDIA_PATH
+# éditer .env : au minimum MEDIA_PATH, POSTGRES_PASSWORD, PUBLIC_URL, JWT_SECRET,
+# STREAM_SIGNING_SECRET et INITIAL_ADMIN_PASSWORD (voir les commentaires du fichier)
 docker compose up -d --build
 ```
 
@@ -65,9 +67,40 @@ Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`). La page d'accueil doit affi
 - Droits : le backend tourne avec l'utilisateur `PUID:PGID` (`.env`). Il doit avoir le droit de **lire** le dossier. Sur Synology, trouver ces numéros en SSH avec `id <utilisateur>` (un utilisateur DSM qui a accès en lecture au dossier partagé).
 - `dev-media/` sert aux tests locaux : son contenu n'est jamais versionné.
 
-## Administrateur initial *(phase 2)*
+## Administrateur initial
 
-Renseigner `INITIAL_ADMIN_USERNAME` et `INITIAL_ADMIN_PASSWORD` dans `.env` avant le premier lancement : le compte est créé au démarrage s'il n'existe aucun admin. Les deux variables peuvent ensuite être retirées. `JWT_SECRET` et `STREAM_SIGNING_SECRET` devront aussi être définis (deux secrets différents, 32 caractères minimum).
+Renseigner `INITIAL_ADMIN_USERNAME` et `INITIAL_ADMIN_PASSWORD` (10 caractères minimum) dans `.env` avant le premier lancement : le compte est créé au démarrage **s'il n'existe aucun admin**. Ensuite les deux variables sont ignorées et peuvent être retirées. L'admin crée les autres comptes (`POST /api/admin/users`) ; il n'y a pas d'inscription publique.
+
+## Sécurité : ce qu'il faut régler
+
+Le backend **refuse de démarrer** en prod si `JWT_SECRET` ou `STREAM_SIGNING_SECRET` manquent, font moins de 32 caractères ou sont identiques, ou si `PUBLIC_URL` est absent ou invalide. Le message d'erreur (`docker compose logs backend`) dit quoi corriger.
+
+### `PUBLIC_URL`
+
+C'est l'adresse **exacte** que les utilisateurs tapent dans leur navigateur : schéma + domaine (+ port s'il n'est pas standard), sans chemin. Exemples : `https://anime.mondomaine.fr`, ou `http://localhost:8080` pour un essai local.
+
+Le backend s'en sert pour refuser les requêtes d'écriture (login, refresh, logout, admin) envoyées par un **autre site** (en-tête `Origin`), et l'autorise dans sa configuration CORS. Si elle est **mal réglée** :
+
+| Erreur | Ce qui casse |
+|---|---|
+| Absente ou invalide | Le backend ne démarre pas. |
+| Pas sous forme d'origine exacte (`/` final, chemin, majuscules, `:443`) | Le backend ne démarre pas et indique la valeur à mettre. |
+| Mauvais domaine, `http` au lieu de `https`, port en trop ou oublié par rapport à ce que tapent les gens | Les pages s'affichent, mais **toute connexion depuis le navigateur échoue** (`403 ORIGIN_NOT_ALLOWED`, ou 403 sans corps renvoyé par le filtre CORS), ainsi que le rafraîchissement de session et les actions admin. |
+| Le site est joignable par deux adresses (domaine + IP locale) | Seule l'adresse de `PUBLIC_URL` permet de se connecter. Ajouter l'autre dans `CORS_ORIGINS` si besoin. |
+
+Ce qui ne dépend **pas** de `PUBLIC_URL` : les clients hors navigateur (`curl`, Swagger ouvert à la bonne adresse, future app Android), qui n'envoient pas d'en-tête `Origin`.
+
+### Cookies et HTTPS
+
+La session du navigateur tient dans un cookie `HttpOnly; Secure; SameSite=Strict`. `Secure` impose le HTTPS : pour un essai en HTTP (`http://localhost:8080`), mettre `COOKIE_SECURE=false`, sinon la connexion semble réussir mais la session est perdue au rechargement de la page.
+
+### Vraie IP des clients (anti brute force)
+
+Les tentatives de connexion sont limitées par IP. Pour que le backend voie la vraie IP derrière le reverse proxy DSM sans qu'un client puisse en inventer une :
+
+- `TRUSTED_PROXY_IPS` = l'adresse par laquelle le DSM arrive sur nginx, c'est-à-dire la passerelle du réseau Docker (`DOCKER_SUBNET` avec `.1` à la fin, `172.30.64.1` par défaut) ;
+- après chaque changement réseau, lancer depuis la racine du dépôt, sur le NAS :
+  `ADMIN_USER=admin ADMIN_PASSWORD='…' scripts/check-client-ip.sh` → trois lignes `OK` attendues.
 
 ## Scan de la bibliothèque *(phase 3)*
 

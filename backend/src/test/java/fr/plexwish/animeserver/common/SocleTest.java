@@ -31,7 +31,7 @@ class SocleTest {
 
     @Test
     void flywayMigrationsAreApplied() throws SQLException {
-        assertEquals("1", flyway.info().current().getVersion().getVersion());
+        assertEquals("2", flyway.info().current().getVersion().getVersion());
         assertEquals(0, flyway.info().pending().length);
 
         Set<String> tables = new HashSet<>();
@@ -49,9 +49,9 @@ class SocleTest {
         try (Connection c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try (var st = c.createStatement()) {
-                st.executeUpdate("INSERT INTO app_user (username, password_hash, role) VALUES ('Admin', 'x', 'ADMIN')");
+                st.executeUpdate("INSERT INTO app_user (username, password_hash, role) VALUES ('CaseTest', 'x', 'USER')");
                 SQLException e = org.junit.jupiter.api.Assertions.assertThrows(SQLException.class, () ->
-                        st.executeUpdate("INSERT INTO app_user (username, password_hash, role) VALUES ('admin', 'x', 'USER')"));
+                        st.executeUpdate("INSERT INTO app_user (username, password_hash, role) VALUES ('casetest', 'x', 'USER')"));
                 assertEquals("23505", e.getSQLState()); // unique_violation
             } finally {
                 c.rollback();

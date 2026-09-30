@@ -37,6 +37,12 @@ public class DefaultFilenameParser implements FilenameParser {
             "(?i)(?<![a-z0-9])E(\\d{1,4})(\\.\\d{1,2}(?![0-9]))?(?![0-9])");
     /** Juste après un épisode : "-E04", " - 04" → double épisode (si le second numéro suit de près). */
     private static final Pattern FOLLOWING_EPISODE = Pattern.compile("(?i)^\\s*-\\s*E?(\\d{1,4})(?![0-9]|p)");
+    /**
+     * "Bonus - 01", "OVA 02", "Special 1", "OAV_3" : mot collé à un numéro (séparateurs seulement entre les deux).
+     * Cherché dans le nom privé du titre de l'animé, pour qu'un titre comme « OVA 2 Stories » ne compte pas.
+     */
+    private static final Pattern SPECIAL_IN_NAME = Pattern.compile(
+            "(?i)(?<![a-z])(bonus|oav|ova|specials?|spécial)[ ._-]*\\d{1,3}(?![0-9])");
     /** "S1" isolé dans le nom : donne la saison aux stratégies 3 et 5. */
     private static final Pattern SEASON_IN_NAME = Pattern.compile("(?i)(?<![a-z0-9])S(\\d{1,2})(?![a-z0-9])");
 
@@ -92,7 +98,7 @@ public class DefaultFilenameParser implements FilenameParser {
         String unbracketed = BRACKETS.matcher(name).replaceAll(" ");
         m = E_NUMBER.matcher(unbracketed);
         if (m.find()) {
-            return explicit(title, dirs, unbracketed, m, fallbackSeason(name, dirs), 1, 2, Strategy.E_NUMBER);
+            return explicit(title, dirs, unbracketed, m, fallbackSeason(title, name, dirs), 1, 2, Strategy.E_NUMBER);
         }
 
         String cleaned = TECHNICAL.matcher(BRACKETS.matcher(name).replaceAll(" ")).replaceAll(" ");
@@ -123,7 +129,7 @@ public class DefaultFilenameParser implements FilenameParser {
             last = c.group(1);
         }
         if (last != null) {
-            Season season = fallbackSeason(name, dirs);
+            Season season = fallbackSeason(title, name, dirs);
             return new Episode(title, season.number(), Integer.parseInt(last), Strategy.NUMBER_ONLY, season.source(), null);
         }
         return new Unresolved(title, Problem.NO_EPISODE_NUMBER, "aucun numéro d'épisode reconnu");
@@ -157,11 +163,19 @@ public class DefaultFilenameParser implements FilenameParser {
         return new Episode(title, season.number(), episode, strategy, season.source(), conflict);
     }
 
-    /** Saison pour les stratégies 3 et 5 : "S1" isolé dans le nom, sinon dossier (saison ou spéciaux), sinon 1. */
-    private Season fallbackSeason(String name, List<String> dirs) {
+    /**
+     * Saison pour les stratégies 3 et 5 (pas de saison SxxExx/NxEE) : "S1" isolé dans le nom ; sinon mot spécial
+     * collé à un numéro dans le nom (hors titre de l'animé) → 0 ; sinon dossier (saison ou spéciaux) ; sinon 1.
+     */
+    private Season fallbackSeason(String title, String name, List<String> dirs) {
         Matcher s = SEASON_IN_NAME.matcher(name);
         if (s.find()) {
             return new Season(Integer.parseInt(s.group(1)), SeasonSource.NAME_S);
+        }
+        String withoutTitle = Pattern.compile(Pattern.quote(title), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                .matcher(name).replaceAll(" ");
+        if (SPECIAL_IN_NAME.matcher(withoutTitle).find()) {
+            return new Season(0, SeasonSource.NAME_SPECIAL);
         }
         for (int i = dirs.size() - 1; i >= 0; i--) {
             String dir = dirs.get(i).trim();

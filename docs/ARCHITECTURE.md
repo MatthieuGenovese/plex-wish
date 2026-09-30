@@ -266,7 +266,7 @@ Les étapes 1 à 3 passent **avant** le test d'extras : un fichier numéroté re
 |---|---|---|---|---|
 | 1 | `SxxExx` (casse indifférente, séparateur `.`, `_`, `-` ou espace toléré) | `Frieren - S01E05`, `s2e11` | du nom | du nom |
 | 2 | `NxEE` (casse indifférente, saison sur 1 ou 2 chiffres, épisode sur 2 ou 3) | `2x06`, `Genshiken 01X01` | du nom | du nom |
-| 3 | `E\d+` seul, cherché **hors crochets et parenthèses** (une empreinte CRC `[E4E2B273]` contient « E4 ») | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **dossier**, sinon 1 | du nom |
+| 3 | `E\d+` seul, cherché **hors crochets et parenthèses** (une empreinte CRC `[E4E2B273]` contient « E4 ») | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **mot spécial collé à un numéro** dans le nom → 0, sinon **dossier**, sinon 1 | du nom |
 | 5 | Numéro seul (numérotation absolue acceptée) | voir ci-dessous | comme la stratégie 3 | voir ci-dessous |
 
 **Règle « numéro seul », exactement** :
@@ -295,7 +295,8 @@ Sans indication de saison (stratégies 3 et 5, ni `S\d` dans le nom ni dossier d
 Si un nom contient plusieurs motifs, le **premier** l'emporte et la suite est ignorée : `11 Eyes - S01E13 (OAV S1E01)` → S1 E13.
 
 ### 7.3 Spéciaux (saison 0)
-- Saison 0 = « Spéciaux » : `S00Exx`, `0xNN`, ou fichier numéroté (stratégies 3–4) dans un dossier `OAV`, `OVA`, `Special(s)`, `Spéciaux`, `Bonus`.
+- Saison 0 = « Spéciaux » : `S00Exx`, `0xNN`, ou fichier numéroté (stratégies 3 et 5) dans un dossier `OAV`, `OVA`, `Special(s)`, `Spéciaux`, `Bonus`.
+- Aussi (décision du 2026-09-30), pour les stratégies 3 et 5 **sans saison explicite dans le nom** (`SxxExx`, `NxEE`, « S1 ») : le mot `Bonus`, `OAV`, `OVA` ou `Special` **collé à un numéro** (`Bonus - 01`, `OVA 02`, `Special 1` : seulement des séparateurs entre le mot et le nombre), cherché dans le nom **privé du titre de l'animé** (dossier de premier niveau), envoie en saison 0 (`seasonSource = NAME_SPECIAL`). Il l'emporte sur le dossier de saison, puisque le nom fait foi. « `Special A - 05` » reste en saison 1 (le mot n'est pas collé à un nombre), tout comme « `OVA 2 Stories - 05` » dans le dossier `OVA 2 Stories`. Sur la vraie liste, la règle touche exactement 13 fichiers : les 12 bonus `[DragonMax]` de Fate Stay Night et `Blue Exorcist Bonus 01`.
 - Un `S00Exx` rangé dans un dossier OAV / Bonus reste un **épisode de la saison Spéciaux**, jamais un extra.
 - Un fichier qui porte un **numéro d'épisode reste un épisode**, même si son dossier ou son nom contient « OAV », « Bonus » ou « Extra » : `OAV/L'Attaque des Titans - S00E18 - Lost Girls…` est l'épisode 18 de la saison 0 ; `Sekai Seifuku S01E13 OVA …` est l'épisode 13 de la saison 1, `Fate⁄EXTRA Last Encore S01E01 …` l'épisode 1.
 

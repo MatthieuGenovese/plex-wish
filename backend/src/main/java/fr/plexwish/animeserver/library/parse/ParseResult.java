@@ -17,6 +17,8 @@ public sealed interface ParseResult permits ParseResult.Episode, ParseResult.Ext
         NAME_NXEE,
         /** "S1" isolé dans le nom (stratégies E\d+ et numéro seul). */
         NAME_S,
+        /** "Bonus - 01", "OVA 02", "Special 1" dans le nom (hors titre de l'animé) → saison 0. */
+        NAME_SPECIAL,
         /** Dossier de saison (Season 2, Saison 02, S2). */
         FOLDER,
         /** Dossier OAV / OVA / Special / Bonus → saison 0. */

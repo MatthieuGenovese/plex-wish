@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -174,6 +176,47 @@ class DefaultFilenameParserTest {
         assertInstanceOf(Extra.class, parser.parse("Saenai Heroine no Sodatekata/Saison 2 (2017)/Extras/"
                 + "Saenai Heroine no Sodatekata Flat NCOP 3 [BD 1080p FLAC] [E2F92400].mkv"));
         assertEpisode("Show/Show E05 [E4E2B273].mkv", 1, 5);
+    }
+
+    // --- Mot spécial collé à un numéro dans le nom → saison 0 ---------------------------------------
+
+    @Test
+    void fateStayNightDragonMaxBonusesAreSpecials() {
+        List<String> bonuses = new java.util.ArrayList<>();
+        for (int i = 1; i <= 9; i++) {
+            bonuses.add("Fate Stay Night/[DragonMax] Fate Stay Night - 1080p - Bonus - %02d.mkv".formatted(i));
+        }
+        for (int i = 1; i <= 3; i++) {
+            bonuses.add("Fate Stay Night/[DragonMax] Fate Stay Night - Le Film - 1080p - Bonus - %02d.mkv".formatted(i));
+        }
+        assertEquals(12, bonuses.size());
+        for (String path : bonuses) {
+            Episode e = episode(path);
+            assertEquals(0, e.season(), path);
+            assertEquals(ParseResult.SeasonSource.NAME_SPECIAL, e.seasonSource(), path);
+        }
+        assertEquals(9, episode(bonuses.get(8)).episode());
+        // Le vrai épisode reste en saison 1.
+        assertEpisode("Fate Stay Night/Fate stay night - 1x01 - Le premier jour.mkv", 1, 1);
+    }
+
+    @Test
+    void specialWordInTheAnimeTitleDoesNotCount() {
+        // Titre fictif : "Special" n'est pas collé à un numéro.
+        assertEpisode("Special A/Special A - 05.mkv", 1, 5);
+        // Titre fictif où le mot EST collé à un numéro : retiré avant le test grâce au dossier.
+        assertEpisode("OVA 2 Stories/OVA 2 Stories - 05 [1080p].mkv", 1, 5);
+    }
+
+    @Test
+    void specialWordMustBeGluedToANumber() {
+        assertEpisode("Blue Exorcist/Blue Exorcist Bonus 01.mkv", 0, 1);
+        assertEpisode("Show/Show OVA 02.mkv", 0, 2);
+        assertEpisode("Show/Show - Special 1 - 03.mkv", 0, 3);
+        assertEpisode("Show/Show - Bonus Edition - 04.mkv", 1, 4);       // pas de numéro collé au mot
+        assertEpisode("Show/Saison 2/Show - OAV 01.mkv", 0, 1);          // le nom l'emporte sur le dossier
+        assertEpisode("Show/Show S2 - Bonus 01.mkv", 2, 1);              // saison explicite dans le nom
+        assertEpisode("Sekai Seifuku/Sekai Seifuku S01E13 OVA VOSTFR.mkv", 1, 13); // SxxExx : inchangé
     }
 
     @Test

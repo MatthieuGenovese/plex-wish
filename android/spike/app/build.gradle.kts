@@ -11,8 +11,8 @@ android {
         applicationId = "fr.plexwish.spike"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-spike"
+        versionCode = 2
+        versionName = "0.2-spike"
     }
 
     buildTypes {

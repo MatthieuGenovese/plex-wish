@@ -50,17 +50,60 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <!-- Pistes détectées (codecs), affichées avec les contrôles du lecteur :
-         aide à remplir la grille de docs/SPIKE.md. -->
-    <TextView
-        android:id="@+id/info"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_margin="12dp"
-        android:background="#AA000000"
+    <!-- Affiché avec les contrôles du lecteur : choix des pistes et détail des pistes détectées
+         (aide à remplir les grilles de docs/SPIKE.md). -->
+    <LinearLayout
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
         android:padding="8dp"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:visibility="gone" />
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/audio_tracks"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Audio" />
+
+            <Button
+                android:id="@+id/text_tracks"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Sous-titres" />
+
+            <Button
+                android:id="@+id/toggle_info"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Pistes" />
+        </LinearLayout>
+
+        <ScrollView
+            android:id="@+id/info_scroll"
+            android:layout_width="wrap_content"
+            android:layout_height="0dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="72dp"
+            android:layout_weight="1"
+            android:background="#CC000000">
+
+            <TextView
+                android:id="@+id/info"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:textColor="#FFFFFF"
+                android:textIsSelectable="true"
+                android:textSize="12sp" />
+        </ScrollView>
+    </LinearLayout>
 </FrameLayout>

@@ -113,7 +113,10 @@ Si le JSON s'affiche, le réseau est bon. Les URL de la liste contiennent alors 
 2. Brancher le téléphone (débogage USB activé), bouton *Run*.
    Alternative : `gradlew.bat assembleDebug`, puis installer `app/build/outputs/apk/debug/app-debug.apk`.
 3. Coller l'URL (ex. `http://192.168.1.10:8080/api/dev/stream/3`), appuyer sur **Lire**. L'URL est mémorisée.
-4. Toucher l'écran pendant la lecture affiche les contrôles **et la liste des pistes**, avec pour chacune son codec et `décodable` / `NON SUPPORTÉE` (selon le téléphone). ▶ marque la piste en cours de lecture.
+4. Toucher l'écran pendant la lecture affiche les contrôles et trois boutons en haut à droite :
+   - **Audio** : choisir la piste audio (ex. japonais / français) ;
+   - **Sous-titres** : choisir une piste de sous-titres, ou « Désactivé ». ⚠️ Media3 n'affiche **aucun** sous-titre par défaut (sauf piste marquée « forcée ») : il faut en choisir un ici ;
+   - **Pistes** : afficher / masquer le détail des pistes détectées, groupées par type. Pour chacune : langue (ex. `japonais (ja)`, et le libellé du fichier), format en clair (`ASS/SSA`, `VobSub`, `PGS`, `AC3`…), type MIME et codec, canaux, fréquence, résolution, débit, drapeaux `défaut` / `forcé`, et `décodable` / `NON SUPPORTÉE` selon le téléphone. ▶ marque la piste en cours.
 5. Bouton Retour : arrêt et retour au formulaire. En cas d'erreur, le code d'erreur ExoPlayer et les pistes détectées s'affichent sous le bouton (texte sélectionnable, pour le copier dans la grille).
 
 **HTTP en clair** : depuis Android 9, les apps refusent `http://` par défaut. Le spike l'autorise via `res/xml/network_security_config.xml` et `usesCleartextTraffic`. Une erreur `Cleartext HTTP traffic ... not permitted` voudrait dire que cette config n'est pas prise en compte. La vraie app passera par HTTPS (reverse proxy) et n'aura pas besoin de cette exception.
@@ -168,6 +171,37 @@ Date : 29/09/2026. Codecs relevés avec `ffprobe`.
 - tester les **sous-titres** : **ASS** (styles, polices intégrées) et **VobSub** (sous-titres image, souvent en MKV/AVI). Hors scope de l'étape actuelle, mais ils conditionneront le choix du lecteur.
 
 Dans *Remarques* : erreur affichée, sous-titres visibles ou non, temps de démarrage, saccades, test navigateur.
+
+## 8 bis. Pistes audio et sous-titres (fichiers réels)
+
+### Ce qu'il faut savoir sur les sous-titres
+Dans un MKV, les sous-titres sont des **pistes** comme l'audio (« muxés »). Deux familles :
+
+| Famille | Formats | Ce que fait le téléphone (Media3) | Navigateur (plus tard) |
+|---|---|---|---|
+| **Texte** | ASS/SSA (fansubs), SRT | Affiché. Pour l'ASS : texte, couleurs de base et position ; **pas** les polices intégrées au MKV, le karaoké ni les effets | ASS non lu nativement |
+| **Image** | VobSub (DVD), PGS (Blu-ray) | Affiché tel quel (ce sont des images) | Non lu |
+
+Les polices ASS intégrées apparaissent comme des pistes « AUTRES » (pièces jointes) : elles sont ignorées. Un ASS très stylé (panneaux traduits, karaoké) sera donc lisible mais moins joli que dans VLC ou mpv.
+
+### Protocole
+1. Lancer la lecture, ouvrir **Pistes** : noter pistes audio et sous-titres (langue, format, décodable ?).
+2. **Audio** : passer d'une langue à l'autre, vérifier le son et la synchronisation.
+3. **Sous-titres** : activer chaque piste l'une après l'autre ; regarder 1 à 2 min avec des dialogues, puis faire un seek et vérifier que les sous-titres suivent.
+4. Pour l'ASS : les panneaux (textes à l'écran traduits) apparaissent-ils ? au bon endroit ? lisibles ?
+
+### Grille
+
+Téléphone : _modèle, version d'Android_
+
+| # | Fichier | Piste | Format | Langue | Décodable | Affichée | Synchro après seek | Styles / position (ASS) | Remarques |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | | | | | | | | | |
+| 2 | | | | | | | | | |
+| 3 | | | | | | | | | |
+| 4 | | | | | | | | | |
+| 5 | | | | | | | | | |
+| 6 | | | | | | | | | |
 
 ## 9. Lire les résultats
 

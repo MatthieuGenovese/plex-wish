@@ -92,7 +92,7 @@ PostgreSQL 16 en conteneur, schéma géré **uniquement par Flyway** (`quarkus.h
 | `media_file_override` | id, relative_path (unique), action (`EPISODE`/`EXTRA`/`IGNORE`), anime_title, season_number, episode_number, created_by, created_at | correction manuelle, jamais écrasée par un scan (§7.7) |
 | `episode` | id, season_id, episode_number, title, synopsis, duration_seconds, media_file_id, created_at | unique (season_id, episode_number) |
 | `scan_run` | id, started_at, finished_at, status (`RUNNING`/`SUCCESS`/`FAILED`), stats (compteurs par catégorie, JSON), triggered_by | un seul scan à la fois |
-| `scan_issue` | id, scan_run_id, media_file_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`/`UNREADABLE`), anime_title, detail | liste filtrable du rapport (§7.6) |
+| `scan_issue` | id, scan_run_id, media_file_id, relative_path, category (`UNRESOLVED`/`DUPLICATE`/`MULTI_EPISODE`/`DECIMAL_EPISODE`/`SEASON_MISMATCH`/`MISSING`/`UNREADABLE`), anime_title, detail, season_number, episode_number, kept_relative_path, season_source, kept_season_source (V4) | liste filtrable du rapport (§7.6) |
 
 Migrations : `V1__auth.sql` (app_user, refresh_token) en phase 1, `V2__refresh_token_password_reset.sql` en phase 2 (motif de révocation `PASSWORD_RESET`), `V3__library.sql` en phase 3. On ne modifie jamais une migration déjà commitée.
 
@@ -266,7 +266,7 @@ Les étapes 1 à 3 passent **avant** le test d'extras : un fichier numéroté re
 |---|---|---|---|---|
 | 1 | `SxxExx` (casse indifférente, séparateur `.`, `_`, `-` ou espace toléré) | `Frieren - S01E05`, `s2e11` | du nom | du nom |
 | 2 | `NxEE` (casse indifférente, saison sur 1 ou 2 chiffres, épisode sur 2 ou 3) | `2x06`, `Genshiken 01X01` | du nom | du nom |
-| 3 | `E\d+` seul | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **dossier**, sinon 1 | du nom |
+| 3 | `E\d+` seul, cherché **hors crochets et parenthèses** (une empreinte CRC `[E4E2B273]` contient « E4 ») | `Ah! My Goddess E12` | `S\d` isolé dans le nom (`Slime 300 S1`), sinon **dossier**, sinon 1 | du nom |
 | 5 | Numéro seul (numérotation absolue acceptée) | voir ci-dessous | comme la stratégie 3 | voir ci-dessous |
 
 **Règle « numéro seul », exactement** :
@@ -317,6 +317,7 @@ Dans « `Nyan Koi! Menu - 05` » ou « `Blend S NCED4` », 05 et 4 ne sont donc 
 ### 7.6 Rapport de scan
 - **Résumé par catégorie** : vidéos vues, épisodes reconnus, extras, non résolus, doublons, doubles épisodes / décimaux, désaccords dossier/fichier, fichiers disparus, autres fichiers (par type, dont sous-titres externes).
 - **Liste filtrable** (par catégorie et par animé) des fichiers signalés, avec la raison et le chemin relatif. Réservé à l'admin.
+- **Doublons et désaccords** : animé, saison, épisode, et **origine du numéro de saison** (`NAME_SXXEXX`, `NAME_NXEE`, `NAME_S` = « S1 » isolé dans le nom, `FOLDER` = dossier de saison, `SPECIAL_FOLDER` = dossier OAV/Bonus, `DEFAULT` = saison 1 faute d'indication, `OVERRIDE`). Pour un doublon : fichier **écarté** (`relativePath`), fichier **conservé** (`keptRelativePath`) et l'origine de la saison de chacun, de quoi repérer un sous-dossier non reconnu comme saison sans ouvrir les fichiers. `FullSampleScanTest` exporte les doublons du scan complet dans `backend/target/full-sample-duplicates.tsv`.
 
 ### 7.7 Correction manuelle
 L'admin peut associer un fichier à un animé (par son **titre**, existant ou non), une saison et un numéro d'épisode, ou le marquer comme extra / ignoré. Il désigne le fichier par son **id** (`mediaFileId`, fourni par le rapport), jamais par un chemin. La correction est **stockée en base** (table `media_file_override`, clé : `relative_path`) et appliquée **à la place du parser** à chaque scan : un rescan ne l'écrase jamais. Elle prend effet **au scan suivant** (quelques secondes). Si le fichier disparaît, la correction est conservée (elle resservira s'il réapparaît au même chemin). `IGNORE` retire le fichier de la bibliothèque sans le toucher sur le disque.
@@ -363,7 +364,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | `Little Witch/Little Witch Academia 1.mp4` | non résolu (1 seul chiffre) |
 | `Macross Delta/[Lumen] Macross Delta 0.89.mkv` | signalé « numéro décimal » |
 
-**Résultats (phase 3)** sur l'échantillon complet : 99,86 % d'épisodes reconnus hors extras (27 651 / 27 690), 2,0 % d'extras. Scan complet des 32 940 chemins recréés en fichiers vides (`FullSampleScanTest`) : 27 597 épisodes, 564 extras, 54 doublons (10 pour Devilman Crybaby, les autres surtout issus des stratégies 3 et 5), 116 désaccords dossier/fichier, 26 non résolus, 8 doubles épisodes, 5 numéros décimaux, 1 316 animés visibles ; rescan identique, sans rien ajouter ni marquer disparu.
+**Résultats** sur l'échantillon complet : 99,86 % d'épisodes reconnus hors extras (27 643 / 27 682), 2,0 % d'extras. Scan complet des 32 940 chemins recréés en fichiers vides (`FullSampleScanTest`) : 27 591 épisodes, 572 extras, 52 doublons, 116 désaccords dossier/fichier, 26 non résolus, 8 doubles épisodes, 5 numéros décimaux, 1 316 animés visibles ; rescan identique, sans rien ajouter ni marquer disparu. (Avant la correction du « E » dans les empreintes CRC : 8 génériques pris pour des épisodes, 54 doublons.)
 
 ## 8. API (étape 1)
 

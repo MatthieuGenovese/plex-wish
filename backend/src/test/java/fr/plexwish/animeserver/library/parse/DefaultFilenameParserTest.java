@@ -167,6 +167,26 @@ class DefaultFilenameParserTest {
     }
 
     @Test
+    void crcHashIsNotAnEpisodeNumber() {
+        // "E4" et "E2" sont dans l'empreinte CRC : ce sont des génériques, pas les épisodes 4 et 2.
+        assertInstanceOf(Extra.class, parser.parse("Ascendance of a Bookworm/Extras/"
+                + "[matheousse] Ascendance of a Bookworm - NCED 02 [BD 1080p FLAC] [E4E2B273].mkv"));
+        assertInstanceOf(Extra.class, parser.parse("Saenai Heroine no Sodatekata/Saison 2 (2017)/Extras/"
+                + "Saenai Heroine no Sodatekata Flat NCOP 3 [BD 1080p FLAC] [E2F92400].mkv"));
+        assertEpisode("Show/Show E05 [E4E2B273].mkv", 1, 5);
+    }
+
+    @Test
+    void seasonSourceIsReported() {
+        assertEquals(ParseResult.SeasonSource.NAME_SXXEXX, episode("Show/Season 01/Show - S02E03.mkv").seasonSource());
+        assertEquals(ParseResult.SeasonSource.NAME_NXEE, episode("Genshiken/Saison 1/Genshiken 01X01.mkv").seasonSource());
+        assertEquals(ParseResult.SeasonSource.NAME_S, episode("Slime/[m] Slime 300 S1 - 01 [BD].mkv").seasonSource());
+        assertEquals(ParseResult.SeasonSource.FOLDER, episode("AH! My Goddess/Saison 2/Ah My Goddess E12.mkv").seasonSource());
+        assertEquals(ParseResult.SeasonSource.SPECIAL_FOLDER, episode("Show/OAV/Show - 02 [1080p].mkv").seasonSource());
+        assertEquals(ParseResult.SeasonSource.DEFAULT, episode("Naruto Shippuden/Kai VOSTFR/Naruto Shippuden Kai 113 - Hebi.mkv").seasonSource());
+    }
+
+    @Test
     void videoAtTheRootHasNoAnime() {
         assertEquals(Problem.NO_ANIME_FOLDER, assertInstanceOf(Unresolved.class, parser.parse("loose.mkv")).problem());
     }

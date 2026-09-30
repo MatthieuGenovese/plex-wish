@@ -55,7 +55,16 @@ public class LibraryScanner {
     record Found(String path, String fileName, long size, OffsetDateTime modified) {
     }
 
-    record Issue(Long fileId, String path, String category, String animeTitle, String detail) {
+    record Issue(Long fileId, String path, String category, String animeTitle, String detail,
+                 Integer season, Integer episode, String keptPath, String seasonSource, String keptSeasonSource) {
+
+        Issue(Long fileId, String path, String category, String animeTitle, String detail) {
+            this(fileId, path, category, animeTitle, detail, null, null, null, null, null);
+        }
+
+        Issue withFileId(Long id) {
+            return new Issue(id, path, category, animeTitle, detail, season, episode, keptPath, seasonSource, keptSeasonSource);
+        }
     }
 
     record ManualOverride(String action, String animeTitle, Integer season, Integer episode) {
@@ -75,7 +84,11 @@ public class LibraryScanner {
     }
 
     /** Ce qu'il faut faire d'une vidéo, décidé avant d'écrire en base. */
-    private record Decision(Found file, String kind, String animeTitle, Integer season, Integer episode) {
+    private record Decision(Found file, String kind, String animeTitle, Integer season, Integer episode,
+                            ParseResult.SeasonSource seasonSource) {
+        Decision(Found file, String kind, String animeTitle) {
+            this(file, kind, animeTitle, null, null, null);
+        }
     }
 
     /** Caches chargés une fois au début du scan (quelques milliers de lignes). */
@@ -330,7 +343,8 @@ public class LibraryScanner {
                 // Le fichier déjà lié est toujours là : on le garde, celui-ci est signalé (§7.5).
                 stats.duplicates++;
                 issues.add(new Issue(fileId, d.file().path(), "DUPLICATE", d.animeTitle(),
-                        "saison " + d.season() + ", épisode " + d.episode() + " : déjà fourni par " + ref.filePath));
+                        "saison " + d.season() + ", épisode " + d.episode() + " : déjà fourni par " + ref.filePath,
+                        d.season(), d.episode(), ref.filePath, d.seasonSource().name(), seasonSourceOf(ref.filePath, state)));
             } else {
                 // Ancien fichier disparu (ou détaché) : l'épisode garde son id et passe sur le nouveau (§7.9).
                 if (ref.fileId != null) {
@@ -374,8 +388,7 @@ public class LibraryScanner {
         // c'est lui que l'admin utilise pour corriger (jamais un chemin fourni par le client).
         List<Issue> withIds = new ArrayList<>(issues.size());
         for (Issue issue : issues) {
-            withIds.add(issue.fileId() != null ? issue
-                    : new Issue(fileIds.get(issue.path()), issue.path(), issue.category(), issue.animeTitle(), issue.detail()));
+            withIds.add(issue.fileId() != null ? issue : issue.withFileId(fileIds.get(issue.path())));
         }
         insertIssues(c, runId, withIds);
     }
@@ -386,14 +399,15 @@ public class LibraryScanner {
         if (o != null) {
             stats.overridesApplied++;
             return switch (o.action()) {
-                case "EPISODE" -> new Decision(f, "EPISODE", o.animeTitle(), o.season(), o.episode());
+                case "EPISODE" -> new Decision(f, "EPISODE", o.animeTitle(), o.season(), o.episode(),
+                        ParseResult.SeasonSource.OVERRIDE);
                 case "EXTRA" -> {
                     stats.extras++;
-                    yield new Decision(f, "EXTRA", topFolder(f.path()), null, null);
+                    yield new Decision(f, "EXTRA", topFolder(f.path()));
                 }
                 default -> {
                     stats.ignoredByOverride++;
-                    yield new Decision(f, "IGNORED", topFolder(f.path()), null, null);
+                    yield new Decision(f, "IGNORED", topFolder(f.path()));
                 }
             };
         }
@@ -403,13 +417,14 @@ public class LibraryScanner {
                 if (e.folderSeasonConflict() != null) {
                     stats.seasonMismatches++;
                     issues.add(new Issue(null, f.path(), "SEASON_MISMATCH", e.animeTitle(),
-                            "dossier : saison " + e.folderSeasonConflict() + ", nom : saison " + e.season() + " (retenue)"));
+                            "dossier : saison " + e.folderSeasonConflict() + ", nom : saison " + e.season() + " (retenue)",
+                            e.season(), e.episode(), null, e.seasonSource().name(), null));
                 }
-                yield new Decision(f, "EPISODE", e.animeTitle(), e.season(), e.episode());
+                yield new Decision(f, "EPISODE", e.animeTitle(), e.season(), e.episode(), e.seasonSource());
             }
             case ParseResult.Extra x -> {
                 stats.extras++;
-                yield new Decision(f, "EXTRA", x.animeTitle(), null, null);
+                yield new Decision(f, "EXTRA", x.animeTitle());
             }
             case ParseResult.Unresolved u -> {
                 String category = switch (u.problem()) {
@@ -427,7 +442,7 @@ public class LibraryScanner {
                     }
                 };
                 issues.add(new Issue(null, f.path(), category, u.animeTitle(), u.detail()));
-                yield new Decision(f, "UNRESOLVED", u.animeTitle(), null, null);
+                yield new Decision(f, "UNRESOLVED", u.animeTitle());
             }
         };
     }
@@ -564,10 +579,18 @@ public class LibraryScanner {
         return issues;
     }
 
+    /** Origine de la saison d'un fichier déjà lié (correction manuelle, sinon parser : pur calcul). */
+    private String seasonSourceOf(String path, State state) {
+        if (state.overrides.containsKey(path)) {
+            return ParseResult.SeasonSource.OVERRIDE.name();
+        }
+        return parser.parse(path) instanceof ParseResult.Episode e ? e.seasonSource().name() : null;
+    }
+
     private void insertIssues(Connection c, long runId, List<Issue> issues) throws SQLException {
         for (int i = 0; i < issues.size(); i += 1000) {
             List<Issue> chunk = issues.subList(i, Math.min(i + 1000, issues.size()));
-            List<Object> params = new ArrayList<>(chunk.size() * 6);
+            List<Object> params = new ArrayList<>(chunk.size() * 11);
             for (Issue issue : chunk) {
                 params.add(runId);
                 params.add(issue.fileId());
@@ -575,9 +598,15 @@ public class LibraryScanner {
                 params.add(issue.category());
                 params.add(issue.animeTitle());
                 params.add(issue.detail());
+                params.add(issue.season());
+                params.add(issue.episode());
+                params.add(issue.keptPath());
+                params.add(issue.seasonSource());
+                params.add(issue.keptSeasonSource());
             }
-            String sql = "INSERT INTO scan_issue (scan_run_id, media_file_id, relative_path, category, anime_title, detail) VALUES "
-                    + Sql.values(chunk.size(), "?", "?::bigint", "?", "?", "?", "?");
+            String sql = "INSERT INTO scan_issue (scan_run_id, media_file_id, relative_path, category, anime_title, detail, "
+                    + "season_number, episode_number, kept_relative_path, season_source, kept_season_source) VALUES "
+                    + Sql.values(chunk.size(), "?", "?::bigint", "?", "?", "?", "?", "?::integer", "?::integer", "?", "?", "?");
             try (PreparedStatement st = Sql.prepare(c, sql, params)) {
                 st.executeUpdate();
             }

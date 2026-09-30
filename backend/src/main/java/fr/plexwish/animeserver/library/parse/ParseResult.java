@@ -9,14 +9,32 @@ public sealed interface ParseResult permits ParseResult.Episode, ParseResult.Ext
     /** Stratégie qui a reconnu l'épisode, dans l'ordre d'évaluation. */
     enum Strategy { SXXEXX, NXEE, E_NUMBER, NUMBER_ONLY, OVERRIDE }
 
+    /** D'où vient le numéro de saison (pour vérifier doublons et désaccords dans le rapport). */
+    enum SeasonSource {
+        /** Motif SxxExx du nom. */
+        NAME_SXXEXX,
+        /** Motif NxEE du nom. */
+        NAME_NXEE,
+        /** "S1" isolé dans le nom (stratégies E\d+ et numéro seul). */
+        NAME_S,
+        /** Dossier de saison (Season 2, Saison 02, S2). */
+        FOLDER,
+        /** Dossier OAV / OVA / Special / Bonus → saison 0. */
+        SPECIAL_FOLDER,
+        /** Aucune indication : saison 1. */
+        DEFAULT,
+        /** Correction manuelle de l'admin. */
+        OVERRIDE
+    }
+
     /**
      * Épisode reconnu.
      *
      * @param folderSeasonConflict saison du dossier quand elle contredit celle du nom (sinon null) :
      *                             le nom l'emporte, le désaccord va au rapport.
      */
-    record Episode(String animeTitle, int season, int episode, Strategy strategy, Integer folderSeasonConflict)
-            implements ParseResult {
+    record Episode(String animeTitle, int season, int episode, Strategy strategy, SeasonSource seasonSource,
+                   Integer folderSeasonConflict) implements ParseResult {
     }
 
     /** Vidéo sans numéro d'épisode reconnue comme générique, menu, trailer… (§7.4). */

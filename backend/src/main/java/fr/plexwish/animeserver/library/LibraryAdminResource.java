@@ -60,7 +60,14 @@ public class LibraryAdminResource {
                              String failureReason, JsonNode stats, Map<String, Long> issueCounts) {
     }
 
-    public record IssueDto(long id, Long mediaFileId, String category, String animeTitle, String relativePath, String detail) {
+    /**
+     * Fichier signalé. Pour un doublon : {@code relativePath} = fichier écarté, {@code keptRelativePath} = fichier
+     * conservé, et l'origine du numéro de saison de chacun (NAME_SXXEXX, NAME_NXEE, NAME_S, FOLDER,
+     * SPECIAL_FOLDER, DEFAULT, OVERRIDE) pour repérer un sous-dossier non reconnu comme saison.
+     */
+    public record IssueDto(long id, Long mediaFileId, String category, String animeTitle, String relativePath, String detail,
+                           Integer seasonNumber, Integer episodeNumber, String keptRelativePath,
+                           String seasonSource, String keptSeasonSource) {
     }
 
     public record IssuePage(long scanId, long total, int page, int size, List<IssueDto> items) {
@@ -156,15 +163,17 @@ public class LibraryAdminResource {
             }
             List<IssueDto> items = new ArrayList<>();
             try (PreparedStatement st = c.prepareStatement(
-                    "SELECT id, media_file_id, category, anime_title, relative_path, detail FROM scan_issue" + where
-                            + " ORDER BY category, relative_path LIMIT ? OFFSET ?")) {
+                    "SELECT id, media_file_id, category, anime_title, relative_path, detail, season_number, episode_number,"
+                            + " kept_relative_path, season_source, kept_season_source FROM scan_issue" + where
+                            + " ORDER BY category, anime_title, season_number, episode_number, relative_path LIMIT ? OFFSET ?")) {
                 bindFilters(st, id, category, anime);
                 st.setInt(6, size);
                 st.setLong(7, (long) page * size);
                 try (ResultSet rs = st.executeQuery()) {
                     while (rs.next()) {
                         items.add(new IssueDto(rs.getLong(1), (Long) rs.getObject(2), rs.getString(3), rs.getString(4),
-                                rs.getString(5), rs.getString(6)));
+                                rs.getString(5), rs.getString(6), (Integer) rs.getObject(7), (Integer) rs.getObject(8),
+                                rs.getString(9), rs.getString(10), rs.getString(11)));
                     }
                 }
             }

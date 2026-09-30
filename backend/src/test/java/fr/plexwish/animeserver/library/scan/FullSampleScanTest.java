@@ -45,6 +45,28 @@ class FullSampleScanTest {
     @Inject
     AgroalDataSource ds;
 
+    static final Path DUPLICATES = Path.of("target/full-sample-duplicates.tsv");
+
+    /** Écrit les doublons du scan complet dans target/full-sample-duplicates.tsv, pour relecture humaine. */
+    private void exportDuplicates() throws Exception {
+        StringBuilder out = new StringBuilder("animé\tsaison\tépisode\torigine saison (écarté)\torigine saison (conservé)"
+                + "\tfichier conservé\tfichier écarté\n");
+        try (var c = ds.getConnection(); var st = c.createStatement(); var rs = st.executeQuery("""
+                SELECT anime_title, season_number, episode_number, season_source, kept_season_source,
+                       kept_relative_path, relative_path
+                FROM scan_issue WHERE category = 'DUPLICATE'
+                  AND scan_run_id = (SELECT max(id) FROM scan_run WHERE status = 'SUCCESS')
+                ORDER BY anime_title, season_number, episode_number""")) {
+            while (rs.next()) {
+                for (int i = 1; i <= 7; i++) {
+                    out.append(rs.getString(i)).append(i < 7 ? '\t' : '\n');
+                }
+            }
+        }
+        java.nio.file.Files.writeString(DUPLICATES, out.toString(), StandardCharsets.UTF_8);
+        System.out.println("Doublons exportés dans " + DUPLICATES.toAbsolutePath());
+    }
+
     @Test
     void fullLibraryScanAndIdempotentRescan() throws Exception {
         truncateLibrary(ds);
@@ -78,6 +100,8 @@ class FullSampleScanTest {
         assertTrue(recognised >= 97.0, "épisodes reconnus : " + recognised + " %");
         assertTrue(first.getInt("stats.animeCount") > 1_250, "animés : " + first.getInt("stats.animeCount"));
         assertEquals(videos, first.getInt("stats.newFiles"));
+
+        exportDuplicates();
 
         long rows = count(ds, "SELECT (SELECT count(*) FROM episode) * 100000 + (SELECT count(*) FROM media_file)");
         JsonPath second = scan();

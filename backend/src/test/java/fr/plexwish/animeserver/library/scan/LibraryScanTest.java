@@ -116,6 +116,9 @@ class LibraryScanTest {
         assertEquals(3, r.getInt("stats.animeCount"));
         assertEquals(Map.of("DUPLICATE", 1, "MULTI_EPISODE", 1, "SEASON_MISMATCH", 1, "UNRESOLVED", 2),
                 r.getMap("issueCounts"));
+        given().auth().oauth2(adminToken()).queryParam("category", "SEASON_MISMATCH").get("/api/admin/library/issues").then()
+                .body("items[0].seasonNumber", equalTo(2)).body("items[0].episodeNumber", equalTo(3))
+                .body("items[0].seasonSource", equalTo("NAME_SXXEXX"));
         // Chaque fichier signalé porte son id : c'est ce que l'admin utilise pour le corriger.
         List<Object> ids = given().auth().oauth2(adminToken()).get("/api/admin/library/issues")
                 .then().statusCode(200).body("total", equalTo(5)).extract().jsonPath().getList("items.mediaFileId");
@@ -219,7 +222,14 @@ class LibraryScanTest {
         given().auth().oauth2(adminToken()).queryParam("category", "DUPLICATE").queryParam("anime", "frier")
                 .get("/api/admin/library/issues").then().statusCode(200)
                 .body("total", equalTo(1))
-                .body("items[0].relativePath", equalTo("Frieren/Season 01/A - Frieren - S01E01.mkv"));
+                // Tout ce qu'il faut pour vérifier le doublon sans ouvrir les fichiers.
+                .body("items[0].animeTitle", equalTo("Frieren"))
+                .body("items[0].seasonNumber", equalTo(1))
+                .body("items[0].episodeNumber", equalTo(1))
+                .body("items[0].relativePath", equalTo("Frieren/Season 01/A - Frieren - S01E01.mkv"))
+                .body("items[0].keptRelativePath", equalTo("Frieren/Season 01/Frieren - S01E01.mkv"))
+                .body("items[0].seasonSource", equalTo("NAME_SXXEXX"))
+                .body("items[0].keptSeasonSource", equalTo("NAME_SXXEXX"));
     }
 
     // --- Garde-fous ---------------------------------------------------------------------------

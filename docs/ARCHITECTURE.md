@@ -310,7 +310,7 @@ Le test d'extras est l'**étape 4** : il ne s'applique qu'aux vidéos **sans num
 Dans « `Nyan Koi! Menu - 05` » ou « `Blend S NCED4` », 05 et 4 ne sont donc pas des numéros d'épisode. Les extras sont enregistrés (`media_file.kind = EXTRA`), comptés au rapport, mais n'apparaissent pas dans la liste des épisodes.
 
 ### 7.5 Cas signalés au rapport (correction manuelle)
-- **Doublon d'épisode** (même animé, saison, épisode ; 12 cas `SxxExx`/`NxEE` relevés, dont 10 pour Devilman Crybaby ; d'autres apparaîtront avec les stratégies 3 et 5) : le fichier déjà lié est gardé (au premier scan : le premier par ordre de chemin), l'autre est signalé. Le choix de la meilleure version → FUTURE.
+- **Doublon d'épisode** (même animé, saison, épisode) : un seul fichier est lié à l'épisode, l'autre est signalé. Quel fichier garder (décision du 2026-09-30) : si l'épisode était **déjà lié lors d'un scan précédent**, son fichier reste (un rescan ne change jamais un épisode existant) ; sinon, au sein du scan, le fichier identifié de la façon **la plus fiable** : correction manuelle, puis `SxxExx` / `NxEE`, puis `E\d+`, puis numéro seul ; l'ordre alphabétique ne départage que deux fichiers de même fiabilité. Le choix de la meilleure version (720p / 1080p…) reste dans FUTURE.
 - **Double épisode** (`03-04`, `S01E03-E04`) et **numéro décimal** (`E05.5`, `0.89`, `Épisode 24.5`) : pas d'interprétation automatique, signalés.
 - **Désaccord dossier / fichier** : importé selon le fichier, signalé.
 - **Non résolu** : aucune stratégie ne répond et aucun marqueur d'extra.
@@ -365,7 +365,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | `Little Witch/Little Witch Academia 1.mp4` | non résolu (1 seul chiffre) |
 | `Macross Delta/[Lumen] Macross Delta 0.89.mkv` | signalé « numéro décimal » |
 
-**Résultats** sur l'échantillon complet : 99,86 % d'épisodes reconnus hors extras (27 643 / 27 682), 2,0 % d'extras. Scan complet des 32 940 chemins recréés en fichiers vides (`FullSampleScanTest`) : 27 591 épisodes, 572 extras, 52 doublons, 116 désaccords dossier/fichier, 26 non résolus, 8 doubles épisodes, 5 numéros décimaux, 1 316 animés visibles ; rescan identique, sans rien ajouter ni marquer disparu. (Avant la correction du « E » dans les empreintes CRC : 8 génériques pris pour des épisodes, 54 doublons.)
+**Résultats** sur l'échantillon complet : 99,86 % d'épisodes reconnus hors extras (27 643 / 27 682), 2,0 % d'extras. Scan complet des 32 940 chemins recréés en fichiers vides (`FullSampleScanTest`) : 27 591 épisodes, 572 extras, 43 doublons (après la règle « Bonus/OVA collé à un numéro » ; 52 avant), 116 désaccords dossier/fichier, 26 non résolus, 8 doubles épisodes, 5 numéros décimaux, 1 316 animés visibles ; rescan identique, sans rien ajouter ni marquer disparu. (Avant la correction du « E » dans les empreintes CRC : 8 génériques pris pour des épisodes, 54 doublons.)
 
 ## 8. API (étape 1)
 

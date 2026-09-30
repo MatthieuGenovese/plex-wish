@@ -75,19 +75,46 @@ public class LibraryScanner {
         Long id;
         Long fileId;
         String filePath;
+        /** Lien établi pendant CE scan : il peut encore céder la place à un fichier plus fiable. */
+        boolean linkedThisScan;
+        /** Fiabilité du fichier lié ce scan (0 = la meilleure, voir {@link #reliability}). */
+        int reliability = Integer.MAX_VALUE;
+        String seasonSource;
 
         EpisodeRef(Long id, Long fileId, String filePath) {
             this.id = id;
             this.fileId = fileId;
             this.filePath = filePath;
         }
+
+        void linkThisScan(Long fileId, String path, Decision d) {
+            this.fileId = fileId;
+            this.filePath = path;
+            this.linkedThisScan = true;
+            this.reliability = reliability(d.strategy());
+            this.seasonSource = d.seasonSource() == null ? null : d.seasonSource().name();
+        }
+    }
+
+    /**
+     * En cas de doublon au sein d'un même scan, le fichier identifié de la façon la plus fiable est gardé :
+     * correction manuelle, puis SxxExx / NxEE, puis E\\d+, puis numéro seul ; l'ordre alphabétique ne
+     * départage que deux fichiers de même fiabilité (ARCHITECTURE §7.5).
+     */
+    static int reliability(ParseResult.Strategy strategy) {
+        return switch (strategy) {
+            case OVERRIDE -> 0;
+            case SXXEXX, NXEE -> 1;
+            case E_NUMBER -> 2;
+            case NUMBER_ONLY -> 3;
+        };
     }
 
     /** Ce qu'il faut faire d'une vidéo, décidé avant d'écrire en base. */
-    private record Decision(Found file, String kind, String animeTitle, Integer season, Integer episode,
-                            ParseResult.SeasonSource seasonSource) {
+    record Decision(Found file, String kind, String animeTitle, Integer season, Integer episode,
+                    ParseResult.SeasonSource seasonSource, ParseResult.Strategy strategy) {
         Decision(Found file, String kind, String animeTitle) {
-            this(file, kind, animeTitle, null, null, null);
+            this(file, kind, animeTitle, null, null, null, null);
         }
     }
 
@@ -333,12 +360,29 @@ public class LibraryScanner {
             EpisodeRef ref = state.episodes.get(key);
             if (ref == null) {
                 EpisodeRef created = new EpisodeRef(null, fileId, d.file().path());
+                created.linkThisScan(fileId, d.file().path(), d);
                 state.episodes.put(key, created);
                 state.fileToEpisode.put(fileId, key);
                 inserts.add(new Object[]{key, created});
                 stats.episodes++;
             } else if (fileId.equals(ref.fileId)) {
                 stats.episodes++;
+            } else if (ref.fileId != null && seen.contains(ref.filePath)
+                    && ref.linkedThisScan && reliability(d.strategy()) < ref.reliability) {
+                // Doublon apparu dans ce scan, et ce fichier est identifié de façon plus fiable : il prend la place,
+                // l'autre est signalé. Un épisode lié lors d'un scan précédent ne change jamais ainsi.
+                stats.duplicates++;
+                issues.add(new Issue(ref.fileId, ref.filePath, "DUPLICATE", d.animeTitle(),
+                        "saison " + d.season() + ", épisode " + d.episode() + " : remplacé par " + d.file().path()
+                                + " (identification plus fiable)",
+                        d.season(), d.episode(), d.file().path(), ref.seasonSource, d.seasonSource().name()));
+                state.fileToEpisode.remove(ref.fileId);
+                ref.linkThisScan(fileId, d.file().path(), d);
+                state.fileToEpisode.put(fileId, key);
+                if (ref.id != null) {
+                    relink.put(ref.id, fileId);
+                    unlink.remove(ref.id);
+                }
             } else if (ref.fileId != null && seen.contains(ref.filePath)) {
                 // Le fichier déjà lié est toujours là : on le garde, celui-ci est signalé (§7.5).
                 stats.duplicates++;
@@ -351,8 +395,7 @@ public class LibraryScanner {
                     state.fileToEpisode.remove(ref.fileId);
                     stats.rebranched++;
                 }
-                ref.fileId = fileId;
-                ref.filePath = d.file().path();
+                ref.linkThisScan(fileId, d.file().path(), d);
                 state.fileToEpisode.put(fileId, key);
                 if (ref.id == null) {
                     // Épisode créé dans ce lot puis détaché : son insertion portera le bon fichier.
@@ -400,7 +443,7 @@ public class LibraryScanner {
             stats.overridesApplied++;
             return switch (o.action()) {
                 case "EPISODE" -> new Decision(f, "EPISODE", o.animeTitle(), o.season(), o.episode(),
-                        ParseResult.SeasonSource.OVERRIDE);
+                        ParseResult.SeasonSource.OVERRIDE, ParseResult.Strategy.OVERRIDE);
                 case "EXTRA" -> {
                     stats.extras++;
                     yield new Decision(f, "EXTRA", topFolder(f.path()));
@@ -420,7 +463,7 @@ public class LibraryScanner {
                             "dossier : saison " + e.folderSeasonConflict() + ", nom : saison " + e.season() + " (retenue)",
                             e.season(), e.episode(), null, e.seasonSource().name(), null));
                 }
-                yield new Decision(f, "EPISODE", e.animeTitle(), e.season(), e.episode(), e.seasonSource());
+                yield new Decision(f, "EPISODE", e.animeTitle(), e.season(), e.episode(), e.seasonSource(), e.strategy());
             }
             case ParseResult.Extra x -> {
                 stats.extras++;

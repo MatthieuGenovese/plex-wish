@@ -25,8 +25,8 @@ class InitialAdminTest {
     public static class InitialAdmin implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
-            return Map.of("auth.initial-admin.username", "first-admin",
-                    "auth.initial-admin.password", "first-admin-password");
+            return Map.of("anime.auth.initial-admin.username", "first-admin",
+                    "anime.auth.initial-admin.password", "first-admin-password");
         }
     }
 

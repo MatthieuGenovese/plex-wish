@@ -28,6 +28,7 @@ cd backend
 - En dev, un admin est créé automatiquement : `admin` / `admin-dev-password` (secrets et `PUBLIC_URL=http://localhost:4200` ont aussi des valeurs de dev ; ils ne servent jamais en prod).
 - PostgreSQL : pas d'installation, Quarkus **Dev Services** démarre un conteneur `postgres:16-alpine` jetable et applique les migrations Flyway.
 - Tests : `.\mvnw.cmd test` (Docker Desktop doit tourner).
+- Propriétés de configuration propres à l'application : toujours sous le préfixe **`anime.`** (`anime.auth.*`, `anime.library.*`, `anime.spike.stream.*`). Quarkus refuse de démarrer si une propriété inconnue apparaît sous un préfixe mappé, et Maven ou la JVM définissent des propriétés système génériques (sous Windows, `mvnw quarkus:dev` définit `library.jansi.path`, qui bloquait le démarrage avec `SRCFG00050` quand le préfixe était `library`). Ne pas créer de préfixe générique (`library`, `auth`, `app`…). Les variables d'environnement (`MEDIA_ROOT`, `JWT_SECRET`…) ne changent pas. Test : `MavenSystemPropertiesTest`.
 
 ## Lancer le front (dev)
 

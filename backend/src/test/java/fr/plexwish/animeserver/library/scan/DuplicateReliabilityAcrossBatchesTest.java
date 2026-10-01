@@ -17,7 +17,7 @@ class DuplicateReliabilityAcrossBatchesTest extends DuplicateReliabilityTest {
     public static class OneFilePerBatch implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
-            return Map.of("library.batch-size", "1");
+            return Map.of("anime.library.batch-size", "1");
         }
     }
 }

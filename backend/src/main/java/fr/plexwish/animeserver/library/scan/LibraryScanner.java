@@ -37,7 +37,7 @@ import java.util.Set;
 
 /**
  * Scan de la bibliothèque (ARCHITECTURE §7) : parcours du disque, puis traitement par lots de
- * {@code library.batch-size} vidéos, une transaction et une poignée de requêtes multi-lignes par lot.
+ * {@code anime.library.batch-size} vidéos, une transaction et une poignée de requêtes multi-lignes par lot.
  * Ne modifie jamais un fichier média : il ne fait que lire le disque et écrire en base.
  */
 @ApplicationScoped

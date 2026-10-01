@@ -17,7 +17,7 @@ class SpikeStreamDisabledTest {
     public static class Disabled implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
-            return Map.of("spike.stream.enabled", "false");
+            return Map.of("anime.spike.stream.enabled", "false");
         }
     }
 

@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Min;
 import java.util.Optional;
 
 /** Configuration de l'authentification (préfixe {@code auth.}, voir application.properties). */
-@ConfigMapping(prefix = "auth")
+@ConfigMapping(prefix = "anime.auth")
 public interface AuthConfig {
 
     Optional<String> jwtSecret();

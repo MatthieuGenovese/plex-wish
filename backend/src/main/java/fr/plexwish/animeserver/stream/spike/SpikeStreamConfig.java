@@ -3,7 +3,7 @@ package fr.plexwish.animeserver.stream.spike;
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
-@ConfigMapping(prefix = "spike.stream")
+@ConfigMapping(prefix = "anime.spike.stream")
 public interface SpikeStreamConfig {
 
     /** {@code DEV_SPIKE_STREAM_ENABLED} : jamais en production. */

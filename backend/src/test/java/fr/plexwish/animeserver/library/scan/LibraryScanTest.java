@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Scan sur une vraie petite arborescence (profil test : library.media-root = target/test-library) :
+ * Scan sur une vraie petite arborescence (profil test : anime.library.media-root = target/test-library) :
  * import, idempotence, ajouts/disparitions, rebranchement, doublons, garde-fous, corrections manuelles.
  */
 @QuarkusTest

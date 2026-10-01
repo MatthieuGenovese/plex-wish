@@ -4,7 +4,7 @@ import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
 /** Configuration de la bibliothèque (préfixe {@code library.}). */
-@ConfigMapping(prefix = "library")
+@ConfigMapping(prefix = "anime.library")
 public interface LibraryConfig {
 
     /** Racine des médias, montée en lecture seule (/media dans le conteneur). */

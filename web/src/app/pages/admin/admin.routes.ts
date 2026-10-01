@@ -3,7 +3,29 @@ import { Routes } from '@angular/router';
 export const ADMIN_ROUTES: Routes = [
   {
     path: '',
-    title: 'Administration · Anime Server',
     loadComponent: () => import('./admin').then((m) => m.AdminPage),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'scan' },
+      {
+        path: 'scan',
+        title: 'Scan · Administration · Anime Server',
+        loadComponent: () => import('./scan').then((m) => m.ScanPage),
+      },
+      {
+        path: 'report',
+        title: 'Rapport de scan · Administration · Anime Server',
+        loadComponent: () => import('./report').then((m) => m.ReportPage),
+      },
+      {
+        path: 'corrections',
+        title: 'Corrections · Administration · Anime Server',
+        loadComponent: () => import('./overrides').then((m) => m.OverridesPage),
+      },
+      {
+        path: 'users',
+        title: 'Utilisateurs · Administration · Anime Server',
+        loadComponent: () => import('./users').then((m) => m.UsersPage),
+      },
+    ],
   },
 ];

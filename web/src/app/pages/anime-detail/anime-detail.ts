@@ -60,7 +60,7 @@ export const CHUNK = 100;
                   <span class="number" aria-hidden="true">{{ ep.episodeNumber }}</span>
                   <span class="ep-title">
                     <span class="visually-hidden">Épisode {{ ep.episodeNumber }}</span>
-                    @if (ep.title) { {{ ep.title }} } @else { <span aria-hidden="true">Épisode {{ ep.episodeNumber }}</span> }
+                    @if (ep.title) { {{ ep.title }} } @else { <span class="muted" aria-hidden="true">Épisode {{ ep.episodeNumber }}</span> }
                     @if (ep.durationSeconds) { <span class="muted"> · {{ minutes(ep.durationSeconds) }} min</span> }
                   </span>
                 </li>
@@ -106,6 +106,11 @@ export const CHUNK = 100;
       font-weight: var(--font-weight-bold); font-variant-numeric: tabular-nums; color: var(--color-accent);
     }
     .ep-title { overflow-wrap: anywhere; }
+    @media (max-width: 40rem) {
+      .episodes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .episode { gap: var(--space-2); padding: var(--space-2); }
+      .number { min-width: 2rem; }
+    }
   `,
 })
 export class AnimeDetailPage {

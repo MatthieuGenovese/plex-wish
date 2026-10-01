@@ -406,7 +406,11 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
   ```
 - Services API écrits à la main (typés) : moins de tooling qu'un client généré, suffisant pour ~15 endpoints.
 - Dev : `ng serve` avec `proxy.conf.json` qui redirige `/api` vers `localhost:8080` → même origine, pas de CORS.
-- Accessibilité / navigation clavier : `:focus-visible` très marqué, cibles ≥ 48 px, ordre de tabulation logique, liens et boutons natifs (pas de `div` cliquables).
+- Accessibilité / navigation clavier : `:focus-visible` très marqué, cibles ≥ 48 px, ordre de tabulation logique, liens et boutons natifs (pas de `div` cliquables), modales en `<dialog>` natif (focus piégé, Échap).
+- Session (phase 4) : token d'accès en mémoire (`AuthService`), rétabli au démarrage par `/api/auth/refresh` (cookie HttpOnly) avant la première navigation (`provideAppInitializer`) : F5 ne déconnecte pas. L'interceptor ajoute le Bearer et, sur un 401, partage un seul refresh entre toutes les requêtes en échec puis les rejoue une fois ; refresh refusé → `/login?returnUrl=…` (chemins internes uniquement). Gardes `authGuard`, `adminGuard`, `guestGuard` ; l'API reste la vraie protection (`@RolesAllowed`).
+- Design tokens : couleurs, espacements, typographie, rayons, ombres en variables CSS dans `styles.scss`, avec les classes de base (boutons, champs, tableaux, alertes) ; les composants n'utilisent que ces variables.
+- État des listes dans l'URL (`?q=&tri=&page=`, `?categorie=&anime=` pour le rapport) : F5, retour arrière et liens partagés retrouvent la même vue. Pagination côté serveur.
+- Les chemins de fichiers n'apparaissent que dans l'administration (rapport, corrections), relatifs à la racine de la bibliothèque ; l'API de lecture n'en renvoie jamais.
 
 ## 10. Docker / déploiement
 

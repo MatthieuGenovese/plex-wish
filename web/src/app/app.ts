@@ -73,6 +73,10 @@ import { AuthService } from './core/auth.service';
     main:focus { outline: none; }
     @media (max-width: 40rem) {
       .app-header, main { padding-left: var(--space-3); padding-right: var(--space-3); }
+      /* Téléphone : marque + compte sur la première ligne, navigation en dessous sur toute la largeur. */
+      nav { order: 3; flex-basis: 100%; }
+      ul { flex-wrap: nowrap; overflow-x: auto; }
+      nav a { white-space: nowrap; }
     }
   `,
 })

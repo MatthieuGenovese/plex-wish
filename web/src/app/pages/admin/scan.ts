@@ -84,7 +84,7 @@ export const POLL_MS = 2000;
           <p class="muted">Aucun scan.</p>
         } @else {
           <div class="table-wrap">
-            <table>
+            <table class="wide">
               <thead>
                 <tr>
                   <th scope="col">N°</th><th scope="col">Statut</th><th scope="col">Lancé</th><th scope="col">Par</th>
@@ -170,6 +170,7 @@ export class ScanPage {
         onCleanup(() => clearTimeout(timer));
       } else if (wasRunning && !state.loading) {
         this.history.reload();
+        this.message.set(null); // « Scan lancé » n'a plus de sens : le résultat s'affiche
       }
       if (!state.loading) {
         wasRunning = running;

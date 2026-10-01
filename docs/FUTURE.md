@@ -14,3 +14,9 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.
 - Association des sous-titres externes (`.ass`, `.srt`, `.sup`) aux vidéos : même nom de base (24 cas sur 434), puis dossiers du type `sous-titres + police/` (avec les polices ASS à charger).
 - Sous-titres image VobSub (et PGS) : à tester sur le téléphone ; les navigateurs ne les lisent pas du tout (incrustation ou OCR à étudier).
+
+## Interface web
+- Recherche tolérante à la ponctuation : « fate/apocrypha » ne trouve pas « Fate⁄Apocrypha » (barre de fraction dans le nom du dossier) ; aujourd'hui casse et accents seulement.
+- Rapport de scan sur téléphone : cartes au lieu du tableau (aujourd'hui, défilement horizontal).
+- Affiches et titres d'épisodes (métadonnées AniList) : les vignettes affichent pour l'instant les initiales sur une couleur tirée du titre.
+- « Continuer à regarder » sur l'accueil, avec la progression.

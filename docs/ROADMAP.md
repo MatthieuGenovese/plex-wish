@@ -10,7 +10,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 1 | Socle | ✅ validée le 2026-09-30 |
 | 2 | Authentification | ✅ validée le 2026-09-30 |
 | 3 | Bibliothèque | 🔧 livrée — en attente de validation |
-| 4 | Interface web | à faire |
+| 4 | Interface web | 🔧 livrée — en attente de validation |
 
 ---
 
@@ -57,6 +57,8 @@ Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéo
 - Token en mémoire, refresh au démarrage, interceptor, guards.
 - Responsive, sombre, navigation clavier soignée. Pas de lecteur vidéo.
 - Quelques tests : AuthService, interceptor, guards.
+- Ajouts demandés : pagination + recherche sans accents côté API (`/api/anime`), historique des scans, `failureCode` (confirmation explicite avant `confirmMassRemoval`), délai affiché en cas de verrouillage, cookie `Secure` obligatoire hors dev, design tokens CSS.
+- Vérifié dans le conteneur nginx (CSP réelle) avec la bibliothèque factice : parcours complet automatisé (Playwright/Chromium), aucune violation CSP.
 
 ## Fin de l'étape
 Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), lecteur web, progression, métadonnées, Android complet.

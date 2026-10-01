@@ -30,7 +30,7 @@ const ACTIONS = { EPISODE: 'Épisode', EXTRA: 'Extra', IGNORE: 'Ignoré' } as co
         <p class="alert">Aucune correction.</p>
       } @else {
         <div class="table-wrap">
-          <table>
+          <table class="wide">
             <thead>
               <tr>
                 <th scope="col">Fichier</th><th scope="col">Chemin</th><th scope="col">Correction</th>

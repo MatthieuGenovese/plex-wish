@@ -60,7 +60,7 @@ const MIN_PASSWORD = 10;
         <div class="alert alert-error" role="alert"><p>{{ l.error }}</p></div>
       } @else if (l.data; as list) {
         <div class="table-wrap">
-          <table>
+          <table class="wide">
             <thead>
               <tr>
                 <th scope="col">Nom</th><th scope="col">Email</th><th scope="col">Rôle</th>

@@ -49,7 +49,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
       @if (r.stats; as s) {
         <p class="muted">{{ num(s.videos) }} vidéos · {{ num(s.animeCount) }} animés · {{ num(s.newFiles) }} nouveaux fichiers ·
-          {{ num(s.overridesApplied) }} corrections appliquées
+          {{ num(s.overridesApplied) }} correction{{ s.overridesApplied > 1 ? 's' : '' }} appliquée{{ s.overridesApplied > 1 ? 's' : '' }}
           @if (subtitles(); as n) { · {{ num(n) }} sous-titres externes (non associés) }
         </p>
         <ul class="summary">
@@ -94,7 +94,7 @@ const SOURCE_LABELS: Record<string, string> = {
           <p class="muted" role="status">{{ num(page.total) }} fichier{{ page.total > 1 ? 's' : '' }}</p>
           @if (page.items.length > 0) {
             <div class="table-wrap" [attr.aria-busy]="l.loading">
-              <table>
+              <table class="wide">
                 <thead>
                   <tr>
                     <th scope="col">Fichier</th><th scope="col">Catégorie</th><th scope="col">Animé</th>

@@ -7,7 +7,7 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
-> État : **phase 3 (bibliothèque)**. Les vraies pages arrivent en phase 4 : pour l'instant, l'API (connexion, scan, rapport, lecture de la bibliothèque) s'utilise via Swagger ou `curl`.
+> État : **phase 4 (interface web)** : connexion, accueil, bibliothèque, fiche anime et administration (scan, rapport, corrections, utilisateurs). Pas encore de lecteur vidéo.
 
 ## Prérequis
 
@@ -49,7 +49,7 @@ copy .env.example .env           # Linux : cp .env.example .env
 docker compose up -d --build
 ```
 
-Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`). La page d'accueil doit afficher « API joignable ».
+Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`) : la page de connexion s'affiche. Se connecter avec l'admin initial, puis *Administration → Scan → Lancer un scan*.
 
 - Trois conteneurs : `postgres` (non exposé), `backend` (non exposé), `web` (nginx, seul port publié).
 - Arrêt : `docker compose down`. Les données restent dans le volume `pgdata` (`down -v` les efface).
@@ -111,6 +111,8 @@ Les tentatives de connexion sont limitées par IP. Pour que le backend voie la v
 ## Scan de la bibliothèque
 
 Le scan lit `/media` (en lecture seule), reconnaît animés, saisons et épisodes d'après les noms de fichiers (règles : `docs/ARCHITECTURE.md` §7) et remplit la base. Il ne touche jamais aux fichiers.
+
+Dans l'interface : *Administration* → **Scan** (lancement, état, historique), **Rapport** (résumé par catégorie, fichiers signalés, bouton *Corriger*), **Corrections** (corrections enregistrées, annulables). Le même parcours avec l'API :
 
 1. Se connecter en admin (`POST /api/auth/login`) et récupérer `accessToken`.
 2. `POST /api/admin/library/scan` → `202 {"scanId": …}`. Le scan tourne en tâche de fond ; un second lancement pendant ce temps répond `409`.

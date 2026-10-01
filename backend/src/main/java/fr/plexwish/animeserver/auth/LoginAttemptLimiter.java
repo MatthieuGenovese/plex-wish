@@ -50,6 +50,17 @@ public class LoginAttemptLimiter {
         return blocked(pairKey(ip, login), now) || blocked(ipKey(ip), now);
     }
 
+    /** Temps restant avant la fin du blocage (0 si non bloqué), pour le message affiché à l'utilisateur. */
+    public long blockedForMillis(String ip, String login) {
+        long now = clock.millis();
+        return Math.max(Math.max(remaining(pairKey(ip, login), now), remaining(ipKey(ip), now)), 0);
+    }
+
+    private long remaining(String key, long now) {
+        Window w = windows.get(key);
+        return w == null ? 0 : w.blockedUntil - now;
+    }
+
     public void recordFailure(String ip, String login) {
         long now = clock.millis();
         fail(pairKey(ip, login), maxPerPair, now);

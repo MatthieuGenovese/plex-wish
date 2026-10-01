@@ -75,7 +75,9 @@ public class AuthResource {
         String login = request.login().trim();
         if (limiter.isBlocked(ip, login)) {
             LOG.warnf("Connexion bloquée (trop d'échecs) : identifiant '%s' depuis %s", login, ip);
-            throw new ApiException(429, "TOO_MANY_ATTEMPTS", "Trop de tentatives. Réessayez plus tard.");
+            long minutes = Math.max(1, (limiter.blockedForMillis(ip, login) + 59_999) / 60_000);
+            throw new ApiException(429, "TOO_MANY_ATTEMPTS", "Trop de tentatives de connexion. Réessayez dans "
+                    + minutes + (minutes > 1 ? " minutes." : " minute."));
         }
         User user = checkCredentials(login, request.password());
         if (user == null) {

@@ -16,7 +16,7 @@ class SecurityStartupTest {
     private static final Optional<String> URL = Optional.of("https://anime.example.com");
 
     private static List<String> problems(Optional<String> jwt, Optional<String> stream, Optional<String> url) {
-        return SecurityStartup.configurationProblems(jwt, stream, url);
+        return SecurityStartup.configurationProblems(jwt, stream, url, true);
     }
 
     @Test
@@ -32,6 +32,13 @@ class SecurityStartupTest {
         assertTrue(shortOne.get(0).contains("JWT_SECRET trop court"));
         assertTrue(shortOne.stream().noneMatch(p -> p.contains("tooShortSecretValue")));
         assertEquals(1, problems(JWT, Optional.of("x"), URL).size());
+    }
+
+    @Test
+    void cookieWithoutSecureIsRejectedOutsideDev() {
+        List<String> p = SecurityStartup.configurationProblems(JWT, STREAM, URL, false);
+        assertEquals(1, p.size());
+        assertTrue(p.get(0).contains("cookie-secure"));
     }
 
     @Test

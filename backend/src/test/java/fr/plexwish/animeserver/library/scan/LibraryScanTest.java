@@ -76,7 +76,7 @@ class LibraryScanTest {
 
     private static long episodeId(String anime, int season, int number) {
         String token = adminToken();
-        List<Map<String, Object>> animes = given().auth().oauth2(token).get("/api/anime").jsonPath().getList("$");
+        List<Map<String, Object>> animes = given().auth().oauth2(token).get("/api/anime").jsonPath().getList("items");
         long animeId = animes.stream().filter(a -> anime.equals(a.get("title")))
                 .map(a -> ((Number) a.get("id")).longValue()).findFirst().orElseThrow();
         List<Map<String, Object>> seasons = given().auth().oauth2(token).get("/api/anime/" + animeId + "/seasons").jsonPath().getList("$");
@@ -130,8 +130,9 @@ class LibraryScanTest {
         scan();
         String token = adminToken();
         given().auth().oauth2(token).get("/api/anime?sort=title").then().statusCode(200)
-                .body("title", contains("Devilman Crybaby", "Frieren", "Show"));
-        long frierenId = given().auth().oauth2(token).get("/api/anime").jsonPath().getLong("find { it.title == 'Frieren' }.id");
+                .body("total", equalTo(3)).body("items.title", contains("Devilman Crybaby", "Frieren", "Show"))
+                .body("items.find { it.title == 'Frieren' }.episodeCount", equalTo(3));
+        long frierenId = given().auth().oauth2(token).get("/api/anime").jsonPath().getLong("items.find { it.title == 'Frieren' }.id");
         String detail = given().auth().oauth2(token).get("/api/anime/" + frierenId).then().statusCode(200)
                 .body("seasons.label", contains("Saison 1", "Spéciaux"))   // spéciaux en dernier
                 .body("seasons.episodeCount", contains(2, 1))
@@ -242,6 +243,7 @@ class LibraryScanTest {
         JsonPath empty = scan();
         assertEquals("FAILED", empty.getString("status"));
         org.hamcrest.MatcherAssert.assertThat(empty.getString("failureReason"), containsString("vide"));
+        assertEquals("MEDIA_ROOT_UNAVAILABLE", empty.getString("failureCode"));
         assertEquals(0, count(ds, "SELECT count(*) FROM media_file WHERE NOT available"));
 
         deleteTree(ROOT);
@@ -259,8 +261,14 @@ class LibraryScanTest {
 
         assertEquals(1, scanService.failOrphans()); // ce que fait le démarrage du backend
         assertEquals(1, count(ds, "SELECT count(*) FROM scan_run WHERE status = 'FAILED' AND failure_reason = '"
-                + ScanService.INTERRUPTED + "'"));
+                + ScanService.INTERRUPTED + "' AND failure_code = 'INTERRUPTED'"));
         assertEquals("SUCCESS", scan().getString("status"));
+        // Historique : du plus récent au plus ancien, avec le nombre de problèmes de chaque scan.
+        given().auth().oauth2(adminToken()).get("/api/admin/library/scans").then().statusCode(200)
+                .body("items.status", contains("SUCCESS", "FAILED"))
+                .body("items[1].failureCode", equalTo("INTERRUPTED"))
+                .body("items[0].issueCounts.UNRESOLVED", equalTo(2))
+                .body("items[0].stats.videos", equalTo(10));
     }
 
     @Test

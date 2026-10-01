@@ -47,8 +47,12 @@ public class LibraryScanner {
 
     /** Scan arrêté avant toute écriture « disparu » (montage absent, racine illisible…). */
     public static class ScanAbortedException extends RuntimeException {
-        public ScanAbortedException(String message) {
+        /** {@code MEDIA_ROOT_UNAVAILABLE} ou {@code MASS_REMOVAL} (colonne scan_run.failure_code). */
+        public final String code;
+
+        public ScanAbortedException(String code, String message) {
             super(message);
+            this.code = code;
         }
     }
 
@@ -149,7 +153,7 @@ public class LibraryScanner {
         List<Issue> walkIssues = new ArrayList<>();
         List<Found> videos = walk(root, stats, walkIssues);
         if (videos.isEmpty()) {
-            throw new ScanAbortedException("aucune vidéo trouvée dans " + root + " — montage NAS absent ?");
+            throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", "aucune vidéo trouvée dans " + root + " — montage NAS absent ?");
         }
         videos.sort(Comparator.comparing(Found::path));
         Set<String> seen = new HashSet<>();
@@ -186,14 +190,14 @@ public class LibraryScanner {
     /** /media doit exister, être lisible et non vide ; sinon rien n'est touché en base (§7.1). */
     static void checkMediaRoot(Path root) {
         if (!Files.isDirectory(root) || !Files.isReadable(root)) {
-            throw new ScanAbortedException(root + " absent ou illisible — montage NAS absent ?");
+            throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", root + " absent ou illisible — montage NAS absent ?");
         }
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(root)) {
             if (!entries.iterator().hasNext()) {
-                throw new ScanAbortedException(root + " vide — montage NAS absent ?");
+                throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", root + " vide — montage NAS absent ?");
             }
         } catch (IOException e) {
-            throw new ScanAbortedException(root + " illisible — montage NAS absent ? (" + e.getMessage() + ")");
+            throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", root + " illisible — montage NAS absent ? (" + e.getMessage() + ")");
         }
     }
 
@@ -245,7 +249,7 @@ public class LibraryScanner {
                 }
             });
         } catch (IOException e) {
-            throw new ScanAbortedException("parcours de " + root + " impossible : " + e.getMessage());
+            throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", "parcours de " + root + " impossible : " + e.getMessage());
         }
         return videos;
     }
@@ -273,7 +277,7 @@ public class LibraryScanner {
         }
         long percent = Math.round(100.0 * disappearing / known);
         if (!confirmed) {
-            throw new ScanAbortedException(disappearing + " fichiers connus sur " + known + " (" + percent
+            throw new ScanAbortedException("MASS_REMOVAL", disappearing + " fichiers connus sur " + known + " (" + percent
                     + " %) seraient marqués indisponibles : mauvais dossier monté ou partage NAS absent ? "
                     + "Rien n'a été modifié. Si c'est voulu, relancer le scan avec confirmMassRemoval=true.");
         }

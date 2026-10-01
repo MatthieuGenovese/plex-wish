@@ -29,7 +29,8 @@ class BruteForceTest {
         for (int i = 0; i < 5; i++) {
             login(name, "wrong-password", ip).then().statusCode(401);
         }
-        login(name, PASSWORD, ip).then().statusCode(429).body("error", equalTo("TOO_MANY_ATTEMPTS"));
+        login(name, PASSWORD, ip).then().statusCode(429).body("error", equalTo("TOO_MANY_ATTEMPTS"))
+                .body("message", org.hamcrest.Matchers.matchesPattern("Trop de tentatives de connexion\\. Réessayez dans \\d+ minutes?\\."));
         // Le même compte, depuis une autre IP, n'est pas bloqué.
         login(name, PASSWORD, newIp()).then().statusCode(200);
         // Et la même IP peut toujours se connecter à un autre compte.

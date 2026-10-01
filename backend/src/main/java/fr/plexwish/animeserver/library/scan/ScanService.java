@@ -51,7 +51,7 @@ public class ScanService {
     int failOrphans() throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement st = c.prepareStatement(
-                     "UPDATE scan_run SET status = 'FAILED', finished_at = now(), failure_reason = ? WHERE status = 'RUNNING'")) {
+                     "UPDATE scan_run SET status = 'FAILED', finished_at = now(), failure_reason = ?, failure_code = 'INTERRUPTED' WHERE status = 'RUNNING'")) {
             st.setString(1, INTERRUPTED);
             return st.executeUpdate();
         }
@@ -83,27 +83,28 @@ public class ScanService {
     void run(long runId, boolean confirmMassRemoval) {
         try {
             ScanStats stats = scanner.scan(runId, confirmMassRemoval);
-            finish(runId, "SUCCESS", stats, null);
+            finish(runId, "SUCCESS", stats, null, null);
             LOG.infof("Scan %d terminé en %d ms : %d vidéos, %d épisodes, %d extras, %d non résolues, %d doublons, %d disparues",
                     runId, stats.durationMs, stats.videos, stats.episodes, stats.extras, stats.unresolved,
                     stats.duplicates, stats.missing);
         } catch (LibraryScanner.ScanAbortedException e) {
             LOG.warnf("Scan %d abandonné : %s", runId, e.getMessage());
-            finish(runId, "FAILED", null, e.getMessage());
+            finish(runId, "FAILED", null, e.code, e.getMessage());
         } catch (Exception e) {
             LOG.errorf(e, "Scan %d en échec", runId);
-            finish(runId, "FAILED", null, "erreur interne (voir les logs du serveur)");
+            finish(runId, "FAILED", null, "INTERNAL_ERROR", "erreur interne (voir les logs du serveur)");
         }
     }
 
-    private void finish(long runId, String status, ScanStats stats, String reason) {
+    private void finish(long runId, String status, ScanStats stats, String code, String reason) {
         try (Connection c = dataSource.getConnection();
              PreparedStatement st = c.prepareStatement(
-                     "UPDATE scan_run SET status = ?, finished_at = now(), stats = ?::jsonb, failure_reason = ? WHERE id = ?")) {
+                     "UPDATE scan_run SET status = ?, finished_at = now(), stats = ?::jsonb, failure_code = ?, failure_reason = ? WHERE id = ?")) {
             st.setString(1, status);
             st.setString(2, stats == null ? null : json.writeValueAsString(stats));
-            st.setString(3, reason);
-            st.setLong(4, runId);
+            st.setString(3, code);
+            st.setString(4, reason);
+            st.setLong(5, runId);
             st.executeUpdate();
         } catch (SQLException | JsonProcessingException e) {
             LOG.errorf(e, "Impossible d'enregistrer la fin du scan %d", runId);

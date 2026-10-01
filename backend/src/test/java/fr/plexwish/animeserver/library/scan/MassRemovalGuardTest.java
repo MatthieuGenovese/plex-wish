@@ -65,6 +65,7 @@ class MassRemovalGuardTest {
 
         JsonPath r = scan();
         assertEquals("FAILED", r.getString("status"));
+        assertEquals("MASS_REMOVAL", r.getString("failureCode")); // le front propose alors la confirmation
         assertThat(r.getString("failureReason"), containsString("10 fichiers connus sur 10 (100 %)"));
         assertThat(r.getString("failureReason"), containsString("Rien n'a été modifié"));
         assertThat(r.getString("failureReason"), containsString("confirmMassRemoval=true"));

@@ -106,7 +106,7 @@ Raison : si la racine change (autre point de montage, dev local vs conteneur), r
 - **Access token** : JWT signé, durée **15 min**, claims `sub` (id), `upn` (username), `groups` (rôle). Renvoyé dans le corps JSON de `/login` et `/refresh`, **gardé en mémoire** côté Angular (jamais dans `localStorage`/`sessionStorage`).
 - **Refresh token** : 256 bits aléatoires (`SecureRandom`), stocké **haché en SHA-256** en base, durée **30 jours**. Envoyé dans un cookie :
   `refresh_token; HttpOnly; Secure; SameSite=Strict; Path=/api/auth`.
-  (`Secure` désactivable en dev HTTP via `COOKIE_SECURE=false`.)
+  (`Secure` désactivable en dev uniquement, via `COOKIE_SECURE=false` ; en prod le backend refuse de démarrer sans `Secure`. `http://localhost` reste utilisable : les navigateurs y acceptent les cookies `Secure`.)
 - **Rotation** à chaque `/refresh` : l'ancien est révoqué (`ROTATED`), un nouveau est émis.
 - **Fenêtre de tolérance de 20 s** (configurable, `REFRESH_REUSE_GRACE_SECONDS`, 10–30 s) : si un token révoqué pour cause de rotation il y a moins de 20 s est représenté, c'est presque toujours une course légitime (deux onglets, double appel au démarrage, réseau mobile qui rejoue la requête). On renvoie alors **un nouvel access token sans émettre de nouveau refresh token ni toucher au cookie** : le navigateur a déjà reçu le bon cookie via la requête concurrente.
 - **Réutilisation hors fenêtre** (ou d'un token révoqué pour une autre raison que la rotation) → vol probable : tous les refresh tokens de l'utilisateur sont révoqués (`REUSE_DETECTED`), réponse 401.
@@ -376,20 +376,21 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | POST | `/api/auth/refresh` | cookie refresh |
 | POST | `/api/auth/logout` | cookie refresh |
 | GET | `/api/me` | authentifié (utile au front pour le rôle) |
-| GET | `/api/anime?sort=recent\|title` | authentifié |
+| GET | `/api/anime?sort=recent\|title&q=&page=&size=` | authentifié (paginé : `{total, page, size, items}`) |
 | GET | `/api/anime/{id}` | authentifié |
 | GET | `/api/anime/{id}/seasons` | authentifié |
 | GET | `/api/seasons/{id}/episodes` | authentifié |
 | GET | `/api/episodes/{id}` | authentifié |
 | POST | `/api/admin/library/scan` | ADMIN |
-| GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan) |
+| GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan, `failureCode` si échec) |
+| GET | `/api/admin/library/scans?page=&size=` | ADMIN (historique des scans, du plus récent au plus ancien) |
 | GET | `/api/admin/library/issues?category=&anime=&scanId=&page=&size=` | ADMIN (liste filtrable et paginée du rapport, avec `mediaFileId` et chemin relatif) |
 | PUT / DELETE | `/api/admin/library/files/{mediaFileId}/override` | ADMIN (correction manuelle d'un fichier, §7.7) |
 | GET | `/api/admin/library/overrides` | ADMIN (liste des corrections) |
 | GET / POST | `/api/admin/users` | ADMIN |
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |
 
-Lecture : seuls les épisodes dont le fichier est disponible sont visibles (sinon 404) ; `/api/anime?sort=title|recent` (recent = dernier fichier ajouté) ; saisons dans l'ordre 1, 2… puis « Spéciaux » (saison 0) ; aucun chemin de fichier dans les réponses. Pas de pagination (≈ 1 300 animés, liste légère) ; à ajouter si besoin. Un admin ne peut pas se désactiver ni retirer son propre rôle ADMIN (évite de se verrouiller dehors).
+Lecture : seuls les épisodes dont le fichier est disponible sont visibles (sinon 404) ; `/api/anime?sort=title|recent` (recent = dernier fichier ajouté) ; saisons dans l'ordre 1, 2… puis « Spéciaux » (saison 0) ; aucun chemin de fichier dans les réponses. Liste des animés paginée (60 par page par défaut, 200 au plus) avec recherche `q` dans le titre, insensible à la casse et aux accents (extension PostgreSQL `unaccent`, migration V5). Échec d'un scan : `failureCode` = `MEDIA_ROOT_UNAVAILABLE`, `MASS_REMOVAL` (relancer avec `confirmMassRemoval=true` si c'est voulu), `INTERRUPTED` ou `INTERNAL_ERROR`. Connexion bloquée par l'anti brute force : 429 `TOO_MANY_ATTEMPTS`, le message donne le délai en minutes. Un admin ne peut pas se désactiver ni retirer son propre rôle ADMIN (évite de se verrouiller dehors).
 OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquement** par défaut (`SWAGGER_ENABLED`). nginx relaie ces deux chemins (avec une CSP assouplie pour la page Swagger) : `SWAGGER_ENABLED=true` suffit pour s'en servir sur le NAS. Le health check `/q/health` reste interne (healthcheck Docker).
 
 ## 9. Front Angular
@@ -417,7 +418,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - Images construites localement ou sur le NAS (`docker compose build`) ; pas de registre à cette étape.
 
 ### Variables d'environnement (`.env.example`)
-`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `COOKIE_SECURE`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `DOCKER_SUBNET`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `JAVA_OPTS`, `DEV_SPIKE_STREAM_ENABLED` et `DEV_MEDIA_PATH` (dev uniquement).
+`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `DOCKER_SUBNET`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `JAVA_OPTS`, `DEV_SPIKE_STREAM_ENABLED`, `DEV_MEDIA_PATH` et `COOKIE_SECURE` (dev uniquement).
 
 ## 11. Sécurité — récapitulatif
 - Médias : lecture seule (montage `:ro` **et** aucune API d'écriture) ; accès uniquement par ID ; chemin résolu vérifié avec `toRealPath().startsWith(mediaRoot)` → test de path traversal (`../`, encodages, liens symboliques).

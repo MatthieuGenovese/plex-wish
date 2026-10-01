@@ -4,6 +4,8 @@ import fr.plexwish.animeserver.common.ApiException;
 import io.quarkus.security.Authenticated;
 import jakarta.persistence.EntityManager;
 import jakarta.inject.Inject;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -47,20 +49,44 @@ public class LibraryResource {
     @Inject
     EntityManager em;
 
-    /** sort=recent : derniers ajouts d'abord (accueil) ; sort=title : ordre alphabétique (bibliothèque). */
+    public record AnimePage(long total, int page, int size, List<AnimeSummary> items) {
+    }
+
+    /**
+     * Animés visibles, paginés. {@code sort=title} : ordre alphabétique (bibliothèque) ; {@code sort=recent} :
+     * derniers ajouts d'abord (accueil). {@code q} : recherche dans le titre, sans tenir compte de la casse
+     * ni des accents (« chunibyo » trouve « Chûnibyô »).
+     */
     @GET
     @Path("/anime")
-    public List<AnimeSummary> list(@QueryParam("sort") @DefaultValue("title") String sort) {
+    public AnimePage list(@QueryParam("sort") @DefaultValue("title") String sort,
+                          @QueryParam("q") String q,
+                          @QueryParam("page") @DefaultValue("0") @Min(0) int page,
+                          @QueryParam("size") @DefaultValue("60") @Min(1) @Max(200) int size) {
         String order = switch (sort) {
-            case "recent" -> "max(e.mediaFile.firstSeenAt) desc, lower(a.title)";
-            case "title" -> "lower(a.title)";
+            case "recent" -> "max(e.mediaFile.firstSeenAt) desc, lower(a.title), a.id";
+            case "title" -> "lower(a.title), a.id";
             default -> throw new ApiException(400, "INVALID_SORT", "sort doit valoir 'title' ou 'recent'");
         };
-        return em.createQuery("select new " + AnimeSummary.class.getName()
+        String search = q == null || q.isBlank() ? null : "%" + escapeLike(q.trim()) + "%";
+        String where = " where " + VISIBLE + (search == null ? ""
+                : " and lower(function('unaccent', a.title)) like lower(function('unaccent', :q)) escape '!'");
+        var count = em.createQuery("select count(distinct a.id) from Episode e join e.season s join s.anime a" + where, Long.class);
+        var items = em.createQuery("select new " + AnimeSummary.class.getName()
                         + "(a.id, a.title, a.year, a.posterUrl, count(e), max(e.mediaFile.firstSeenAt))"
-                        + " from Episode e join e.season s join s.anime a where " + VISIBLE
-                        + " group by a.id, a.title, a.year, a.posterUrl order by " + order, AnimeSummary.class)
-                .getResultList();
+                        + " from Episode e join e.season s join s.anime a" + where
+                        + " group by a.id, a.title, a.year, a.posterUrl order by " + order, AnimeSummary.class);
+        if (search != null) {
+            count.setParameter("q", search);
+            items.setParameter("q", search);
+        }
+        List<AnimeSummary> list = items.setFirstResult(page * size).setMaxResults(size).getResultList();
+        return new AnimePage(count.getSingleResult(), page, size, list);
+    }
+
+    /** Échappe les jokers de LIKE (caractère d'échappement : « ! »). */
+    static String escapeLike(String s) {
+        return s.replace("!", "!!").replace("%", "!%").replace("_", "!_");
     }
 
     @GET

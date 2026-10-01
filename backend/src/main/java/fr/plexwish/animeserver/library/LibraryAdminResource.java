@@ -56,8 +56,15 @@ public class LibraryAdminResource {
     public record ScanStarted(long scanId) {
     }
 
+    /**
+     * {@code failureCode} (si FAILED) : MEDIA_ROOT_UNAVAILABLE, MASS_REMOVAL (relancer avec confirmMassRemoval=true
+     * si c'est voulu), INTERRUPTED, INTERNAL_ERROR. {@code failureReason} : explication pour l'humain.
+     */
     public record ScanReport(long id, String status, Instant startedAt, Instant finishedAt, String triggeredBy,
-                             String failureReason, JsonNode stats, Map<String, Long> issueCounts) {
+                             String failureCode, String failureReason, JsonNode stats, Map<String, Long> issueCounts) {
+    }
+
+    public record ScanRunPage(long total, int page, int size, List<ScanReport> items) {
     }
 
     /**
@@ -113,16 +120,13 @@ public class LibraryAdminResource {
             long id = scanId != null ? scanId : latestScanId(c);
             ScanReport report = null;
             try (PreparedStatement st = c.prepareStatement("""
-                    SELECT id, status, started_at, finished_at, triggered_by, failure_reason, stats::text
-                    FROM scan_run WHERE id = ?""")) {
+                    SELECT %s FROM scan_run WHERE id = ?""".formatted(RUN_COLUMNS))) {
                 st.setLong(1, id);
                 try (ResultSet rs = st.executeQuery()) {
                     if (!rs.next()) {
                         throw new ApiException(404, "SCAN_NOT_FOUND", "Scan introuvable");
                     }
-                    String stats = rs.getString(7);
-                    report = new ScanReport(rs.getLong(1), rs.getString(2), instant(rs, 3), instant(rs, 4), rs.getString(5),
-                            rs.getString(6), stats == null ? null : json.readTree(stats), new LinkedHashMap<>());
+                    report = run(rs);
                 }
             }
             try (PreparedStatement st = c.prepareStatement(
@@ -136,6 +140,52 @@ public class LibraryAdminResource {
             }
             return report;
         }
+    }
+
+    /** Historique des scans, du plus récent au plus ancien (sans le détail des problèmes). */
+    @GET
+    @Path("/scans")
+    public ScanRunPage history(@QueryParam("page") @DefaultValue("0") @Min(0) int page,
+                               @QueryParam("size") @DefaultValue("20") @Min(1) @Max(100) int size) throws SQLException, IOException {
+        try (Connection c = dataSource.getConnection()) {
+            long total;
+            try (PreparedStatement st = c.prepareStatement("SELECT count(*) FROM scan_run"); ResultSet rs = st.executeQuery()) {
+                rs.next();
+                total = rs.getLong(1);
+            }
+            List<ScanReport> items = new ArrayList<>();
+            try (PreparedStatement st = c.prepareStatement(
+                    "SELECT " + RUN_COLUMNS + " FROM scan_run ORDER BY id DESC LIMIT ? OFFSET ?")) {
+                st.setInt(1, size);
+                st.setLong(2, (long) page * size);
+                try (ResultSet rs = st.executeQuery()) {
+                    while (rs.next()) {
+                        items.add(run(rs));
+                    }
+                }
+            }
+            Map<Long, ScanReport> byId = new LinkedHashMap<>();
+            items.forEach(r -> byId.put(r.id(), r));
+            try (PreparedStatement st = c.prepareStatement("SELECT scan_run_id, category, count(*) FROM scan_issue"
+                    + " WHERE scan_run_id = ANY (?) GROUP BY scan_run_id, category ORDER BY category")) {
+                st.setArray(1, c.createArrayOf("bigint", byId.keySet().toArray()));
+                try (ResultSet rs = st.executeQuery()) {
+                    while (rs.next()) {
+                        byId.get(rs.getLong(1)).issueCounts().put(rs.getString(2), rs.getLong(3));
+                    }
+                }
+            }
+            return new ScanRunPage(total, page, size, items);
+        }
+    }
+
+    private static final String RUN_COLUMNS =
+            "id, status, started_at, finished_at, triggered_by, failure_code, failure_reason, stats::text";
+
+    private ScanReport run(ResultSet rs) throws SQLException, IOException {
+        String stats = rs.getString(8);
+        return new ScanReport(rs.getLong(1), rs.getString(2), instant(rs, 3), instant(rs, 4), rs.getString(5),
+                rs.getString(6), rs.getString(7), stats == null ? null : json.readTree(stats), new LinkedHashMap<>());
     }
 
     /** Liste filtrable des fichiers signalés (par catégorie et par animé), paginée. */

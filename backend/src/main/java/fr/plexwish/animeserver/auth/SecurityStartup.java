@@ -31,7 +31,8 @@ public class SecurityStartup {
     UserService users;
 
     void onStart(@Observes StartupEvent event) {
-        List<String> problems = configurationProblems(config.jwtSecret(), config.streamSigningSecret(), config.publicUrl());
+        List<String> problems = configurationProblems(config.jwtSecret(), config.streamSigningSecret(), config.publicUrl(),
+                config.cookieSecure());
         if (!problems.isEmpty()) {
             String message = "Configuration de sécurité invalide :\n - " + String.join("\n - ", problems);
             if (LaunchMode.current() == LaunchMode.NORMAL) {
@@ -43,8 +44,14 @@ public class SecurityStartup {
     }
 
     /** Vérifications pures (testées unitairement). Les messages ne contiennent jamais les secrets. */
-    static List<String> configurationProblems(Optional<String> jwtSecret, Optional<String> streamSecret, Optional<String> publicUrl) {
+    static List<String> configurationProblems(Optional<String> jwtSecret, Optional<String> streamSecret, Optional<String> publicUrl,
+                                              boolean cookieSecure) {
         List<String> problems = new ArrayList<>();
+        if (!cookieSecure) {
+            // Seul le profil dev désactive Secure (application.properties) : en prod, le cookie de session
+            // ne doit jamais circuler en clair. http://localhost reste utilisable : les navigateurs l'acceptent.
+            problems.add("anime.auth.cookie-secure=false n'est autorisé qu'en développement (cookie de session sans Secure)");
+        }
         checkSecret("JWT_SECRET", jwtSecret, problems);
         checkSecret("STREAM_SIGNING_SECRET", streamSecret, problems);
         if (jwtSecret.isPresent() && jwtSecret.equals(streamSecret)) {

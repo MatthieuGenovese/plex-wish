@@ -93,7 +93,12 @@ Ce qui ne dépend **pas** de `PUBLIC_URL` : les clients hors navigateur (`curl`,
 
 ### Cookies et HTTPS
 
-La session du navigateur tient dans un cookie `HttpOnly; Secure; SameSite=Strict`. `Secure` impose le HTTPS : pour un essai en HTTP (`http://localhost:8080`), mettre `COOKIE_SECURE=false`, sinon la connexion semble réussir mais la session est perdue au rechargement de la page.
+La session du navigateur tient dans un cookie `HttpOnly; Secure; SameSite=Strict`. `Secure` impose le HTTPS et n'est pas désactivable avec Docker (le backend refuse de démarrer sinon). Deux cas :
+
+- `http://localhost:8080` sur la machine qui fait tourner Docker : fonctionne, les navigateurs acceptent les cookies `Secure` sur `localhost` ;
+- adresse en HTTP depuis une autre machine (`http://192.168.1.20:8080`) : la connexion semble réussir mais la session est perdue au rechargement (F5). Passer par le reverse proxy HTTPS du DSM.
+
+En développement (`mvnw quarkus:dev`), `Secure` est désactivé par défaut (`COOKIE_SECURE=false`).
 
 ### Vraie IP des clients (anti brute force)
 
@@ -109,7 +114,7 @@ Le scan lit `/media` (en lecture seule), reconnaît animés, saisons et épisode
 
 1. Se connecter en admin (`POST /api/auth/login`) et récupérer `accessToken`.
 2. `POST /api/admin/library/scan` → `202 {"scanId": …}`. Le scan tourne en tâche de fond ; un second lancement pendant ce temps répond `409`.
-3. `GET /api/admin/library/scan-report` → statut (`RUNNING`, `SUCCESS`, `FAILED` + raison), compteurs par catégorie, durée, nombre de problèmes par catégorie.
+3. `GET /api/admin/library/scan-report` → statut (`RUNNING`, `SUCCESS`, `FAILED` + `failureCode` et raison), compteurs par catégorie, durée, nombre de problèmes par catégorie. Historique : `GET /api/admin/library/scans`.
 4. `GET /api/admin/library/issues?category=UNRESOLVED&anime=naruto` → liste des fichiers signalés (catégories : `UNRESOLVED`, `DUPLICATE`, `MULTI_EPISODE`, `DECIMAL_EPISODE`, `SEASON_MISMATCH`, `MISSING`, `UNREADABLE`), avec leur `mediaFileId`. Pour `DUPLICATE` : saison, épisode, fichier écarté (`relativePath`), fichier conservé (`keptRelativePath`) et origine de la saison de chacun (`seasonSource`, `keptSeasonSource` : nom, dossier, défaut…).
 5. Correction : `PUT /api/admin/library/files/{mediaFileId}/override` avec `{"action":"EPISODE","animeTitle":"…","seasonNumber":1,"episodeNumber":7}` (ou `{"action":"EXTRA"}`, `{"action":"IGNORE"}`), puis relancer un scan. La correction n'est jamais écrasée ; `DELETE` sur la même URL l'annule.
 

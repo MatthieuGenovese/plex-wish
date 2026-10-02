@@ -9,8 +9,9 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 0 | Spike vidéo | ✅ validé le 2026-09-29 sur fichiers synthétiques (Galaxy S24) — vrais fichiers, téléphone du propriétaire et sous-titres encore à tester (voir SPIKE.md §8) |
 | 1 | Socle | ✅ validée le 2026-09-30 |
 | 2 | Authentification | ✅ validée le 2026-09-30 |
-| 3 | Bibliothèque | 🔧 livrée — en attente de validation |
-| 4 | Interface web | 🔧 livrée — en attente de validation |
+| 3 | Bibliothèque | ✅ validée le 2026-10-02 |
+| 4 | Interface web | ✅ validée le 2026-10-02 (correctifs : corrections en conflit, validés) |
+| 5 | Streaming définitif et progression (backend) | 🔧 livrée — en attente de validation |
 
 ---
 
@@ -62,3 +63,9 @@ Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéo
 
 ## Fin de l'étape
 Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), lecteur web, progression, métadonnées, Android complet.
+
+## Phase 5 — Streaming définitif et progression (backend, testable avec curl)
+- URL de lecture signée (HMAC, 6 h, liée au fichier et à l'utilisateur) et endpoint Range durci : ARCHITECTURE §6.
+- Progression par utilisateur, « continuer à regarder », terminé au-delà de 90 % : ARCHITECTURE §6.3.
+- Endpoint du spike `/api/dev/*` : **conservé derrière son drapeau** (`DEV_SPIKE_STREAM_ENABLED`, faux par défaut, absent de Docker Compose) tant que l'app Android du spike s'en sert. **À retirer** (code, tests, config, SPIKE.md §3) dès que l'app Android passe par `/api/episodes/{id}/stream-url` + `/api/stream/…`, au plus tard avec l'app Android complète. `ByteRange` et `VideoMediaTypes` restent (utilisés par le streaming définitif).
+- Pas de lecteur web dans cette phase.

@@ -4,6 +4,8 @@
 
 Le code du spike est jetable, sauf `ByteRange` et la logique Range de `SpikeStreamResource`, qui seront réutilisés par le streaming définitif.
 
+> **Depuis la phase 5**, le streaming définitif existe (`/api/episodes/{id}/stream-url` puis `/api/stream/…`, avec authentification : README, « Lecture (API) »). L'endpoint du spike `/api/dev/*` reste disponible derrière `DEV_SPIKE_STREAM_ENABLED` (faux par défaut, sans authentification, dev uniquement) tant que l'app Android du spike l'utilise ; il sera retiré quand l'app passera par le nouvel endpoint (ROADMAP, phase 5).
+
 ```
 Téléphone (app spike, ExoPlayer) ──Wi-Fi──► PC Windows :8080 (Quarkus, mode dev) ──► dev-media/
 ```

@@ -532,3 +532,14 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - `PUT /api/admin/anime/{id}/metadata[?replace=true]` `{"providerId":"11061"}` (ou `null` = « aucune fiche ») : appariement **manuel, verrouillé** (`MANUAL`, `locked`), jamais écrasé par la tâche automatique, une relance ni un rescan. **Même principe que les corrections de fichiers** : 409 `METADATA_CONFLICT` sans rien modifier si l'animé a déjà une autre fiche (`current` / `proposed`) ou si la fiche sert déjà à un autre animé (`otherAnime`) ; `replace=true` confirme. AniList indisponible : 503 `METADATA_PROVIDER_UNAVAILABLE`, rien n'est modifié.
 - `DELETE /api/admin/anime/{id}/metadata` : retire le verrou, la tâche refait l'appariement automatique.
 - `POST /api/admin/metadata/requeue?status=UNMATCHED|DOUBTFUL|MATCHED` : relance l'appariement automatique de ces animés (les verrouillés ne bougent pas), par exemple après une amélioration de l'algorithme.
+
+### 15.5 Mesure sur la vraie bibliothèque (2026-10-02, AniList réel)
+Les 1 316 dossiers d'animés de `library-sample.txt` (bibliothèque factice), contre l'API AniList réelle, avec la version livrée :
+
+| Statut | Animés | Part |
+|---|---|---|
+| Apparié | 1 108 | 84,2 % |
+| Douteux (appliqué, à vérifier) | 139 | 10,6 % |
+| Non apparié | 69 | 5,2 % (49 sans résultat, 15 titres trop différents, 5 ambigus) |
+
+Avec une fiche (affiche, synopsis, année) : 1 247 animés (94,8 %). Durée du premier passage : environ 1 h (une seule limite de débit 429 rencontrée, gérée). Sur un échantillon relu à la main, les appariés sont justes ; les douteux le sont en majorité, avec quelques erreurs (ex. `Granblue Fantasy` → une fiche dont un synonyme commence pareil) : c'est leur rôle d'être revus. Non appariés typiques : titre français (`Le Seigneur des Yôkai`), coupure différente (`To Aru` / `Toaru`, `Summertime` / `Summer Time`), fiche marquée « adulte » sur AniList (`Yosuga no Sora`, exclue de la recherche automatique pour ne jamais afficher une affiche pour adultes par erreur), raccourci (`Iruma`). Tous se corrigent dans l'admin par identifiant AniList.

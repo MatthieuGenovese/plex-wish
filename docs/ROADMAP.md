@@ -11,7 +11,8 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 2 | Authentification | ✅ validée le 2026-09-30 |
 | 3 | Bibliothèque | ✅ validée le 2026-10-02 |
 | 4 | Interface web | ✅ validée le 2026-10-02 (correctifs : corrections en conflit, validés) |
-| 5 | Streaming définitif et progression (backend) | 🔧 livrée — en attente de validation |
+| 5 | Streaming définitif et progression (backend) | ✅ validée le 2026-10-02 |
+| 6 | Métadonnées (AniList) | 🔧 livrée — en attente de validation |
 
 ---
 
@@ -69,3 +70,10 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 - Progression par utilisateur, « continuer à regarder », terminé au-delà de 90 % : ARCHITECTURE §6.3.
 - Endpoint du spike `/api/dev/*` : **conservé derrière son drapeau** (`DEV_SPIKE_STREAM_ENABLED`, faux par défaut, absent de Docker Compose) tant que l'app Android du spike s'en sert. **À retirer** (code, tests, config, SPIKE.md §3) dès que l'app Android passe par `/api/episodes/{id}/stream-url` + `/api/stream/…`, au plus tard avec l'app Android complète. `ByteRange` et `VideoMediaTypes` restent (utilisés par le streaming définitif).
 - Pas de lecteur web dans cette phase.
+
+## Phase 6 — Métadonnées (AniList)
+- Abstraction `MetadataProvider`, AniList comme premier fournisseur ; fournisseur et langue du synopsis enregistrés avec chaque fiche (ARCHITECTURE §15).
+- Tâche de fond séparée du scan, idempotente, reprenable, respectueuse de la limite de débit ; la bibliothèque ne dépend jamais des métadonnées.
+- Appariement par similarité de titre avec seuil de confiance ; non appariés et douteux corrigés par l'admin, corrections verrouillées avec confirmation.
+- Affiches (URL), synopsis et année dans la grille, sur l'accueil et sur la fiche ; onglet admin « Métadonnées ».
+- Mesuré sur la vraie liste (1 316 animés) contre AniList : voir le résumé de livraison.

@@ -137,6 +137,16 @@ L'URL de lecture est valable 6 h (`STREAM_URL_LIFETIME`), pour un seul fichier e
 
 Progression (par utilisateur) : `PUT /api/episodes/42/progress` avec `{"positionSeconds":600,"durationSeconds":1420}`, puis `GET /api/me/continue-watching` (épisodes commencés, pas encore terminés : au-delà de 90 %, l'épisode est terminé).
 
+## Métadonnées (affiches, synopsis, année)
+
+Récupérées sur [AniList](https://anilist.co) (API publique, sans clé) par une tâche de fond, séparée du scan : la bibliothèque et la lecture fonctionnent sans (visuel de remplacement, pas de synopsis).
+
+- **Durée** : AniList limite le débit (30 requêtes/min en ce moment) ; la tâche fait un appel toutes les 2,5 s. Premier lancement sur ~1 300 animés : **environ une heure** ; ensuite, seulement les nouveaux animés, à la fin de chaque scan. Elle reprend où elle en était après un redémarrage.
+- **Accès Internet sortant** du conteneur backend vers `graphql.anilist.co` nécessaire (le cas par défaut avec Docker). Sans accès, rien ne casse : la tâche réessaie plus tard. `METADATA_ENABLED=false` la désactive.
+- **Synopsis en anglais** (AniList n'en a pas d'autre). Le titre de l'animé reste le nom du dossier ; le titre anglais ou romaji s'affiche en dessous.
+- **Affiches** : seule l'URL est stockée ; le navigateur les charge depuis `s4.anilist.co` (autorisé par la CSP : `img-src https:`). AniList voit donc l'adresse IP des spectateurs ; les télécharger sur le NAS est noté dans `docs/FUTURE.md`.
+- **Administration → Métadonnées** : avancement, non appariés et douteux, correction par candidat ou par identifiant AniList (le nombre dans `anilist.co/anime/<id>`), « aucune fiche ». Une correction est verrouillée : jamais écrasée. Remplacer une fiche existante demande une confirmation.
+
 ## Tester le scan complet (bibliothèque factice)
 
 Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.

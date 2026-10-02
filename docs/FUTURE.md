@@ -18,8 +18,13 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 ## Interface web
 - Recherche tolérante à la ponctuation : « fate/apocrypha » ne trouve pas « Fate⁄Apocrypha » (barre de fraction dans le nom du dossier) ; aujourd'hui casse et accents seulement.
 - Rapport de scan sur téléphone : cartes au lieu du tableau (aujourd'hui, défilement horizontal).
-- Affiches et titres d'épisodes (métadonnées AniList) : les vignettes affichent pour l'instant les initiales sur une couleur tirée du titre.
 - « Continuer à regarder » sur l'accueil, avec la progression.
+
+## Métadonnées
+- Second fournisseur pour des **synopsis en français** (TMDB, clé API gratuite) : même abstraction `MetadataProvider`, fournisseur et langue déjà enregistrés par fiche.
+- **Télécharger les affiches sur le NAS** (cache local servi par nginx) : les navigateurs n'appelleraient plus le CDN d'AniList (adresse IP des spectateurs, disponibilité, CSP `img-src 'self'`).
+- Affiche et synopsis **par saison** (AniList a une fiche par saison) et titres d'épisodes.
+- Rafraîchissement périodique des fiches appariées (synopsis complétés, nouvelles affiches) : aujourd'hui, uniquement via « Relancer » dans l'admin.
 
 ## Polish de l'interface web
 Remarques de design du propriétaire du projet, à traiter ensemble dans une passe dédiée (les design tokens de `web/src/styles.scss` permettent de changer couleurs, espacements et typographie sans toucher aux composants).

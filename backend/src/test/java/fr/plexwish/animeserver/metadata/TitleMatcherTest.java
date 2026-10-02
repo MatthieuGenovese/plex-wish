@@ -217,7 +217,8 @@ class TitleMatcherTest {
     void fallbackSearchesUseAniListRomanizationAndTheTitleBeforeADash() {
         assertEquals(List.of("Chuunibyou Demo Koi ga Shitai!"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Chûnibyô Demo Koi ga Shitai!")));
-        assertEquals(List.of("Dekiru Neko ha Kyou mo Yuuutsu", "Dekiru Neko ha Kyou"),
+        assertEquals(List.of("Kore wa Zombie desu ka"), TitleMatcher.fallbackSearches(TitleMatcher.clean("Kore ha Zombie desu ka")));
+        assertEquals(List.of("Dekiru Neko wa Kyou mo Yuuutsu", "Dekiru Neko ha Kyou"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Dekiru Neko ha Kyō mo Yūutsu")));
         assertEquals(List.of("Gotoubun no Hanayome"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Gotoubun no Hanayome - Quintuplets")));

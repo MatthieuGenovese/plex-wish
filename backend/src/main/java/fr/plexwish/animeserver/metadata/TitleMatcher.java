@@ -92,9 +92,10 @@ public final class TitleMatcher {
     /** Recherches supplémentaires, dans l'ordre, si la recherche principale ne donne pas d'appariement sûr. */
     public static List<String> fallbackSearches(Query query) {
         List<String> out = new ArrayList<>();
-        String ascii = asciiRomaji(query.main());
+        // D'abord : même titre, écrit comme AniList (« Chuunibyou » ; particule は en « wa » : « Kore wa Zombie »).
+        String ascii = (" " + asciiRomaji(query.main()) + " ").replaceAll("(?i) ha ", " wa ").trim();
         if (!ascii.equalsIgnoreCase(query.main())) {
-            out.add(ascii); // d'abord : même titre, écrit comme AniList (« Chuunibyou »)
+            out.add(ascii);
         }
         out.addAll(query.variants().subList(1, query.variants().size())); // puis parenthèses, partie avant « - »
         // Enfin, les premiers mots d'un long titre : la recherche AniList ne tolère pas une coupure différente

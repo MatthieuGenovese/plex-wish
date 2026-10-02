@@ -20,3 +20,7 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Rapport de scan sur téléphone : cartes au lieu du tableau (aujourd'hui, défilement horizontal).
 - Affiches et titres d'épisodes (métadonnées AniList) : les vignettes affichent pour l'instant les initiales sur une couleur tirée du titre.
 - « Continuer à regarder » sur l'accueil, avec la progression.
+
+## Polish de l'interface web
+Remarques de design du propriétaire du projet, à traiter ensemble dans une passe dédiée (les design tokens de `web/src/styles.scss` permettent de changer couleurs, espacements et typographie sans toucher aux composants).
+- *(à compléter)*

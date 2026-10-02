@@ -4,6 +4,8 @@ Projet privé pour un petit groupe (~10 utilisateurs), destiné à tourner sur u
 
 Ce document contient les règles stables du projet et le scope de la première étape. Le reste (Android, TV, etc.) sera traité plus tard et est volontairement absent.
 
+Langue : réponds en français (résumés, explications, questions). Le code et les messages de commit peuvent rester en anglais.
+
 Contexte important
 Le développeur a ~10 ans d'expérience en dev, mais aucune compétence en vidéo (codecs, conteneurs, sous-titres). Explique brièvement tes choix vidéo et signale les risques de compatibilité au lieu de les supposer connus.
 Les fichiers vidéo appartiennent à un tiers (le propriétaire du NAS) et existent déjà. Leur nommage réel n'est pas encore connu : ne pas supposer un format unique (voir section Bibliothèque).

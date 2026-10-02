@@ -38,6 +38,8 @@ public final class FakeAniList {
     private final Deque<Forced> forced = new ArrayDeque<>();
     private volatile Forced always;
     private final List<String> log = Collections.synchronizedList(new ArrayList<>());
+    /** Dernière requête GraphQL reçue (pour vérifier ses filtres). */
+    volatile String lastQuery;
 
     public FakeAniList() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -115,6 +117,7 @@ public final class FakeAniList {
     private void handle(HttpExchange ex) throws IOException {
         JsonNode body = JSON.readTree(ex.getRequestBody().readAllBytes());
         JsonNode vars = body.path("variables");
+        lastQuery = body.path("query").asText();
         String key = vars.has("search") ? "search:" + vars.get("search").asText() : "id:" + vars.path("id").asText();
         log.add(key);
         Forced f;

@@ -84,7 +84,9 @@ class AniListProviderTest {
         assertEquals(List.of("Sousou no Frieren", "Frieren: Beyond Journey's End", "Frieren"), c.titles());
         assertEquals("en", provider.synopsisLanguage());
 
+        assertTrue(server.lastQuery.contains("isAdult: false"), "la recherche automatique exclut les fiches pour adultes");
         assertTrue(provider.byId("154587").isPresent());
+        assertFalse(server.lastQuery.contains("isAdult"), "par identifiant (admin) : aucune restriction");
         assertTrue(provider.byId("999").isEmpty(), "id inconnu : 404 → aucune fiche");
         assertTrue(provider.byId("abc").isEmpty());
         assertTrue(provider.search("rien").isEmpty());

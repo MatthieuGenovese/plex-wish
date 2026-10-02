@@ -34,7 +34,11 @@ public class AniListProvider implements MetadataProvider {
     private static final String FIELDS = """
             id title { romaji english native } synonyms format episodes seasonYear startDate { year }
             description(asHtml: false) coverImage { large extraLarge } siteUrl""";
-    static final String SEARCH = "query ($search: String) { Page(page: 1, perPage: 10) { media(search: $search, type: ANIME, sort: SEARCH_MATCH) { "
+    /**
+     * Recherche automatique sans les fiches pour adultes (isAdult) : sinon un titre court comme « Mamahaha » est
+     * apparié avec un hentai homonyme (cas réel). Une fiche donnée par son identifiant (admin) reste possible.
+     */
+    static final String SEARCH = "query ($search: String) { Page(page: 1, perPage: 10) { media(search: $search, type: ANIME, isAdult: false, sort: SEARCH_MATCH) { "
             + FIELDS + " } } }";
     static final String BY_ID = "query ($id: Int) { Media(id: $id, type: ANIME) { " + FIELDS + " } }";
 

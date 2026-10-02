@@ -71,9 +71,10 @@ const SOURCE_LABELS: Record<string, string> = {
         <form class="filters" (submit)="$event.preventDefault()">
           <div class="field">
             <label for="f-category">Catégorie</label>
-            <select id="f-category" [value]="categorie() ?? ''" (change)="filter({ categorie: $any($event.target).value || null })">
-              <option value="">Toutes</option>
-              @for (c of categories; track c) { <option [value]="c">{{ labels[c] }}</option> }
+            <!-- [selected] par option : un [value] sur le <select> passerait avant la création des options du @for. -->
+            <select id="f-category" (change)="filter({ categorie: $any($event.target).value || null })">
+              <option value="" [selected]="!categorie()">Toutes</option>
+              @for (c of categories; track c) { <option [value]="c" [selected]="categorie() === c">{{ labels[c] }}</option> }
             </select>
           </div>
           <div class="field">

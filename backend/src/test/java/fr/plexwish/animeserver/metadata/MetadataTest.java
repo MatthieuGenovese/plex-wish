@@ -202,4 +202,119 @@ class MetadataTest {
         runUntilIdle();
         assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE id = " + frieren + " AND synopsis = 'manuel'"));
     }
+
+    // --- Administration des appariements (§15.4) --------------------------------------------------------
+
+    private io.restassured.specification.RequestSpecification admin() {
+        return given().auth().oauth2(adminToken()).contentType(io.restassured.http.ContentType.JSON);
+    }
+
+    private io.restassured.response.ValidatableResponse put(String title, Object providerId, Boolean replace) throws Exception {
+        var req = admin().body(providerId == null ? "{\"providerId\":null}" : "{\"providerId\":\"" + providerId + "\"}");
+        if (replace != null) {
+            req.queryParam("replace", replace);
+        }
+        return req.put("/api/admin/anime/" + animeId(title) + "/metadata").then();
+    }
+
+    @Test
+    void adminListsUnmatchedAndDoubtfulWithCandidates() throws Exception {
+        runUntilIdle();
+        admin().get("/api/admin/metadata/summary").then().statusCode(200)
+                .body("counts.MATCHED", equalTo(2)).body("counts.UNMATCHED", equalTo(2)).body("counts.PENDING", equalTo(0))
+                .body("total", equalTo(4)).body("provider", equalTo("AniList"));
+        admin().queryParam("status", "UNMATCHED").get("/api/admin/metadata").then().statusCode(200)
+                .body("total", equalTo(2))
+                .body("items.title", org.hamcrest.Matchers.contains("Hunter x Hunter", "Le Seigneur des Yôkai"))
+                .body("items[0].reason", equalTo("AMBIGUOUS"))
+                .body("items[0].candidates.providerId", org.hamcrest.Matchers.containsInAnyOrder("136", "11061"))
+                .body("items[0].candidates[0].posterUrl", startsWith("https://"))
+                .body("items[1].reason", equalTo("NO_RESULT"));
+        admin().queryParam("status", "MATCHED").queryParam("q", "frieren").get("/api/admin/metadata").then()
+                .body("items[0].providerId", equalTo("154587")).body("items[0].matchedTitle", equalTo("Frieren: Beyond Journey's End"))
+                .body("items[0].score", equalTo(1.0f));
+        admin().queryParam("status", "NOPE").get("/api/admin/metadata").then().statusCode(400);
+        // Réservé aux admins.
+        String name = fr.plexwish.animeserver.auth.AuthTestSupport.unique("meta");
+        fr.plexwish.animeserver.auth.AuthTestSupport.createUser(name, "meta-password-1", "USER");
+        given().auth().oauth2(fr.plexwish.animeserver.auth.AuthTestSupport.accessToken(name, "meta-password-1"))
+                .get("/api/admin/metadata").then().statusCode(403);
+    }
+
+    @Test
+    void manualMatchIsLockedAndSurvivesTheTaskAndRescans() throws Exception {
+        runUntilIdle();
+        admin().queryParam("providerId", "11061").get("/api/admin/anime/" + animeId("Hunter x Hunter") + "/metadata/preview")
+                .then().statusCode(200).body("title", equalTo("Hunter x Hunter (2011)")).body("year", equalTo(2011))
+                .body("episodes", equalTo(148));
+        admin().queryParam("providerId", "999").get("/api/admin/anime/" + animeId("Hunter x Hunter") + "/metadata/preview")
+                .then().statusCode(404).body("error", equalTo("PROVIDER_ENTRY_NOT_FOUND"));
+
+        // Non apparié : pas de fiche à remplacer, pas de confirmation nécessaire.
+        put("Hunter x Hunter", "11061", null).statusCode(200)
+                .body("status", equalTo("MANUAL")).body("locked", equalTo(true)).body("providerId", equalTo("11061"))
+                .body("matchedTitle", equalTo("Hunter x Hunter (2011)")).body("updatedBy", equalTo("admin"));
+        given().auth().oauth2(adminToken()).get("/api/anime/" + animeId("Hunter x Hunter")).then()
+                .body("year", equalTo(2011)).body("posterUrl", startsWith("https://"));
+
+        // Ni la tâche (même relancée sur tous les non appariés), ni un rescan n'y touchent.
+        admin().queryParam("status", "UNMATCHED").post("/api/admin/metadata/requeue").then().statusCode(200)
+                .body("requeued", equalTo(1)); // Le Seigneur des Yôkai seulement
+        runUntilIdle();
+        scan();
+        runUntilIdle();
+        assertEquals("MANUAL", status("Hunter x Hunter"));
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Hunter x Hunter' AND metadata_provider_id = '11061'"));
+    }
+
+    @Test
+    void replacingAnExistingSheetNeedsConfirmationAndChangesNothingBefore() throws Exception {
+        runUntilIdle();
+        fake.onId(FakeAniList.media(182255, "Sousou no Frieren 2nd Season", "Frieren: Beyond Journey's End Season 2", 2026, "TV", 10));
+        put("Sousou no Frieren", "182255", null).statusCode(409)
+                .body("error", equalTo("METADATA_CONFLICT"))
+                .body("anime.title", equalTo("Sousou no Frieren"))
+                .body("current.providerId", equalTo("154587")).body("current.title", equalTo("Frieren: Beyond Journey's End"))
+                .body("current.year", equalTo(2023))
+                .body("proposed.providerId", equalTo("182255")).body("proposed.year", equalTo(2026))
+                .body("otherAnime", org.hamcrest.Matchers.empty());
+        assertEquals("MATCHED", status("Sousou no Frieren"));
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Sousou no Frieren' AND year = 2023"));
+
+        put("Sousou no Frieren", "182255", true).statusCode(200).body("status", equalTo("MANUAL"));
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Sousou no Frieren' AND year = 2026"));
+        // Même fiche une seconde fois : rien à confirmer.
+        put("Sousou no Frieren", "182255", null).statusCode(200);
+
+        // Fiche déjà utilisée par un autre animé : confirmation aussi.
+        put("Chûnibyô Demo Koi ga Shitai!", "182255", null).statusCode(409)
+                .body("otherAnime.title", org.hamcrest.Matchers.contains("Sousou no Frieren"))
+                .body("current.providerId", equalTo("14741"));
+
+        // « Aucune fiche » : efface et verrouille, après confirmation.
+        put("Sousou no Frieren", null, null).statusCode(409).body("proposed", nullValue());
+        put("Sousou no Frieren", null, true).statusCode(200).body("status", equalTo("MANUAL")).body("providerId", nullValue());
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Sousou no Frieren' AND year IS NULL"
+                + " AND poster_url IS NULL AND synopsis IS NULL AND metadata_provider IS NULL"));
+
+        // Déverrouiller : la tâche refait l'appariement automatique.
+        admin().delete("/api/admin/anime/" + animeId("Sousou no Frieren") + "/metadata").then().statusCode(204);
+        admin().delete("/api/admin/anime/" + animeId("Sousou no Frieren") + "/metadata").then().statusCode(404);
+        runUntilIdle();
+        assertEquals("MATCHED", status("Sousou no Frieren"));
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Sousou no Frieren' AND year = 2023"));
+    }
+
+    @Test
+    void manualCorrectionWhileAniListIsDownChangesNothing() throws Exception {
+        runUntilIdle();
+        fake.always(new Forced(503, Map.of(), "{}"));
+        put("Hunter x Hunter", "11061", null).statusCode(503).body("error", equalTo("METADATA_PROVIDER_UNAVAILABLE"));
+        admin().queryParam("providerId", "11061").get("/api/admin/anime/" + animeId("Hunter x Hunter") + "/metadata/preview")
+                .then().statusCode(503);
+        fake.always(null);
+        assertEquals("UNMATCHED", status("Hunter x Hunter"));
+        put("Hunter x Hunter", "abc", null).statusCode(400);
+        admin().body("{\"providerId\":\"1\"}").put("/api/admin/anime/999999/metadata").then().statusCode(404);
+    }
 }

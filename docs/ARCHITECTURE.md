@@ -424,6 +424,10 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | GET | `/api/admin/library/issues?category=&anime=&scanId=&page=&size=` | ADMIN (liste filtrable et paginée du rapport, avec `mediaFileId` et chemin relatif) |
 | PUT / DELETE | `/api/admin/library/files/{mediaFileId}/override[?replace=true]` | ADMIN (correction manuelle d'un fichier, §7.7 ; 409 si l'épisode est déjà fourni par un autre fichier) |
 | GET | `/api/admin/library/overrides` | ADMIN (liste des corrections) |
+| GET | `/api/admin/metadata/summary`, `/api/admin/metadata?status=&q=` | ADMIN (métadonnées, §15.4) |
+| GET | `/api/admin/anime/{id}/metadata/preview?providerId=` | ADMIN (§15.4) |
+| PUT / DELETE | `/api/admin/anime/{id}/metadata[?replace=true]` | ADMIN (appariement manuel verrouillé, §15.4) |
+| POST | `/api/admin/metadata/requeue?status=` | ADMIN (§15.4) |
 | GET / POST | `/api/admin/users` | ADMIN |
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |
 
@@ -519,3 +523,11 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - Réveil à la fin de chaque scan ; sinon vérification toutes les 10 min. `METADATA_ENABLED=false` la désactive.
 - Une fiche **verrouillée** (correction manuelle, `locked`) n'est jamais modifiée par la tâche ni par un rescan (garde dans la requête d'écriture elle-même).
 - Tests : `TitleMatcherTest` (sans réseau), `AniListProviderTest` et `MetadataTest` contre un faux serveur AniList (`FakeAniList`, JDK `HttpServer`) : aucun appel réseau réel.
+
+### 15.4 Corrections par l'admin
+- `GET /api/admin/metadata/summary` : nombre d'animés par statut, tâche active ou non, pause en cours (limite de débit, panne) et temps restant estimé.
+- `GET /api/admin/metadata?status=&q=&page=&size=` : liste paginée (filtre par statut et par titre), avec pour chaque animé le statut, la raison (`NO_RESULT`, `LOW_SCORE`, `AMBIGUOUS`, `CLOSE_CANDIDATE`, `BELOW_CONFIDENT`, `ERROR`), le score, la fiche appliquée et les **5 meilleurs candidats** (titre, année, format, épisodes, affiche, lien AniList) : l'admin choisit sans refaire de recherche.
+- `GET /api/admin/anime/{id}/metadata/preview?providerId=` : fiche AniList par identifiant (le nombre dans `anilist.co/anime/<id>`), avant de l'appliquer.
+- `PUT /api/admin/anime/{id}/metadata[?replace=true]` `{"providerId":"11061"}` (ou `null` = « aucune fiche ») : appariement **manuel, verrouillé** (`MANUAL`, `locked`), jamais écrasé par la tâche automatique, une relance ni un rescan. **Même principe que les corrections de fichiers** : 409 `METADATA_CONFLICT` sans rien modifier si l'animé a déjà une autre fiche (`current` / `proposed`) ou si la fiche sert déjà à un autre animé (`otherAnime`) ; `replace=true` confirme. AniList indisponible : 503 `METADATA_PROVIDER_UNAVAILABLE`, rien n'est modifié.
+- `DELETE /api/admin/anime/{id}/metadata` : retire le verrou, la tâche refait l'appariement automatique.
+- `POST /api/admin/metadata/requeue?status=UNMATCHED|DOUBTFUL|MATCHED` : relance l'appariement automatique de ces animés (les verrouillés ne bougent pas), par exemple après une amélioration de l'algorithme.

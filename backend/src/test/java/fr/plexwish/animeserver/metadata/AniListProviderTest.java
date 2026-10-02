@@ -91,6 +91,20 @@ class AniListProviderTest {
     }
 
     @Test
+    void entriesWithoutYearOrEpisodeCountAreRead() throws Exception {
+        // Annonce sans date ni nombre d'épisodes (cas réel : NullPointerException avant correction).
+        var upcoming = FakeAniList.media(1, "A Channel", null, null, "TV", null);
+        upcoming.putNull("format");
+        upcoming.putObject("startDate").putNull("year");
+        server.onSearch("A Channel", upcoming);
+        Candidate c = provider.search("A Channel").get(0);
+        assertEquals(null, c.year());
+        assertEquals(null, c.episodes());
+        assertEquals(null, c.format());
+        assertEquals("A Channel", c.displayTitle());
+    }
+
+    @Test
     void callsAreSpacedByTheMinimumInterval() throws Exception {
         provider.search("a");
         provider.search("b");

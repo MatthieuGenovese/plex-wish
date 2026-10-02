@@ -173,13 +173,20 @@ public class AniListProvider implements MetadataProvider {
     private static Candidate candidate(JsonNode m) {
         List<String> synonyms = new ArrayList<>();
         m.path("synonyms").forEach(s -> synonyms.add(s.asText()));
-        Integer year = m.path("seasonYear").isInt() ? m.path("seasonYear").asInt()
-                : m.path("startDate").path("year").isInt() ? m.path("startDate").path("year").asInt() : null;
+        // Integer partout : un ternaire « int : null » déballerait null (NullPointerException sur les fiches sans année).
+        Integer year = integer(m.path("seasonYear"));
+        if (year == null) {
+            year = integer(m.path("startDate").path("year"));
+        }
         return new Candidate(m.path("id").asText(), text(m.path("title").path("romaji")), text(m.path("title").path("english")),
                 text(m.path("title").path("native")), synonyms, year, text(m.path("format")),
-                m.path("episodes").isInt() ? m.path("episodes").asInt() : null,
+                integer(m.path("episodes")),
                 cleanSynopsis(text(m.path("description"))),
                 text(m.path("coverImage").path("large")), text(m.path("coverImage").path("extraLarge")), text(m.path("siteUrl")));
+    }
+
+    private static Integer integer(JsonNode n) {
+        return n != null && n.isInt() ? Integer.valueOf(n.asInt()) : null;
     }
 
     private static String text(JsonNode n) {

@@ -213,6 +213,14 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Envoi depuis le disque sans charger le fichier en mémoire : Vert.x `HttpServerResponse.sendFile(path, offset, length)` (zero-copy côté OS). Repli : `StreamingOutput` avec `FileChannel.transferTo`.
 - Types MIME : `.mp4/.m4v` → `video/mp4`, `.mkv` → `video/x-matroska`, `.webm` → `video/webm`, `.avi` → `video/x-msvideo`, `.ts` → `video/mp2t`, `.ogm` → `video/ogg`.
 
+### 6.3 Progression de lecture (phase 5)
+- Table `playback_progress` (V6) : clé (utilisateur, épisode), position et durée en secondes, `completed`, `updated_at`. Une ligne par utilisateur et par épisode : les progressions de deux utilisateurs sont indépendantes.
+- `PUT /api/episodes/{id}/progress` `{positionSeconds, durationSeconds}` : le lecteur l'appelle régulièrement (toutes les 10 à 30 s, et à la pause / fermeture). Une position au-delà de la durée est ramenée à la durée. **Terminé au-delà de 90 %** de la durée (au-delà, pas à 90 % pile) : génériques de fin et aperçu de l'épisode suivant ne comptent pas. Revenir en arrière remet l'épisode « en cours ». 404 si l'épisode n'est pas visible.
+- `GET /api/me/progress[?animeId=]` : toute la progression de l'utilisateur (ou d'un animé, pour sa fiche), la plus récente d'abord.
+- `GET /api/me/continue-watching[?limit=20]` : épisodes commencés (position > 0) et non terminés, du plus récemment regardé au plus ancien, avec l'animé, la saison (libellé compris) et l'épisode : de quoi afficher la liste et relancer la lecture sans autre appel.
+- Un épisode devenu indisponible disparaît des listes ; sa progression est conservée et revient avec le fichier.
+- La durée envoyée par le lecteur n'est pas recopiée dans `episode.duration_seconds` : elle vient d'un client, la durée « officielle » viendra de ffprobe (FUTURE).
+
 ### 6.2 Risques de compatibilité vidéo (à vérifier par le spike)
 Pour situer : un fichier vidéo = un **conteneur** (MKV, MP4…) qui contient des **pistes** encodées avec des **codecs** (vidéo, audio, sous-titres). Le lecteur doit comprendre le conteneur **et** chaque codec ; sinon il faut transcoder (convertir à la volée avec ffmpeg), ce qui est coûteux pour le Ryzen R1600 sans GPU.
 
@@ -406,6 +414,10 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | GET | `/api/anime/{id}/seasons` | authentifié |
 | GET | `/api/seasons/{id}/episodes` | authentifié |
 | GET | `/api/episodes/{id}` | authentifié |
+| GET | `/api/episodes/{id}/stream-url` | authentifié (URL de lecture signée, §6) |
+| GET / HEAD | `/api/stream/{mediaFileId}?u=&exp=&sig=` | URL signée, sans en-tête (§6) |
+| PUT | `/api/episodes/{id}/progress` | authentifié (§6.3) |
+| GET | `/api/me/progress[?animeId=]`, `/api/me/continue-watching[?limit=]` | authentifié (§6.3) |
 | POST | `/api/admin/library/scan` | ADMIN |
 | GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan, `failureCode` si échec) |
 | GET | `/api/admin/library/scans?page=&size=` | ADMIN (historique des scans, du plus récent au plus ancien) |

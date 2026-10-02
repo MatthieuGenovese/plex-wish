@@ -135,6 +135,8 @@ curl -s -o /dev/null -D - -H 'Range: bytes=0-1023' "http://localhost:8080/api/st
 
 L'URL de lecture est valable 6 h (`STREAM_URL_LIFETIME`), pour un seul fichier et un seul utilisateur ; elle ne demande pas d'en-tête d'authentification (un lecteur vidéo ne sait pas en envoyer). Sur un `403`, en redemander une.
 
+Progression (par utilisateur) : `PUT /api/episodes/42/progress` avec `{"positionSeconds":600,"durationSeconds":1420}`, puis `GET /api/me/continue-watching` (épisodes commencés, pas encore terminés : au-delà de 90 %, l'épisode est terminé).
+
 ## Tester le scan complet (bibliothèque factice)
 
 Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.

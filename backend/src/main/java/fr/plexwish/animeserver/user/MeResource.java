@@ -10,7 +10,9 @@ import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 /** Utilisateur connecté (le front s'en sert pour afficher ou non l'admin). */
-@Path("/api/me")
+// @Path("/api") et non "/api/me" : sinon JAX-RS choisirait cette classe pour /api/me/progress
+// (classe la plus spécifique, sans retour en arrière) et répondrait 404 (ProgressResource).
+@Path("/api")
 @Authenticated
 public class MeResource {
 
@@ -18,6 +20,7 @@ public class MeResource {
     JsonWebToken jwt;
 
     @GET
+    @Path("/me")
     @Produces(MediaType.APPLICATION_JSON)
     public UserDto me() {
         User user = User.findById(Long.valueOf(jwt.getSubject()));

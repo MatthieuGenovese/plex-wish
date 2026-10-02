@@ -159,3 +159,17 @@ export interface Override {
   createdBy: string;
   createdAt: string;
 }
+
+/** Fichier qui serait délié par une correction (viaOverride : lié par une autre correction). */
+export interface LinkedFile {
+  mediaFileId: number | null;
+  relativePath: string;
+  viaOverride: boolean;
+}
+
+/** Corps du 409 EPISODE_ALREADY_LINKED : rien n'a été modifié. */
+export interface OverrideConflict extends ApiError {
+  episode: { animeTitle: string; seasonNumber: number; episodeNumber: number };
+  currentFiles: LinkedFile[];
+  targetFile: LinkedFile;
+}

@@ -323,6 +323,9 @@ Dans « `Nyan Koi! Menu - 05` » ou « `Blend S NCED4` », 05 et 4 ne sont donc 
 ### 7.7 Correction manuelle
 L'admin peut associer un fichier à un animé (par son **titre**, existant ou non), une saison et un numéro d'épisode, ou le marquer comme extra / ignoré. Il désigne le fichier par son **id** (`mediaFileId`, fourni par le rapport), jamais par un chemin. La correction est **stockée en base** (table `media_file_override`, clé : `relative_path`) et appliquée **à la place du parser** à chaque scan : un rescan ne l'écrase jamais. Elle prend effet **au scan suivant** (quelques secondes). Si le fichier disparaît, la correction est conservée (elle resservira s'il réapparaît au même chemin). `IGNORE` retire le fichier de la bibliothèque sans le toucher sur le disque.
 
+**Épisode déjà fourni par un autre fichier** (décision du 2026-10-02) : si l'épisode visé est déjà lié à un autre fichier disponible (lien actuel, sauf si la correction de ce fichier l'envoie ailleurs) ou visé par la correction d'un autre fichier, le `PUT` répond **409 `EPISODE_ALREADY_LINKED`** avec l'épisode, le ou les fichiers qui seraient déliés (`currentFiles`, avec `viaOverride`) et le fichier visé (`targetFile`), **sans rien modifier**. `?replace=true` (après confirmation dans l'interface) enregistre la correction et supprime la correction de l'autre fichier s'il en avait une. Au scan, une correction l'emporte sur un fichier sans correction, même déjà lié ; le fichier délié reste disponible et ressort au rapport (doublon, avec le fichier conservé, ou non résolu s'il perd sa correction), donc corrigeable. Annuler la correction rétablit l'ancien lien au scan suivant, sur le même épisode (même id).
+Le scan ne dépend pas de l'ordre des fichiers : un lien est **périmé** quand le fichier lié ne réclame plus cet épisode (correction vers ailleurs, extra, ignoré) ; le fichier qui réclame l'épisode le reprend alors, qu'il passe avant ou après dans l'ordre alphabétique (`OverrideConflictTest`).
+
 ### 7.8 Sous-titres externes
 Seuls 24 des 434 sous-titres externes ont le même nom de base qu'une vidéo ; beaucoup sont rangés dans des dossiers du type `sous-titres + police/` avec des polices. Le MVP **ne les associe pas** : il les compte. La lecture s'appuie sur les sous-titres **intégrés (muxés) dans la vidéo**. L'association externe → FUTURE.
 
@@ -385,7 +388,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | GET | `/api/admin/library/scan-report` | ADMIN (résumé par catégorie du dernier scan, `failureCode` si échec) |
 | GET | `/api/admin/library/scans?page=&size=` | ADMIN (historique des scans, du plus récent au plus ancien) |
 | GET | `/api/admin/library/issues?category=&anime=&scanId=&page=&size=` | ADMIN (liste filtrable et paginée du rapport, avec `mediaFileId` et chemin relatif) |
-| PUT / DELETE | `/api/admin/library/files/{mediaFileId}/override` | ADMIN (correction manuelle d'un fichier, §7.7) |
+| PUT / DELETE | `/api/admin/library/files/{mediaFileId}/override[?replace=true]` | ADMIN (correction manuelle d'un fichier, §7.7 ; 409 si l'épisode est déjà fourni par un autre fichier) |
 | GET | `/api/admin/library/overrides` | ADMIN (liste des corrections) |
 | GET / POST | `/api/admin/users` | ADMIN |
 | PATCH | `/api/admin/users/{id}` | ADMIN (activer/désactiver, rôle, mot de passe) |

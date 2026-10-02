@@ -131,6 +131,8 @@ public class LibraryScanner {
         final Map<Long, String> fileToEpisode = new HashMap<>();
         /** Fichiers disponibles avant ce scan : sert au garde-fou de disparition massive. */
         final Set<String> availablePaths = new HashSet<>();
+        /** Vidéos déjà traitées pendant ce scan. */
+        final Set<String> processed = new HashSet<>();
     }
 
     @Inject
@@ -345,6 +347,7 @@ public class LibraryScanner {
         Map<Long, Long> relink = new LinkedHashMap<>();
         List<Object[]> inserts = new ArrayList<>();
         for (Decision d : decisions) {
+            state.processed.add(d.file().path());
             Long fileId = fileIds.get(d.file().path());
             String current = state.fileToEpisode.get(fileId);
             String key = "EPISODE".equals(d.kind())
@@ -371,15 +374,25 @@ public class LibraryScanner {
                 stats.episodes++;
             } else if (fileId.equals(ref.fileId)) {
                 stats.episodes++;
-            } else if (ref.fileId != null && seen.contains(ref.filePath)
-                    && ref.linkedThisScan && reliability(d.strategy()) < ref.reliability) {
-                // Doublon apparu dans ce scan, et ce fichier est identifié de façon plus fiable : il prend la place,
-                // l'autre est signalé. Un épisode lié lors d'un scan précédent ne change jamais ainsi.
-                stats.duplicates++;
-                issues.add(new Issue(ref.fileId, ref.filePath, "DUPLICATE", d.animeTitle(),
-                        "saison " + d.season() + ", épisode " + d.episode() + " : remplacé par " + d.file().path()
-                                + " (identification plus fiable)",
-                        d.season(), d.episode(), d.file().path(), ref.seasonSource, d.seasonSource().name()));
+            } else if (ref.fileId != null && seen.contains(ref.filePath) && takesOver(d, ref, state)) {
+                // Ce fichier prend la place du fichier lié, qui reste disponible (§7.5, §7.7) :
+                // - lien périmé : le fichier lié ne réclame plus cet épisode (correction, renommage du parser) ;
+                // - doublon apparu dans ce scan, et ce fichier est identifié de façon plus fiable ;
+                // - correction manuelle face à un fichier sans correction (remplacement confirmé par l'admin).
+                boolean stale = !target(d).equals(claimOf(ref.filePath, state));
+                if (!stale && state.processed.contains(ref.filePath)) {
+                    // Le fichier délié a déjà été compté comme épisode dans ce scan : il devient un doublon.
+                    stats.duplicates++;
+                    String why = d.strategy() == ParseResult.Strategy.OVERRIDE
+                            ? "remplacé par la correction manuelle de " : "remplacé par ";
+                    issues.add(new Issue(ref.fileId, ref.filePath, "DUPLICATE", d.animeTitle(),
+                            "saison " + d.season() + ", épisode " + d.episode() + " : " + why + d.file().path()
+                                    + (d.strategy() == ParseResult.Strategy.OVERRIDE ? "" : " (identification plus fiable)"),
+                            d.season(), d.episode(), d.file().path(), ref.seasonSource != null ? ref.seasonSource
+                                    : seasonSourceOf(ref.filePath, state), d.seasonSource().name()));
+                } else {
+                    stats.episodes++;
+                }
                 state.fileToEpisode.remove(ref.fileId);
                 ref.linkThisScan(fileId, d.file().path(), d);
                 state.fileToEpisode.put(fileId, key);
@@ -391,7 +404,8 @@ public class LibraryScanner {
                 // Le fichier déjà lié est toujours là : on le garde, celui-ci est signalé (§7.5).
                 stats.duplicates++;
                 issues.add(new Issue(fileId, d.file().path(), "DUPLICATE", d.animeTitle(),
-                        "saison " + d.season() + ", épisode " + d.episode() + " : déjà fourni par " + ref.filePath,
+                        "saison " + d.season() + ", épisode " + d.episode() + " : déjà fourni par " + ref.filePath
+                                + (state.overrides.containsKey(ref.filePath) ? " (correction manuelle)" : ""),
                         d.season(), d.episode(), ref.filePath, d.seasonSource().name(), seasonSourceOf(ref.filePath, state)));
             } else {
                 // Ancien fichier disparu (ou détaché) : l'épisode garde son id et passe sur le nouveau (§7.9).
@@ -438,6 +452,39 @@ public class LibraryScanner {
             withIds.add(issue.fileId() != null ? issue : issue.withFileId(fileIds.get(issue.path())));
         }
         insertIssues(c, runId, withIds);
+    }
+
+    /**
+     * Ce fichier (décision {@code d}) prend-il l'épisode déjà lié à un autre fichier toujours présent ?
+     * Un épisode lié lors d'un scan précédent ne change pas de fichier, sauf si ce fichier ne le réclame plus
+     * (lien périmé) ou face à une correction manuelle (le remplacement a été confirmé à sa création).
+     */
+    private boolean takesOver(Decision d, EpisodeRef ref, State state) {
+        if (!target(d).equals(claimOf(ref.filePath, state))) {
+            return true;
+        }
+        if (ref.linkedThisScan) {
+            return reliability(d.strategy()) < ref.reliability;
+        }
+        return d.strategy() == ParseResult.Strategy.OVERRIDE && !state.overrides.containsKey(ref.filePath);
+    }
+
+    /** Épisode réclamé par un fichier (correction manuelle, sinon parser), ou null. Pur : ne compte rien. */
+    private String claimOf(String path, State state) {
+        ManualOverride o = state.overrides.get(path);
+        if (o != null) {
+            return "EPISODE".equals(o.action()) ? target(o.animeTitle(), o.season(), o.episode()) : null;
+        }
+        return parser.parse(path) instanceof ParseResult.Episode e ? target(e.animeTitle(), e.season(), e.episode()) : null;
+    }
+
+    private static String target(Decision d) {
+        return target(d.animeTitle(), d.season(), d.episode());
+    }
+
+    /** Clé « épisode visé » (titre normalisé, saison, épisode), partagée avec le contrôle des corrections. */
+    public static String target(String animeTitle, Integer season, Integer episode) {
+        return Titles.normalize(animeTitle) + "|" + season + "|" + episode;
     }
 
     /** Correction manuelle, sinon parser ; comptes et problèmes du rapport. */

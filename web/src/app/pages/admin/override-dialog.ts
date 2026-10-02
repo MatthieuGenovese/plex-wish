@@ -2,10 +2,11 @@ import { Component, ElementRef, inject, output, signal, viewChild } from '@angul
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject, catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Issue, OverrideAction, OverrideRequest } from '../../core/api-types';
+import { Issue, OverrideAction, OverrideConflict, OverrideRequest } from '../../core/api-types';
 import { AdminApi } from '../../core/admin-api';
 import { LibraryApi } from '../../core/library-api';
-import { errorMessage } from '../../core/errors';
+import { errorCode, errorMessage } from '../../core/errors';
+import { HttpErrorResponse } from '@angular/common/http';
 import { closeModal, openModal } from '../../shared/dialog';
 
 /**
@@ -20,6 +21,31 @@ import { closeModal, openModal } from '../../shared/dialog';
       @if (issue(); as i) {
         <h2 id="override-title">Corriger le fichier n° {{ i.mediaFileId }}</h2>
         <p class="path mono">{{ i.relativePath }}</p>
+        @if (conflict(); as c) {
+          <div class="conflict" role="alert">
+            <h3>Remplacer le fichier de cet épisode ?</h3>
+            <p><strong>{{ c.episode.animeTitle }} · saison {{ c.episode.seasonNumber }} · épisode {{ c.episode.episodeNumber }}</strong>
+              est déjà fourni par un autre fichier.</p>
+            <dl>
+              <dt>Serait délié</dt>
+              @for (f of c.currentFiles; track f.relativePath) {
+                <dd><span class="mono">{{ f.relativePath }}</span> <span class="muted">(fichier n° {{ f.mediaFileId }})</span>
+                  @if (f.viaOverride) { <br /><span class="muted">Sa correction manuelle sera supprimée.</span> }
+                </dd>
+              }
+              <dt>Le remplace</dt>
+              <dd><span class="mono">{{ c.targetFile.relativePath }}</span> <span class="muted">(fichier n° {{ c.targetFile.mediaFileId }})</span></dd>
+            </dl>
+            <p class="hint">Le fichier délié n’est pas supprimé : après le prochain scan, il réapparaît dans le rapport, où vous pourrez le corriger. Annuler cette correction (onglet Corrections) rétablit l’ancien lien.</p>
+          </div>
+          @if (error(); as e) {
+            <div class="alert alert-error" role="alert"><p>{{ e }}</p></div>
+          }
+          <div class="dialog-actions">
+            <button type="button" (click)="conflict.set(null)">Retour</button>
+            <button type="button" class="btn-danger" (click)="confirmReplace()" [disabled]="pending()">Remplacer</button>
+          </div>
+        } @else {
         <form [formGroup]="form" (ngSubmit)="save()" novalidate>
           <fieldset>
             <legend class="label">Ce fichier est…</legend>
@@ -56,6 +82,7 @@ import { closeModal, openModal } from '../../shared/dialog';
             <button type="submit" class="btn-primary" [disabled]="pending()">Enregistrer</button>
           </div>
         </form>
+        }
       }
     </dialog>
   `,
@@ -63,6 +90,11 @@ import { closeModal, openModal } from '../../shared/dialog';
     .path { word-break: break-all; color: var(--color-text-muted); }
     fieldset { border: 0; padding: 0; margin: 0 0 var(--space-4); }
     .choice { display: flex; align-items: center; gap: var(--space-2); min-height: 2.5rem; }
+    .conflict { padding: var(--space-3) var(--space-4); border-left: 4px solid var(--color-warning); background: var(--color-warning-bg); border-radius: var(--radius); }
+    .conflict h3 { font-size: var(--font-size-md); margin-bottom: var(--space-2); }
+    dl { margin: 0 0 var(--space-3); }
+    dt { font-weight: var(--font-weight-medium); margin-top: var(--space-2); }
+    dd { margin: 0; word-break: break-all; }
   `,
 })
 export class OverrideDialog {
@@ -77,6 +109,9 @@ export class OverrideDialog {
   protected readonly pending = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly suggestions = signal<string[]>([]);
+  /** 409 : l'épisode est déjà fourni par un autre fichier ; remplacement seulement après confirmation. */
+  protected readonly conflict = signal<OverrideConflict | null>(null);
+  private lastRequest: OverrideRequest | null = null;
   protected readonly titles$ = new Subject<string>();
 
   protected readonly form = new FormGroup({
@@ -108,6 +143,7 @@ export class OverrideDialog {
 
   open(issue: Issue): void {
     this.issue.set(issue);
+    this.conflict.set(null);
     this.error.set(null);
     this.pending.set(false);
     this.form.reset({
@@ -139,17 +175,35 @@ export class OverrideDialog {
       }
       request = { ...request, animeTitle: title, seasonNumber: v.seasonNumber!, episodeNumber: v.episodeNumber! };
     }
+    this.send(issue, request, false);
+  }
+
+  /** Après confirmation explicite : même correction, avec remplacement. */
+  confirmReplace(): void {
+    const issue = this.issue();
+    if (issue?.mediaFileId && this.lastRequest) {
+      this.send(issue, this.lastRequest, true);
+    }
+  }
+
+  private send(issue: Issue, request: OverrideRequest, replace: boolean): void {
+    this.lastRequest = request;
     this.pending.set(true);
     this.error.set(null);
-    this.admin.setOverride(issue.mediaFileId, request).subscribe({
+    this.admin.setOverride(issue.mediaFileId!, request, replace).subscribe({
       next: () => {
         this.pending.set(false);
+        this.conflict.set(null);
         this.close();
         this.saved.emit(issue);
       },
       error: (err: unknown) => {
         this.pending.set(false);
-        this.error.set(errorMessage(err, 'Correction impossible.'));
+        if (!replace && errorCode(err) === 'EPISODE_ALREADY_LINKED') {
+          this.conflict.set((err as HttpErrorResponse).error as OverrideConflict);
+        } else {
+          this.error.set(errorMessage(err, 'Correction impossible.'));
+        }
       },
     });
   }

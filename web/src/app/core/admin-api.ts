@@ -67,8 +67,10 @@ export class AdminApi {
     return this.http.get<IssuePage>('/api/admin/library/issues', { params });
   }
 
-  setOverride(mediaFileId: number, request: OverrideRequest): Observable<Override> {
-    return this.http.put<Override>(`/api/admin/library/files/${mediaFileId}/override`, request);
+  /** 409 EPISODE_ALREADY_LINKED si l'épisode est déjà fourni par un autre fichier, sauf replace = true. */
+  setOverride(mediaFileId: number, request: OverrideRequest, replace = false): Observable<Override> {
+    const params = replace ? new HttpParams().set('replace', 'true') : undefined;
+    return this.http.put<Override>(`/api/admin/library/files/${mediaFileId}/override`, request, { params });
   }
 
   deleteOverride(mediaFileId: number): Observable<void> {

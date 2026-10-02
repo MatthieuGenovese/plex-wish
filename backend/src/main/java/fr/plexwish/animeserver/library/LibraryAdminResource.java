@@ -3,7 +3,9 @@ package fr.plexwish.animeserver.library;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.plexwish.animeserver.common.ApiException;
+import fr.plexwish.animeserver.library.scan.LibraryScanner;
 import fr.plexwish.animeserver.library.scan.ScanService;
+import fr.plexwish.animeserver.library.scan.Titles;
 import io.agroal.api.AgroalDataSource;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -86,6 +88,18 @@ public class LibraryAdminResource {
             @Size(min = 1, max = 300) String animeTitle,
             @Min(0) @Max(99) Integer seasonNumber,
             @Min(0) @Max(9999) Integer episodeNumber) {
+    }
+
+    /** Fichier qui serait délié par une correction ; {@code viaOverride} : lié (ou à lier) par une autre correction. */
+    public record LinkedFile(Long mediaFileId, String relativePath, boolean viaOverride) {
+    }
+
+    public record TargetEpisode(String animeTitle, int seasonNumber, int episodeNumber) {
+    }
+
+    /** 409 : l'épisode visé est déjà fourni par un autre fichier. Rien n'a été modifié. */
+    public record OverrideConflict(int status, String error, String message, TargetEpisode episode,
+                                   List<LinkedFile> currentFiles, LinkedFile targetFile) {
     }
 
     public record OverrideDto(Long mediaFileId, String relativePath, String action, String animeTitle,
@@ -231,33 +245,127 @@ public class LibraryAdminResource {
         }
     }
 
-    /** Correction manuelle d'un fichier, appliquée au prochain scan et jamais écrasée par un scan (§7.7). */
+    /**
+     * Correction manuelle d'un fichier, appliquée au prochain scan et jamais écrasée par un scan (§7.7).
+     * Si l'épisode visé est déjà fourni par un autre fichier (lien actuel ou autre correction) : 409 avec le détail,
+     * sans rien modifier, sauf {@code replace=true}. Le remplacement supprime alors la correction de l'autre
+     * fichier s'il y en a une ; l'autre fichier reste disponible et ressort au rapport (doublon ou non résolu).
+     */
     @PUT
     @Path("/files/{id}/override")
     @Consumes(MediaType.APPLICATION_JSON)
-    public OverrideDto setOverride(@PathParam("id") long mediaFileId, @Valid @NotNull OverrideRequest request) throws SQLException {
+    public Response setOverride(@PathParam("id") long mediaFileId,
+                                @QueryParam("replace") @DefaultValue("false") boolean replace,
+                                @Valid @NotNull OverrideRequest request) throws SQLException {
         boolean episode = "EPISODE".equals(request.action());
         if (episode && (request.animeTitle() == null || request.animeTitle().isBlank()
                 || request.seasonNumber() == null || request.episodeNumber() == null)) {
             throw new ApiException(400, "INCOMPLETE_OVERRIDE", "EPISODE demande animeTitle, seasonNumber et episodeNumber");
         }
         try (Connection c = dataSource.getConnection()) {
-            String path = pathOf(c, mediaFileId);
-            try (PreparedStatement st = c.prepareStatement("""
-                    INSERT INTO media_file_override (relative_path, action, anime_title, season_number, episode_number, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (relative_path) DO UPDATE SET action = EXCLUDED.action, anime_title = EXCLUDED.anime_title,
-                        season_number = EXCLUDED.season_number, episode_number = EXCLUDED.episode_number,
-                        created_by = EXCLUDED.created_by, created_at = now()""")) {
-                st.setString(1, path);
-                st.setString(2, request.action());
-                st.setString(3, episode ? request.animeTitle().trim() : null);
-                st.setObject(4, episode ? request.seasonNumber() : null);
-                st.setObject(5, episode ? request.episodeNumber() : null);
-                st.setString(6, jwt.getName());
-                st.executeUpdate();
+            c.setAutoCommit(false);
+            try {
+                String path = pathOf(c, mediaFileId);
+                String title = episode ? request.animeTitle().trim() : null;
+                if (episode) {
+                    List<LinkedFile> conflicts = conflicts(c, path, title, request.seasonNumber(), request.episodeNumber());
+                    if (!conflicts.isEmpty() && !replace) {
+                        c.rollback();
+                        TargetEpisode target = new TargetEpisode(displayTitle(c, title), request.seasonNumber(), request.episodeNumber());
+                        return Response.status(409).type(MediaType.APPLICATION_JSON).entity(new OverrideConflict(409,
+                                "EPISODE_ALREADY_LINKED",
+                                "Cet épisode est déjà fourni par un autre fichier. Confirmer le remplacement avec replace=true.",
+                                target, conflicts, new LinkedFile(mediaFileId, path, false))).build();
+                    }
+                    for (LinkedFile other : conflicts) {
+                        if (other.viaOverride()) {
+                            try (PreparedStatement st = c.prepareStatement("DELETE FROM media_file_override WHERE relative_path = ?")) {
+                                st.setString(1, other.relativePath());
+                                st.executeUpdate();
+                            }
+                        }
+                    }
+                }
+                try (PreparedStatement st = c.prepareStatement("""
+                        INSERT INTO media_file_override (relative_path, action, anime_title, season_number, episode_number, created_by)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (relative_path) DO UPDATE SET action = EXCLUDED.action, anime_title = EXCLUDED.anime_title,
+                            season_number = EXCLUDED.season_number, episode_number = EXCLUDED.episode_number,
+                            created_by = EXCLUDED.created_by, created_at = now()""")) {
+                    st.setString(1, path);
+                    st.setString(2, request.action());
+                    st.setString(3, title);
+                    st.setObject(4, episode ? request.seasonNumber() : null);
+                    st.setObject(5, episode ? request.episodeNumber() : null);
+                    st.setString(6, jwt.getName());
+                    st.executeUpdate();
+                }
+                c.commit();
+                c.setAutoCommit(true);
+            } catch (SQLException | RuntimeException e) {
+                c.rollback();
+                throw e;
             }
-            return overrides(c, mediaFileId).get(0);
+            return Response.ok(overrides(c, mediaFileId).get(0)).build();
+        }
+    }
+
+    /**
+     * Autres fichiers disponibles qui fournissent (ou fourniront au prochain scan) l'épisode visé :
+     * le fichier actuellement lié, sauf si sa propre correction l'envoie ailleurs, et les fichiers dont une
+     * correction vise ce même épisode.
+     */
+    private List<LinkedFile> conflicts(Connection c, String path, String title, int season, int episode) throws SQLException {
+        String target = LibraryScanner.target(title, season, episode);
+        Map<String, LinkedFile> found = new LinkedHashMap<>();
+        try (PreparedStatement st = c.prepareStatement("""
+                SELECT m.id, m.relative_path, o.action, o.anime_title, o.season_number, o.episode_number
+                FROM episode e JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
+                JOIN media_file m ON m.id = e.media_file_id
+                LEFT JOIN media_file_override o ON o.relative_path = m.relative_path
+                WHERE a.normalized_title = ? AND s.season_number = ? AND e.episode_number = ?
+                  AND m.available AND m.relative_path <> ?""")) {
+            st.setString(1, Titles.normalize(title));
+            st.setInt(2, season);
+            st.setInt(3, episode);
+            st.setString(4, path);
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    String action = rs.getString(3);
+                    boolean keeps = action == null || ("EPISODE".equals(action)
+                            && target.equals(LibraryScanner.target(rs.getString(4), rs.getInt(5), rs.getInt(6))));
+                    if (keeps) {
+                        found.put(rs.getString(2), new LinkedFile(rs.getLong(1), rs.getString(2), action != null));
+                    }
+                }
+            }
+        }
+        try (PreparedStatement st = c.prepareStatement("""
+                SELECT m.id, o.relative_path, o.anime_title
+                FROM media_file_override o JOIN media_file m ON m.relative_path = o.relative_path
+                WHERE o.action = 'EPISODE' AND o.season_number = ? AND o.episode_number = ?
+                  AND m.available AND o.relative_path <> ?""")) {
+            st.setInt(1, season);
+            st.setInt(2, episode);
+            st.setString(3, path);
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    if (Titles.normalize(rs.getString(3)).equals(Titles.normalize(title))) {
+                        found.putIfAbsent(rs.getString(2), new LinkedFile(rs.getLong(1), rs.getString(2), true));
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(found.values());
+    }
+
+    /** Titre tel qu'affiché dans la bibliothèque s'il existe déjà (« Show » pour « show »). */
+    private static String displayTitle(Connection c, String title) throws SQLException {
+        try (PreparedStatement st = c.prepareStatement("SELECT title FROM anime WHERE normalized_title = ?")) {
+            st.setString(1, Titles.normalize(title));
+            try (ResultSet rs = st.executeQuery()) {
+                return rs.next() ? rs.getString(1) : title;
+            }
         }
     }
 

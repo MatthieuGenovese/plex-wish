@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestProfile(LogLeakTest.VerboseLogs.class)
 class LogLeakTest {
 
+    @jakarta.inject.Inject
+    fr.plexwish.animeserver.stream.StreamSigner streamSigner;
+
     public static class VerboseLogs implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
@@ -41,8 +44,8 @@ class LogLeakTest {
                     "quarkus.log.category.\"fr.plexwish\".level", "DEBUG",
                     "quarkus.log.category.\"com.github.dockerjava\".level", "INFO",
                     "quarkus.log.category.\"org.testcontainers\".level", "INFO",
-                    "quarkus.http.access-log.enabled", "true",
-                    "quarkus.http.access-log.pattern", "combined");
+                    // Format du journal d'accès : celui de application.properties (sans query string).
+                    "quarkus.http.access-log.enabled", "true");
         }
     }
 
@@ -115,15 +118,21 @@ class LogLeakTest {
         given().cookie(AuthResource.COOKIE, refresh2).post("/api/auth/logout").then().statusCode(204);
         String adminAccess = adminToken();
 
+        // URL de lecture signée : la signature ne doit apparaître nulle part, même avec le journal d'accès.
+        String exp = String.valueOf(java.time.Instant.now().plusSeconds(600).getEpochSecond());
+        String sig = streamSigner.signature(424242, id, Long.parseLong(exp));
+        given().get("/api/stream/424242?u=" + id + "&exp=" + exp + "&sig=" + sig).then().statusCode(404);
+
         String logs;
         synchronized (capture) {
             logs = capture.text.toString();
         }
         assertTrue(logs.contains(name), "le test doit bien lire les logs de l'application");
         assertTrue(logs.contains("POST /api/auth/login"), "le journal d'accès HTTP doit être capturé");
+        assertTrue(logs.contains("GET /api/stream/424242"), "la lecture doit apparaître dans le journal d'accès");
         assertTrue(capture.debugRecords > 0, "les logs DEBUG doivent être actifs");
         for (String secret : List.of(password, "wrong-" + password, newPassword, "x".repeat(300), access, adminAccess,
-                refresh, refresh2, RefreshTokenService.hash(refresh), "admin-test-password", "$2a$12$", "$2y$12$")) {
+                refresh, refresh2, RefreshTokenService.hash(refresh), "admin-test-password", "$2a$12$", "$2y$12$", sig)) {
             assertFalse(logs.contains(secret), "secret trouvé dans les logs : " + secret.substring(0, Math.min(12, secret.length())) + "…");
         }
     }

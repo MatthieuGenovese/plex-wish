@@ -122,6 +122,19 @@ Dans l'interface : *Administration* → **Scan** (lancement, état, historique),
 
 Un scan abandonné (dossier média absent, vide ou illisible) ne marque rien comme disparu. Si un scan rendrait indisponibles **plus de la moitié** des fichiers connus (mauvais dossier monté, partage absent…), il s'arrête aussi sans rien modifier et le rapport l'explique ; si c'est voulu : `POST /api/admin/library/scan?confirmMassRemoval=true`. Un fichier disparu est seulement masqué : s'il revient, son épisode réapparaît avec le même id.
 
+## Lecture (API)
+
+Pas encore de lecteur web : la lecture se teste avec `curl` (ou VLC, qui accepte une URL).
+
+```sh
+TOKEN=$(curl -s -H 'Content-Type: application/json' -d '{"login":"admin","password":"…"}' http://localhost:8080/api/auth/login | jq -r .accessToken)
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/episodes/42/stream-url
+# → {"url":"/api/stream/1234?u=1&exp=…&sig=…","expiresAt":"…","mimeType":"video/x-matroska","fileSize":…}
+curl -s -o /dev/null -D - -H 'Range: bytes=0-1023' "http://localhost:8080/api/stream/1234?u=1&exp=…&sig=…"   # 206
+```
+
+L'URL de lecture est valable 6 h (`STREAM_URL_LIFETIME`), pour un seul fichier et un seul utilisateur ; elle ne demande pas d'en-tête d'authentification (un lecteur vidéo ne sait pas en envoyer). Sur un `403`, en redemander une.
+
 ## Tester le scan complet (bibliothèque factice)
 
 Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.

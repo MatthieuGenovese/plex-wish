@@ -7,12 +7,15 @@ import java.util.Optional;
 /** Extensions vidéo reconnues et type MIME renvoyé au lecteur. */
 public final class VideoMediaTypes {
 
+    /** Mêmes extensions que le scan (LibraryFiles) ; ARCHITECTURE §6.1. */
     private static final Map<String, String> BY_EXTENSION = Map.of(
             "mp4", "video/mp4",
             "m4v", "video/mp4",
             "mkv", "video/x-matroska",
             "webm", "video/webm",
-            "avi", "video/x-msvideo");
+            "avi", "video/x-msvideo",
+            "ogm", "video/ogg",
+            "ts", "video/mp2t");
 
     private VideoMediaTypes() {
     }

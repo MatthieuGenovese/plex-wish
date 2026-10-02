@@ -40,6 +40,20 @@ server {
         client_max_body_size 1m;
     }
 
+    # --- Lecture vidéo (URL signée, ARCHITECTURE §6) -----------------------------------------
+    # Pas de mise en tampon : nginx relaie les octets au fil de l'eau au lieu de copier la vidéo
+    # dans un fichier temporaire. La query string (signature) n'apparaît pas dans le journal ($uri).
+    location /api/stream/ {
+        proxy_pass http://backend:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
     # --- Swagger (404 côté backend tant que SWAGGER_ENABLED=false) --------------------
     # La page Swagger UI contient du JavaScript inline : CSP assouplie ici seulement.
     location ~ ^/q/(swagger-ui|openapi) {

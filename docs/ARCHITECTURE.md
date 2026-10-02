@@ -199,7 +199,13 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Risque : l'URL peut fuiter via les logs (nginx, reverse proxy). Mitigation : format de log nginx sans query string pour `/api/stream/`, et le backend ne logge pas les query strings.
 - `STREAM_SIGNING_SECRET` est distinct de `JWT_SECRET`.
 
-**Rien de ceci n'est implémenté avant la fin de l'étape**, sauf l'endpoint Range du spike (phase 0).
+**Implémenté en phase 5** (`stream/StreamSigner`, `stream/StreamResource`) :
+- `GET /api/episodes/{id}/stream-url` → `{url, expiresAt, mimeType, fileSize}`. L'URL est relative (`/api/stream/…`) : le client la colle à l'adresse du serveur qu'il connaît. `404 EPISODE_NOT_FOUND` (épisode inconnu), `404 EPISODE_UNAVAILABLE` (fichier absent du NAS).
+- Signature : `HMAC-SHA256(STREAM_SIGNING_SECRET, "v1:" + mediaFileId + ":" + userId + ":" + exp)`, base64url sans `=`. Le préfixe `v1` permettra de changer le format sans accepter d'anciennes URL par erreur. Durée : `STREAM_URL_LIFETIME` (6 h par défaut).
+- `GET` et `HEAD /api/stream/{mediaFileId}?u=&exp=&sig=` : pas d'en-tête d'authentification. Ordre des contrôles : signature (`403 STREAM_URL_INVALID`), expiration (`403 STREAM_URL_EXPIRED`), utilisateur actif (`403 USER_DISABLED`, relu en base à chaque requête), fichier disponible et chemin réel sous la racine (`404 EPISODE_UNAVAILABLE`). **Sur un 403, le client redemande une URL** (pause longue) ; s'il obtient à nouveau 403 ou 401, il renvoie à la connexion.
+- Le chemin vient de la base, et il est revérifié : `..`, chemin absolu ou lien symbolique qui sortirait de la racine → 404 (`StreamTest`).
+- `Cache-Control: private` : un cache partagé ne garde pas la vidéo d'un utilisateur.
+- Logs : nginx journalise `$uri` (sans query string) et ne met pas `/api/stream/` en tampon (`proxy_buffering off`, sinon il recopierait la vidéo dans un fichier temporaire). Côté Quarkus, le format du journal d'accès (désactivé par défaut) utilise `%R`, le chemin sans query string, et le logger `ForwardedParser`, qui recopie l'URL complète en DEBUG, reste en INFO (`LogLeakTest`). ⚠️ Le reverse proxy du DSM a son propre journal : ne pas y activer les journaux détaillés.
 
 ### 6.1 Servir le fichier (Range Requests)
 - Réponses `200` (sans Range), `206` + `Content-Range` (Range valide), `416` + `Content-Range: bytes */taille` (Range invalide), toujours `Accept-Ranges: bytes`.

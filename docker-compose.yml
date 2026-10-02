@@ -37,6 +37,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       REFRESH_REUSE_GRACE_SECONDS: ${REFRESH_REUSE_GRACE_SECONDS:-20}
+      STREAM_URL_LIFETIME: ${STREAM_URL_LIFETIME:-6h}
       # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}

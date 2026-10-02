@@ -15,6 +15,10 @@ public interface AuthConfig {
 
     Optional<String> streamSigningSecret();
 
+    /** Durée de validité d'une URL de lecture signée (§6) : couvre un visionnage, seeks compris. */
+    @WithDefault("6h")
+    java.time.Duration streamUrlLifetime();
+
     /** Origine publique (https://anime.mondomaine), utilisée pour contrôler le header Origin. */
     Optional<String> publicUrl();
 

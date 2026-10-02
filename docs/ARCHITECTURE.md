@@ -491,3 +491,31 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 6. Sous-titres externes comptés, pas associés (§7.8).
 7. Scan par lots, ffprobe hors du scan (§7.1).
 8. Tests du parser sur chaînes, seuil ≥ 97 % (§7.11).
+
+## 15. Métadonnées (phase 6)
+
+### 15.1 Fournisseur
+- Abstraction `MetadataProvider` (`search(titre)`, `byId(id)`, `synopsisLanguage()`). Premier fournisseur : **AniList** (API GraphQL publique, sans clé, `https://graphql.anilist.co`). Chaque fiche enregistre son fournisseur (`anime.metadata_provider`) et la langue de son synopsis (`anime.synopsis_language`) : un second fournisseur (ex. TMDB pour des synopsis en français) pourra s'ajouter sans migration de données.
+- Ce que fournit AniList : titres **romaji** (`Sousou no Frieren`), **anglais** quand il existe (`Frieren: Beyond Journey's End`), **natif** (japonais) et **synonymes** (toutes langues, parfois français) ; format (TV, MOVIE, OVA, ONA, SPECIAL…), nombre d'épisodes, année (`seasonYear`, sinon année de début) ; **synopsis en anglais uniquement** (un peu de HTML, nettoyé en texte brut) ; affiches (`coverImage.large` ≈ 230 px de large pour la grille, `extraLarge` ≈ 460 px pour la fiche) hébergées sur `s4.anilist.co` ; page de la fiche (`siteUrl`, pour l'attribution).
+- Ce qui est recopié dans `anime` : `alternative_title` (anglais, sinon romaji, s'il diffère du nom du dossier), `synopsis`, `synopsis_language`, `poster_url`, `poster_large_url`, `year`, `metadata_provider`, `metadata_provider_id`, `metadata_url`. **Le titre de l'animé reste le nom du dossier** (identité de l'animé pour le scan).
+- Limite de débit AniList : 90 requêtes/min en temps normal, **30/min** actuellement (« degraded state », vérifié le 2026-10-03 : `X-RateLimit-Limit: 30`). Dépassement : 429 + `Retry-After` (et une minute de blocage). Maintenance : 403. Le client espace ses appels de **2,5 s** (24/min), respecte `Retry-After` et `X-RateLimit-Remaining: 0`, et traite 403 / 5xx / réseau comme « indisponible, réessayer plus tard ».
+
+### 15.2 Appariement (`TitleMatcher`, fonctions pures)
+1. Nom du dossier nettoyé : à partir de la première mention technique (`S01`, `VOSTFR`, `1080p`, `WEB`, `x264`…) le reste est ignoré ; `(2019)` ou `(2013-2016)` donne l'année ; un titre entre parenthèses devient une variante (`Rumbling Hearts (Kimi ga Nozomu Eien)`), une parenthèse technique (`(CR)`, `(BD 1080p)`) est retirée.
+2. Recherche AniList sur le titre principal (10 résultats), puis sur la variante entre parenthèses seulement si la première ne suffit pas.
+3. Similarité de titre (0 à 1) : meilleur couple (variante du dossier, titre romaji / anglais / synonyme du candidat), après normalisation : accents, ponctuation, casse, `×` → `x`, `⁄` → espace, variantes de romanisation (`ō` / `ou` / `oo`, lettres doublées, particules `wo` → `o` et `ha` → `wa`). Distance de Levenshtein sur la chaîne entière et sur les mots triés ; on garde la meilleure.
+4. Départages, ajoutés au score de classement seulement : année du dossier égale (+0,05) ou éloignée de plus d'un an (−0,10), nombre d'épisodes local à ±10 % (+0,02), format TV (+0,01).
+5. Décision :
+   - **non apparié** si la similarité du meilleur est < **0,80** (`LOW_SCORE`), s'il n'y a aucun résultat (`NO_RESULT`), ou si deux fiches au titre suffisant sont indiscernables (écart < 0,01 : remake homonyme sans année, `AMBIGUOUS`). Rien n'est recopié ; les 5 meilleurs candidats sont gardés pour l'admin.
+   - **apparié** si la similarité est ≥ **0,92** et que le suivant est nettement derrière (≥ 0,05, ou correspondance exacte face à des titres non exacts) ;
+   - **douteux** sinon : la fiche est appliquée mais signalée à l'admin (`CLOSE_CANDIDATE` : un autre candidat très proche ; `BELOW_CONFIDENT` : titre seulement assez proche).
+   Cas typiques : saisons séparées sur AniList (`Shingeki no Kyojin`, `… Season 2`) → la première saison, au titre exact ; remakes homonymes (`Hunter x Hunter` 1999 / 2011) → non apparié sans indice, apparié avec `(2011)` dans le nom du dossier, douteux si seul le nombre d'épisodes départage.
+
+### 15.3 Tâche de fond (`MetadataWorker`, `MetadataService`)
+- Un fil dédié, séparé du scan ; la bibliothèque, le scan et la lecture n'en dépendent jamais (sans fiche : visuel de remplacement, pas de synopsis).
+- Un animé à la fois, un appel par animé (deux s'il a une variante entre parenthèses non concluante). **1 316 animés ≈ 55 min** au premier lancement (2,5 s par appel), puis seulement les nouveaux animés.
+- État en base, table `anime_metadata_match` (V7) : pas de ligne = à faire ; `PENDING` (à refaire), `MATCHED`, `DOUBTFUL`, `UNMATCHED`, `MANUAL`. **Idempotente** (un animé décidé n'est jamais redemandé) et **reprenable** (après un arrêt, elle repart sur ce qui reste).
+- Fournisseur indisponible ou limite de débit : l'animé reste « à faire », la tâche se met en pause (`Retry-After`, sinon 5 min) puis reprend. Erreur propre à un animé : nouvel essai avec délai croissant, abandon en « non apparié » (`ERROR`) après 5 échecs.
+- Réveil à la fin de chaque scan ; sinon vérification toutes les 10 min. `METADATA_ENABLED=false` la désactive.
+- Une fiche **verrouillée** (correction manuelle, `locked`) n'est jamais modifiée par la tâche ni par un rescan (garde dans la requête d'écriture elle-même).
+- Tests : `TitleMatcherTest` (sans réseau), `AniListProviderTest` et `MetadataTest` contre un faux serveur AniList (`FakeAniList`, JDK `HttpServer`) : aucun appel réseau réel.

@@ -32,8 +32,13 @@ public class LibraryResource {
     public record SeasonDto(Long id, int seasonNumber, String label, long episodeCount) {
     }
 
-    public record AnimeDetail(Long id, String title, String alternativeTitle, String synopsis, String posterUrl,
-                              Integer year, List<SeasonDto> seasons) {
+    /**
+     * {@code metadataSource} : nom du fournisseur de la fiche (« AniList »), {@code synopsisLanguage} : langue du
+     * synopsis (« en »), {@code metadataUrl} : page de la fiche chez le fournisseur. Tout est null sans fiche.
+     */
+    public record AnimeDetail(Long id, String title, String alternativeTitle, String synopsis, String synopsisLanguage,
+                              String posterUrl, String posterLargeUrl, Integer year, String metadataSource,
+                              String metadataUrl, List<SeasonDto> seasons) {
     }
 
     public record EpisodeSummary(Long id, int episodeNumber, String title, Integer durationSeconds) {
@@ -94,7 +99,9 @@ public class LibraryResource {
     public AnimeDetail anime(@PathParam("id") long id) {
         List<SeasonDto> seasons = seasons(id);
         Anime a = Anime.findById(id);
-        return new AnimeDetail(a.id, a.title, a.alternativeTitle, a.synopsis, a.posterUrl, a.year, seasons);
+        return new AnimeDetail(a.id, a.title, a.alternativeTitle, a.synopsis, a.synopsisLanguage, a.posterUrl,
+                a.posterLargeUrl, a.year, "ANILIST".equals(a.metadataProvider) ? "AniList" : a.metadataProvider,
+                a.metadataUrl, seasons);
     }
 
     /** Saisons dans l'ordre 1, 2, 3… puis Spéciaux (saison 0) en dernier. */

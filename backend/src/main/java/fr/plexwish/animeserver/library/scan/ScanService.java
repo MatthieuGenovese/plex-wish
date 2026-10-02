@@ -34,6 +34,8 @@ public class ScanService {
     ManagedExecutor executor;
     @Inject
     ObjectMapper json;
+    @Inject
+    jakarta.enterprise.event.Event<ScanCompleted> completed;
 
     void onStart(@Observes StartupEvent event) throws SQLException {
         String jnu = System.getProperty("sun.jnu.encoding", "?");
@@ -84,6 +86,7 @@ public class ScanService {
         try {
             ScanStats stats = scanner.scan(runId, confirmMassRemoval);
             finish(runId, "SUCCESS", stats, null, null);
+            completed.fire(new ScanCompleted(runId));
             LOG.infof("Scan %d terminé en %d ms : %d vidéos, %d épisodes, %d extras, %d non résolues, %d doublons, %d disparues",
                     runId, stats.durationMs, stats.videos, stats.episodes, stats.extras, stats.unresolved,
                     stats.duplicates, stats.missing);

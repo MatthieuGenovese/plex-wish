@@ -25,7 +25,7 @@ public class Anime extends PanacheEntityBase {
     @Column(name = "normalized_title", nullable = false)
     public String normalizedTitle;
 
-    /** Les 4 champs suivants restent vides à cette étape (métadonnées : plus tard). */
+    /** Champs suivants : remplis par la tâche des métadonnées (ARCHITECTURE §15), vides tant que non apparié. */
     @Column(name = "alternative_title")
     public String alternativeTitle;
 
@@ -38,6 +38,21 @@ public class Anime extends PanacheEntityBase {
 
     @Column(name = "metadata_provider_id")
     public String metadataProviderId;
+
+    /** Fournisseur de la fiche (ex. ANILIST). */
+    @Column(name = "metadata_provider")
+    public String metadataProvider;
+
+    /** Langue du synopsis (ISO 639-1, ex. "en"). */
+    @Column(name = "synopsis_language")
+    public String synopsisLanguage;
+
+    @Column(name = "poster_large_url")
+    public String posterLargeUrl;
+
+    /** Page de la fiche chez le fournisseur (attribution). */
+    @Column(name = "metadata_url")
+    public String metadataUrl;
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;

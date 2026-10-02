@@ -1,7 +1,18 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { IssuePage, Override, OverrideRequest, Page, Role, ScanReport, User } from './api-types';
+import {
+  IssuePage,
+  MetadataEntry,
+  MetadataSheet,
+  MetadataSummary,
+  Override,
+  OverrideRequest,
+  Page,
+  Role,
+  ScanReport,
+  User,
+} from './api-types';
 
 export interface CreateUser {
   username: string;
@@ -79,5 +90,39 @@ export class AdminApi {
 
   overrides(): Observable<Override[]> {
     return this.http.get<Override[]>('/api/admin/library/overrides');
+  }
+
+  // --- Métadonnées ---------------------------------------------------------------------------------
+
+  metadataSummary(): Observable<MetadataSummary> {
+    return this.http.get<MetadataSummary>('/api/admin/metadata/summary');
+  }
+
+  metadata(query: { status?: string; q?: string; page?: number; size?: number }): Observable<Page<MetadataEntry>> {
+    let params = new HttpParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== '') {
+        params = params.set(key, String(value));
+      }
+    }
+    return this.http.get<Page<MetadataEntry>>('/api/admin/metadata', { params });
+  }
+
+  metadataPreview(animeId: number, providerId: string): Observable<MetadataSheet> {
+    return this.http.get<MetadataSheet>(`/api/admin/anime/${animeId}/metadata/preview`, { params: { providerId } });
+  }
+
+  /** providerId null = « aucune fiche ». 409 METADATA_CONFLICT sans replace s'il faut confirmer. */
+  setMetadata(animeId: number, providerId: string | null, replace = false): Observable<MetadataEntry> {
+    const params = replace ? new HttpParams().set('replace', 'true') : undefined;
+    return this.http.put<MetadataEntry>(`/api/admin/anime/${animeId}/metadata`, { providerId }, { params });
+  }
+
+  unlockMetadata(animeId: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/anime/${animeId}/metadata`);
+  }
+
+  requeueMetadata(status: string): Observable<{ requeued: number }> {
+    return this.http.post<{ requeued: number }>('/api/admin/metadata/requeue', null, { params: { status } });
   }
 }

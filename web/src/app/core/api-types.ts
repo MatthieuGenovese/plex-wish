@@ -53,8 +53,14 @@ export interface AnimeDetail {
   title: string;
   alternativeTitle: string | null;
   synopsis: string | null;
+  /** Langue du synopsis (ISO 639-1, ex. "en"). */
+  synopsisLanguage: string | null;
   posterUrl: string | null;
+  posterLargeUrl: string | null;
   year: number | null;
+  /** Fournisseur de la fiche (« AniList »), null sans fiche. */
+  metadataSource: string | null;
+  metadataUrl: string | null;
   seasons: Season[];
 }
 
@@ -172,4 +178,69 @@ export interface OverrideConflict extends ApiError {
   episode: { animeTitle: string; seasonNumber: number; episodeNumber: number };
   currentFiles: LinkedFile[];
   targetFile: LinkedFile;
+}
+
+// --- Métadonnées (administration) ----------------------------------------------------------------
+
+export type MatchStatus = 'PENDING' | 'MATCHED' | 'DOUBTFUL' | 'UNMATCHED' | 'MANUAL';
+
+export interface MetadataCandidate {
+  providerId: string;
+  title: string;
+  romaji: string | null;
+  year: number | null;
+  format: string | null;
+  episodes: number | null;
+  posterUrl: string | null;
+  siteUrl: string | null;
+  score?: number;
+}
+
+export interface MetadataEntry {
+  animeId: number;
+  title: string;
+  status: MatchStatus;
+  reason: string | null;
+  score: number | null;
+  locked: boolean;
+  providerId: string | null;
+  matchedTitle: string | null;
+  year: number | null;
+  posterUrl: string | null;
+  metadataUrl: string | null;
+  candidates: MetadataCandidate[];
+  lastError: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface MetadataSummary {
+  enabled: boolean;
+  provider: string;
+  counts: Record<MatchStatus, number>;
+  total: number;
+  pausedUntil: string | null;
+  lastUnavailable: string | null;
+  estimatedMinutesLeft: number;
+}
+
+/** Fiche proposée ou actuelle (prévisualisation, confirmation). */
+export interface MetadataSheet {
+  providerId: string;
+  title: string;
+  romaji: string | null;
+  year: number | null;
+  format: string | null;
+  episodes: number | null;
+  synopsis: string | null;
+  posterUrl: string | null;
+  siteUrl: string | null;
+}
+
+/** Corps du 409 METADATA_CONFLICT : rien n'a été modifié. */
+export interface MetadataConflict extends ApiError {
+  anime: { id: number; title: string };
+  current: MetadataSheet | null;
+  proposed: MetadataSheet | null;
+  otherAnime: { id: number; title: string }[];
 }

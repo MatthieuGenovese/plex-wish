@@ -4,13 +4,14 @@ import { of } from 'rxjs';
 import { EpisodeSummary, Season } from '../../core/api-types';
 import { LibraryApi } from '../../core/library-api';
 import { loadOn } from '../../shared/load-state';
+import { Poster } from '../../shared/poster';
 
 /** Au-delà, les épisodes d'une saison sont présentés par tranches (One Piece : 1 000+ épisodes). */
 export const CHUNK = 100;
 
 @Component({
   selector: 'app-anime-detail',
-  imports: [RouterLink],
+  imports: [RouterLink, Poster],
   template: `
     @let a = anime();
     @if (a.error) {
@@ -20,9 +21,29 @@ export const CHUNK = 100;
       </div>
     } @else if (a.data; as anime) {
       <p class="back"><a routerLink="/anime">‹ Bibliothèque</a></p>
-      <h1>{{ anime.title }}</h1>
-      @if (anime.alternativeTitle) { <p class="muted">{{ anime.alternativeTitle }}</p> }
-      @if (anime.synopsis) { <p class="synopsis">{{ anime.synopsis }}</p> }
+      <div class="hero">
+        <app-poster class="hero-poster" [title]="anime.title" [url]="anime.posterLargeUrl ?? anime.posterUrl" [eager]="true" />
+        <div class="hero-text">
+          <h1>{{ anime.title }}</h1>
+          @if (anime.alternativeTitle || anime.year) {
+            <p class="muted subtitle">
+              {{ anime.alternativeTitle }}@if (anime.alternativeTitle && anime.year) { · }{{ anime.year }}
+            </p>
+          }
+          @if (anime.synopsis) {
+            <p class="synopsis" [attr.lang]="anime.synopsisLanguage">{{ anime.synopsis }}</p>
+          }
+          @if (anime.metadataSource) {
+            <p class="source">
+              @if (anime.synopsis && anime.synopsisLanguage === 'en') { Synopsis en anglais · }
+              Source :
+              @if (anime.metadataUrl) {
+                <a [href]="anime.metadataUrl" target="_blank" rel="noopener noreferrer">{{ anime.metadataSource }}</a>
+              } @else { {{ anime.metadataSource }} }
+            </p>
+          }
+        </div>
+      </div>
 
       @if (anime.seasons.length > 1) {
         <nav aria-label="Saisons" class="seasons">
@@ -77,7 +98,15 @@ export const CHUNK = 100;
   `,
   styles: `
     .back { margin-bottom: var(--space-2); }
-    .synopsis { max-width: 60rem; }
+    .hero { display: grid; grid-template-columns: 13rem 1fr; gap: var(--space-5); align-items: start; margin-bottom: var(--space-5); }
+    .hero h1 { margin-bottom: var(--space-2); }
+    .subtitle { margin-bottom: var(--space-3); }
+    .synopsis { max-width: 60rem; white-space: pre-line; }
+    .source { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+    @media (max-width: 40rem) {
+      .hero { grid-template-columns: 7rem 1fr; gap: var(--space-3); }
+      .hero h1 { font-size: var(--font-size-xl); }
+    }
     .seasons ul, .chunks { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-5); padding: 0; list-style: none; }
     .seasons a {
       display: inline-flex; align-items: center; gap: var(--space-2);

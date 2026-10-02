@@ -22,6 +22,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () => import('./overrides').then((m) => m.OverridesPage),
       },
       {
+        path: 'metadata',
+        title: 'Métadonnées · Administration · Anime Server',
+        loadComponent: () => import('./metadata').then((m) => m.MetadataPage),
+      },
+      {
         path: 'users',
         title: 'Utilisateurs · Administration · Anime Server',
         loadComponent: () => import('./users').then((m) => m.UsersPage),

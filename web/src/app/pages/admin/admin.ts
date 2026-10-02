@@ -11,6 +11,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
         <li><a routerLink="scan" routerLinkActive="active" ariaCurrentWhenActive="page">Scan</a></li>
         <li><a routerLink="report" routerLinkActive="active" ariaCurrentWhenActive="page">Rapport</a></li>
         <li><a routerLink="corrections" routerLinkActive="active" ariaCurrentWhenActive="page">Corrections</a></li>
+        <li><a routerLink="metadata" routerLinkActive="active" ariaCurrentWhenActive="page">Métadonnées</a></li>
         <li><a routerLink="users" routerLinkActive="active" ariaCurrentWhenActive="page">Utilisateurs</a></li>
       </ul>
     </nav>

@@ -217,13 +217,19 @@ class TitleMatcherTest {
     void fallbackSearchesUseAniListRomanizationAndTheTitleBeforeADash() {
         assertEquals(List.of("Chuunibyou Demo Koi ga Shitai!"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Chûnibyô Demo Koi ga Shitai!")));
-        assertEquals(List.of("Dekiru Neko ha Kyou mo Yuuutsu"),
+        assertEquals(List.of("Dekiru Neko ha Kyou mo Yuuutsu", "Dekiru Neko ha Kyou"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Dekiru Neko ha Kyō mo Yūutsu")));
         assertEquals(List.of("Gotoubun no Hanayome"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Gotoubun no Hanayome - Quintuplets")));
+        assertEquals(List.of("Kono Yo no Hate de Koi o Utau Shoujo YU-NO", "Kono Yo no Hate"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("Kono Yo no Hate de Koi o Utau Shōjo YU-NO")));
         assertEquals(List.of("Kimi ga Nozomu Eien"),
                 TitleMatcher.fallbackSearches(TitleMatcher.clean("Rumbling Hearts (Kimi ga Nozomu Eien)")));
         assertEquals(List.of(), TitleMatcher.fallbackSearches(TitleMatcher.clean("Sousou no Frieren")));
+        assertEquals(List.of("100-man no Inochi no"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("100-man no Inochi no Ue ni Ore wa Tatte Iru")));
+        assertEquals(Status.MATCHED, decide("100-man no Inochi no Ue ni Ore wa Tatte Iru", 24,
+                c("114129", "100-man no Inochi no Ue ni Ore wa Tatteiru", "I'm Standing on a Million Lives", 2020, "TV", 12)).status());
         Decision d = decide("Gotoubun no Hanayome - Quintuplets", 24,
                 c("103572", "5-toubun no Hanayome", "The Quintessential Quintuplets", 2019, "TV", 12, "Gotoubun no Hanayome"));
         assertEquals(Status.MATCHED, d.status());

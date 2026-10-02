@@ -97,6 +97,12 @@ public final class TitleMatcher {
             out.add(ascii); // d'abord : même titre, écrit comme AniList (« Chuunibyou »)
         }
         out.addAll(query.variants().subList(1, query.variants().size())); // puis parenthèses, partie avant « - »
+        // Enfin, les premiers mots d'un long titre : la recherche AniList ne tolère pas une coupure différente
+        // (« Tatte Iru » / « Tatteiru »). La similarité, calculée sur le titre complet, reste le seul juge.
+        String[] words = asciiRomaji(query.main()).split("\\s+");
+        if (words.length > 5) {
+            out.add(String.join(" ", java.util.Arrays.copyOf(words, 4)));
+        }
         return out.stream().distinct().toList();
     }
 

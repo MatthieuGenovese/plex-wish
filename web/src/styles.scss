@@ -191,9 +191,12 @@ textarea {
   font: inherit;
   width: 100%;
 }
-input[type='checkbox'] {
+input[type='checkbox'],
+input[type='radio'] {
+  flex: 0 0 auto;
   width: 1.25rem;
   min-height: 1.25rem;
+  margin: 0;
   accent-color: var(--color-accent);
 }
 

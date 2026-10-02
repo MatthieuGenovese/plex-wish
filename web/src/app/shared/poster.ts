@@ -15,7 +15,8 @@ import { Component, computed, input, signal } from '@angular/core';
     }
   `,
   styles: `
-    :host { display: block; }
+    /* Conteneur : les initiales suivent la largeur de l'affiche (grille, fiche, vignette d'admin). */
+    :host { display: block; container-type: inline-size; }
     .poster {
       display: block;
       width: 100%;
@@ -29,7 +30,7 @@ import { Component, computed, input, signal } from '@angular/core';
       place-items: center;
       background: hsl(var(--hue) var(--poster-saturation) var(--poster-lightness));
       color: var(--color-text);
-      font-size: var(--font-size-xxl);
+      font-size: clamp(var(--font-size-xs), 22cqi, var(--font-size-xxl));
       font-weight: var(--font-weight-bold);
       letter-spacing: 0.05em;
     }

@@ -30,7 +30,7 @@ class TitleMatcherTest {
     void technicalMentionsYearAndParenthesesAreHandled() {
         Query q = TitleMatcher.clean("Full Dive - The Ultimate Next-Gen Full Dive RPG Is Even Shittier than Real Life S01 VOSTFR 1080p WEB x264 AAC -Tsundere-Raws (CR)");
         assertEquals("Full Dive - The Ultimate Next-Gen Full Dive RPG Is Even Shittier than Real Life", q.main());
-        assertEquals(List.of(q.main()), q.variants());
+        assertEquals(List.of(q.main(), "Full Dive"), q.variants()); // partie avant « - » : variante
         assertNull(q.year());
 
         Query illya = TitleMatcher.clean("Fate⁄kaleid liner Prisma Illya (2013-2016)");
@@ -119,12 +119,13 @@ class TitleMatcherTest {
     }
 
     @Test
-    void closeButDifferentTitlesStayUnderTheThreshold() {
+    void prefixOfSeveralVersionsIsDoubtfulAndPicksTheClosestTitle() {
         Decision d = decide("Kino no Tabi", 13,
                 c("1", "Kino no Tabi: The Beautiful World - The Animated Series", "Kino's Journey -the Beautiful World- the Animated Series", 2017, "TV", 12),
+                c("486", "Kino no Tabi: The Beautiful World", "Kino's Journey", 2003, "TV", 13),
                 c("2", "Kino no Tabi: Nanika wo Suru Tame ni - Life Goes On", null, 2005, "MOVIE", 1));
-        assertEquals(Status.UNMATCHED, d.status());
-        assertEquals(Reason.LOW_SCORE, d.reason());
+        assertEquals(Status.DOUBTFUL, d.status());
+        assertEquals("486", d.best().candidate().providerId());
     }
 
     @Test
@@ -163,5 +164,68 @@ class TitleMatcherTest {
         Decision partial = decide("Mahou Shoujo Site", 12,
                 c("1", "Mahou Shoujo Ikusei Keikaku", "Magical Girl Raising Project", 2016, "TV", 12));
         assertEquals(Status.UNMATCHED, partial.status());
+    }
+
+    // --- Cas relevés sur la vraie bibliothèque (1 316 animés, AniList réel) -----------------------------
+
+    @Test
+    void spacingAndLeadingArticlesDoNotMatter() {
+        assertEquals(Status.MATCHED, decide("Ao Ashi", 24, c("1", "Ao Ashi", "Aoashi", 2022, "TV", 24)).status());
+        assertEquals(Status.MATCHED, decide("11 Eyes", 12, c("2", "11eyes", null, 2009, "TV", 12)).status());
+        assertEquals(Status.MATCHED, decide("Great Cleric", 12,
+                c("3", "Seija Musou: Salaryman, Isekai de Ikinokoru Tame ni Ayumu Michi", "The Great Cleric", 2023, "TV", 12)).status());
+    }
+
+    @Test
+    void sequelsThatDifferOnlyByPunctuationPickTheFirstSeasonAsDoubtful() {
+        Decision d = decide("Gochuumon wa Usagi Desu ka", 36,
+                c("21034", "Gochuumon wa Usagi desu ka??", "Is the Order a Rabbit??", 2015, "TV", 12),
+                c("20618", "Gochuumon wa Usagi desu ka?", "Is the Order a Rabbit?", 2014, "TV", 12));
+        assertEquals(Status.DOUBTFUL, d.status());
+        assertEquals("20618", d.best().candidate().providerId());
+        Decision dog = decide("Dog Days", 13, c("2", "DOG DAYS'", "Dog Days'", 2012, "TV", 13), c("1", "DOG DAYS", "Dog Days", 2011, "TV", 13));
+        assertEquals("1", dog.best().candidate().providerId());
+    }
+
+    @Test
+    void realRemakesWithTheSameTitleStayAmbiguous() {
+        Decision d = decide("Captain Tsubasa", 52,
+                c("2", "Captain Tsubasa", "Captain Tsubasa", 2018, "TV", 52),
+                c("1", "Captain Tsubasa", "Captain Tsubasa", 1983, "TV", 128));
+        // Le nombre d'épisodes local (52) départage : appliqué, mais signalé.
+        assertEquals("2", d.best().candidate().providerId());
+        Decision noHint = decide("Captain Tsubasa", null,
+                c("2", "Captain Tsubasa", "Captain Tsubasa", 2018, "TV", 52),
+                c("1", "Captain Tsubasa", "Captain Tsubasa", 1983, "TV", 128));
+        assertEquals(Status.UNMATCHED, noHint.status());
+        assertEquals(Reason.AMBIGUOUS, noHint.reason());
+    }
+
+    @Test
+    void shortFolderTitleThatStartsTheRealTitleIsAtBestDoubtful() {
+        Decision d = decide("Frieren", 28,
+                c("182255", "Sousou no Frieren 2nd Season", "Frieren: Beyond Journey's End Season 2", 2026, "TV", 10),
+                c("154587", "Sousou no Frieren", "Frieren: Beyond Journey's End", 2023, "TV", 28));
+        assertEquals(Status.DOUBTFUL, d.status());
+        assertEquals("154587", d.best().candidate().providerId());
+        assertTrue(d.best().titleScore() < TitleMatcher.CONFIDENT_SCORE);
+        // Trop court pour ce raccourci : pas d'appariement sur un mot de 3 lettres.
+        assertEquals(Status.UNMATCHED, decide("FTK", 1, c("1", "FTK the Movie", null, 2020, "MOVIE", 1)).status());
+    }
+
+    @Test
+    void fallbackSearchesUseAniListRomanizationAndTheTitleBeforeADash() {
+        assertEquals(List.of("Chuunibyou Demo Koi ga Shitai!"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("Chûnibyô Demo Koi ga Shitai!")));
+        assertEquals(List.of("Dekiru Neko ha Kyou mo Yuuutsu"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("Dekiru Neko ha Kyō mo Yūutsu")));
+        assertEquals(List.of("Gotoubun no Hanayome"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("Gotoubun no Hanayome - Quintuplets")));
+        assertEquals(List.of("Kimi ga Nozomu Eien"),
+                TitleMatcher.fallbackSearches(TitleMatcher.clean("Rumbling Hearts (Kimi ga Nozomu Eien)")));
+        assertEquals(List.of(), TitleMatcher.fallbackSearches(TitleMatcher.clean("Sousou no Frieren")));
+        Decision d = decide("Gotoubun no Hanayome - Quintuplets", 24,
+                c("103572", "5-toubun no Hanayome", "The Quintessential Quintuplets", 2019, "TV", 12, "Gotoubun no Hanayome"));
+        assertEquals(Status.MATCHED, d.status());
     }
 }

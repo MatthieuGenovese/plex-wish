@@ -124,7 +124,9 @@ class MetadataTest {
     void idempotentNothingIsAskedTwiceAndRescanKeepsTheData() throws Exception {
         runUntilIdle();
         int requests = fake.requests().size();
-        assertEquals(4, requests, fake.requests().toString());
+        // 4 animés ; « Le Seigneur des Yôkai » (aucun résultat) a droit à une recherche de repli « Youkai ».
+        assertEquals(5, requests, fake.requests().toString());
+        assertTrue(fake.requests().contains("search:Le Seigneur des Youkai"));
         assertInstanceOf(MetadataService.Idle.class, runUntilIdle());
         assertEquals("SUCCESS", scan().getString("status"));
         assertInstanceOf(MetadataService.Idle.class, runUntilIdle());
@@ -144,7 +146,9 @@ class MetadataTest {
     @Test
     void resumesWhereItStoppedAfterAnOutage() throws Exception {
         // Premier animé traité, puis panne : la tâche s'arrête sans rien marquer pour les autres.
-        fake.force(new Forced(200, Map.of(), "{\"data\":{\"Page\":{\"media\":[]}}}"), new Forced(500, Map.of(), "{}"));
+        // Premier animé (« Chûnibyô… ») : aucun résultat, ni pour sa recherche de repli « Chuunibyou… ».
+        String empty = "{\"data\":{\"Page\":{\"media\":[]}}}";
+        fake.force(new Forced(200, Map.of(), empty), new Forced(200, Map.of(), empty), new Forced(500, Map.of(), "{}"));
         assertInstanceOf(MetadataService.Done.class, service.processNext());
         MetadataService.Step step = service.processNext();
         assertInstanceOf(MetadataService.Unavailable.class, step);
@@ -157,7 +161,7 @@ class MetadataTest {
         assertInstanceOf(MetadataService.Idle.class, runUntilIdle());
         assertEquals(4, count(ds, "SELECT count(*) FROM anime_metadata_match"));
         List<String> after = fake.requests().subList(before, fake.requests().size());
-        assertEquals(3, after.size(), after.toString());
+        assertEquals(4, after.size(), after.toString()); // 3 animés, dont un avec recherche de repli
         assertTrue(!after.contains(fake.requests().get(0)), "le premier animé n'est pas redemandé");
     }
 

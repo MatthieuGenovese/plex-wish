@@ -81,7 +81,31 @@ public final class TitleMatcher {
         List<String> all = new ArrayList<>();
         all.add(main);
         all.addAll(variants);
+        // « Gotoubun no Hanayome - Quintuplets » : le titre avant « - » est aussi une variante.
+        int dash = main.indexOf(" - ");
+        if (dash > 3) {
+            all.add(main.substring(0, dash).trim());
+        }
         return new Query(main, all, year);
+    }
+
+    /** Recherches supplémentaires, dans l'ordre, si la recherche principale ne donne pas d'appariement sûr. */
+    public static List<String> fallbackSearches(Query query) {
+        List<String> out = new ArrayList<>();
+        String ascii = asciiRomaji(query.main());
+        if (!ascii.equalsIgnoreCase(query.main())) {
+            out.add(ascii); // d'abord : même titre, écrit comme AniList (« Chuunibyou »)
+        }
+        out.addAll(query.variants().subList(1, query.variants().size())); // puis parenthèses, partie avant « - »
+        return out.stream().distinct().toList();
+    }
+
+    /** « Chûnibyô » → « Chuunibyou », « Kyō » → « Kyou », « Fiancée » → « Fiancee », « × » → « x ». */
+    static String asciiRomaji(String title) {
+        String s = title.replace("×", "x").replace("⁄", "/")
+                .replaceAll("[ōôŌÔ]", "ou").replaceAll("[ūûŪÛ]", "uu").replaceAll("[āâĀÂ]", "aa")
+                .replaceAll("[īîĪÎ]", "ii").replaceAll("[ēêĒÊ]", "ee");
+        return Normalizer.normalize(s, Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
     }
 
     /**
@@ -93,11 +117,17 @@ public final class TitleMatcher {
                 .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
         s = (" " + s + " ").replace(" wo ", " o ").replace(" ha ", " wa ").trim();
+        s = s.replaceFirst("^(the|a|an) ", ""); // « The Great Cleric » = « Great Cleric »
         s = s.replaceAll("(\\p{L})\\1+", "$1").replace("ou", "o").replaceAll("(\\p{L})\\1+", "$1");
         return s;
     }
 
-    /** Similarité de deux titres déjà normalisés : la meilleure entre la chaîne entière et les mots triés. */
+    /**
+     * Similarité de deux titres déjà normalisés : la meilleure entre la chaîne entière, les mots triés et la chaîne
+     * sans espaces (« Ao Ashi » = « Aoashi », « 11 Eyes » = « 11eyes »). Un titre de dossier qui est le début du
+     * titre complet (« Frieren » → « Frieren: Beyond Journey's End ») vaut au plus 0,90 : jamais « apparié » sur ce
+     * seul indice, au mieux « douteux ».
+     */
     public static double similarity(String a, String b) {
         if (a.isEmpty() || b.isEmpty()) {
             return 0;
@@ -105,8 +135,18 @@ public final class TitleMatcher {
         if (a.equals(b)) {
             return 1;
         }
-        return Math.max(ratio(a, b), ratio(sortedWords(a), sortedWords(b)));
+        double s = Math.max(ratio(a, b), ratio(sortedWords(a), sortedWords(b)));
+        String ca = a.replace(" ", "");
+        String cb = b.replace(" ", "");
+        s = Math.max(s, ca.equals(cb) ? 1 : ratio(ca, cb));
+        if (a.length() >= 4 && b.startsWith(a + " ")) {
+            s = Math.max(s, PREFIX_BASE + 0.1 * a.length() / b.length());
+        }
+        return s;
     }
+
+    /** Score d'un titre de dossier qui n'est que le début du titre du candidat (avant bonus de couverture). */
+    static final double PREFIX_BASE = 0.80;
 
     /** Score de titre seul : meilleur couple (variante du dossier, titre du candidat). */
     public static double titleScore(Query query, Candidate c) {
@@ -148,6 +188,28 @@ public final class TitleMatcher {
     public record Decision(Status status, Reason reason, Scored best, List<Scored> ranked) {
     }
 
+    /**
+     * Forme « brute » : minuscules sans accents, ponctuation conservée (les suites ne diffèrent parfois que par elle :
+     * « Gochuumon wa Usagi desu ka? » / « …ka?? »), sans les mentions « (2011) » ou « (TV) » qui marquent les remakes.
+     */
+    static String raw(String title) {
+        return Normalizer.normalize(title, Normalizer.Form.NFKD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT)
+                .replaceAll("\\((\\d{4}|tv|movie|ova|ona)\\)", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    /** Similarité brute : départage seulement, jamais un score d'appariement. */
+    static double rawScore(Query query, Candidate c) {
+        double best = 0;
+        for (String v : query.variants()) {
+            String rv = raw(v);
+            for (String t : c.titles()) {
+                String rt = raw(t);
+                best = Math.max(best, rv.equals(rt) ? 1 : rv.isEmpty() || rt.isEmpty() ? 0 : ratio(rv, rt));
+            }
+        }
+        return best;
+    }
+
     public static Decision decide(Query query, List<Candidate> candidates, Integer localEpisodes) {
         List<Scored> ranked = new ArrayList<>();
         for (Candidate c : candidates) {
@@ -163,8 +225,17 @@ public final class TitleMatcher {
         }
         Scored second = ranked.size() > 1 ? ranked.get(1) : null;
         if (second != null && second.titleScore() >= MIN_SCORE && best.rankScore() - second.rankScore() < TIE) {
-            // Deux fiches au même titre que rien ne départage (remake homonyme sans année) : on ne choisit pas au hasard.
-            return new Decision(Status.UNMATCHED, Reason.AMBIGUOUS, null, ranked);
+            // Ex aequo : la ponctuation départage parfois une suite (« ka? » / « ka?? », « Dog Days » / « Dog Days' »).
+            // Sinon (remake homonyme sans année), on ne choisit pas au hasard.
+            List<Scored> tied = ranked.stream().filter(x -> x.titleScore() >= MIN_SCORE
+                    && best.rankScore() - x.rankScore() < TIE).toList();
+            Scored byRaw = tied.stream().max(Comparator.comparingDouble(x -> rawScore(query, x.candidate()))).orElseThrow();
+            double top = rawScore(query, byRaw.candidate());
+            boolean unique = tied.stream().filter(x -> x != byRaw).allMatch(x -> rawScore(query, x.candidate()) < top - 1e-9);
+            if (!unique) {
+                return new Decision(Status.UNMATCHED, Reason.AMBIGUOUS, null, ranked);
+            }
+            return new Decision(Status.DOUBTFUL, Reason.CLOSE_CANDIDATE, byRaw, ranked);
         }
         boolean exact = best.titleScore() >= 0.999;
         boolean clear = second == null || best.rankScore() - second.rankScore() >= CONFIDENT_MARGIN

@@ -137,8 +137,9 @@ public class MetadataService {
         Map<String, Candidate> found = new LinkedHashMap<>();
         provider.search(query.main()).forEach(cand -> found.putIfAbsent(cand.providerId(), cand));
         Decision decision = TitleMatcher.decide(query, List.copyOf(found.values()), localEpisodes);
-        // Titre alternatif entre parenthèses : seconde recherche seulement si la première ne suffit pas.
-        for (String variant : query.variants().subList(1, query.variants().size())) {
+        // Recherches de repli, seulement si la première ne suffit pas : titre entre parenthèses, puis titre en
+        // romanisation ASCII (la recherche AniList ne trouve rien pour « Chûnibyô » ou « Kyō »), puis titre avant « - ».
+        for (String variant : TitleMatcher.fallbackSearches(query)) {
             if (decision.status() == Status.MATCHED) {
                 break;
             }

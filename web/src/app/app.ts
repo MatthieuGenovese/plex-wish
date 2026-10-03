@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { TMDB_NOTICE } from './pages/about/about';
 
 @Component({
   selector: 'app-root',
@@ -28,6 +29,9 @@ import { AuthService } from './core/auth.service';
     <main id="contenu" tabindex="-1">
       <router-outlet />
     </main>
+    <footer class="app-footer">
+      Informations des animés : AniList et TMDB. <span lang="en">{{ tmdbNotice }}</span> · <a routerLink="/a-propos">À propos</a>
+    </footer>
   `,
   styles: `
     .app-header {
@@ -71,6 +75,10 @@ import { AuthService } from './core/auth.service';
     .account { display: flex; align-items: center; gap: var(--space-3); margin-left: auto; }
     main { padding: var(--space-5); max-width: var(--content-width); margin: 0 auto; }
     main:focus { outline: none; }
+    .app-footer {
+      max-width: var(--content-width); margin: 0 auto; padding: var(--space-4) var(--space-5) var(--space-6);
+      color: var(--color-text-muted); font-size: var(--font-size-xs);
+    }
     @media (max-width: 40rem) {
       .app-header, main { padding-left: var(--space-3); padding-right: var(--space-3); }
       /* Téléphone : marque + compte sur la première ligne, navigation en dessous sur toute la largeur. */
@@ -81,6 +89,7 @@ import { AuthService } from './core/auth.service';
   `,
 })
 export class App {
+  protected readonly tmdbNotice = TMDB_NOTICE;
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 

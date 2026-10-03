@@ -62,6 +62,11 @@ export interface AnimeDetail {
   metadataSource: string | null;
   metadataUrl: string | null;
   seasons: Season[];
+  /** Origine du synopsis affiché : « TMDB » (français) ou « AniList » (anglais), null sans synopsis. */
+  synopsisSource: string | null;
+  /** Titre français (TMDB), s'il diffère du titre original. */
+  frenchTitle: string | null;
+  tmdbUrl: string | null;
 }
 
 export interface EpisodeSummary {
@@ -243,4 +248,70 @@ export interface MetadataConflict extends ApiError {
   current: MetadataSheet | null;
   proposed: MetadataSheet | null;
   otherAnime: { id: number; title: string }[];
+}
+
+// --- TMDB (synopsis en français) -------------------------------------------------------------
+
+export type TmdbType = 'tv' | 'movie';
+
+export interface TmdbSummary {
+  /** false : pas de clé TMDB, synopsis anglais d'AniList uniquement. */
+  configured: boolean;
+  counts: Record<MatchStatus, number>;
+  total: number;
+  withFrenchSynopsis: number;
+  /** Fiches de plus de 5 mois, à redemander (conditions de l'API TMDB). */
+  refreshDue: number;
+  pausedUntil: string | null;
+  lastUnavailable: string | null;
+}
+
+export interface TmdbCandidate {
+  type: TmdbType;
+  tmdbId: number;
+  name: string | null;
+  originalName: string | null;
+  year: number | null;
+  animation: boolean;
+  hasFrenchOverview: boolean;
+  url: string;
+  score?: number;
+}
+
+export interface TmdbEntry {
+  animeId: number;
+  title: string;
+  status: MatchStatus;
+  reason: string | null;
+  score: number | null;
+  locked: boolean;
+  tmdbType: TmdbType | null;
+  tmdbId: number | null;
+  frenchTitle: string | null;
+  hasFrenchSynopsis: boolean;
+  fetchedAt: string | null;
+  url: string | null;
+  candidates: TmdbCandidate[];
+  lastError: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface TmdbSheet {
+  type: TmdbType;
+  tmdbId: number;
+  name: string | null;
+  originalName: string | null;
+  year: number | null;
+  overview: string | null;
+  animation: boolean;
+  url: string;
+}
+
+/** Corps du 409 TMDB_CONFLICT : rien n'a été modifié. */
+export interface TmdbConflict extends ApiError {
+  animeId: number;
+  animeTitle: string;
+  current: TmdbSheet | null;
+  proposed: TmdbSheet | null;
 }

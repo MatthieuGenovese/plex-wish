@@ -25,21 +25,27 @@ export const CHUNK = 100;
         <app-poster class="hero-poster" [title]="anime.title" [url]="anime.posterLargeUrl ?? anime.posterUrl" [eager]="true" />
         <div class="hero-text">
           <h1>{{ anime.title }}</h1>
-          @if (anime.alternativeTitle || anime.year) {
-            <p class="muted subtitle">
-              {{ anime.alternativeTitle }}@if (anime.alternativeTitle && anime.year) { · }{{ anime.year }}
-            </p>
+          @if (subtitle(); as sub) {
+            <p class="muted subtitle">{{ sub }}</p>
           }
           @if (anime.synopsis) {
             <p class="synopsis" [attr.lang]="anime.synopsisLanguage">{{ anime.synopsis }}</p>
           }
-          @if (anime.metadataSource) {
+          @if (anime.metadataSource || anime.tmdbUrl) {
             <p class="source">
-              @if (anime.synopsis && anime.synopsisLanguage === 'en') { Synopsis en anglais · }
-              Source :
-              @if (anime.metadataUrl) {
-                <a [href]="anime.metadataUrl" target="_blank" rel="noopener noreferrer">{{ anime.metadataSource }}</a>
-              } @else { {{ anime.metadataSource }} }
+              @if (anime.synopsis && anime.synopsisLanguage === 'en') {
+                <span data-testid="english-hint">Synopsis en anglais (pas de traduction française) · </span>
+              }
+              Sources :
+              @if (anime.metadataSource) {
+                @if (anime.metadataUrl) {
+                  <a [href]="anime.metadataUrl" target="_blank" rel="noopener noreferrer">{{ anime.metadataSource }}</a>
+                } @else { {{ anime.metadataSource }} }
+              }
+              @if (anime.metadataSource && anime.tmdbUrl) { · }
+              @if (anime.tmdbUrl) {
+                <a [href]="anime.tmdbUrl" target="_blank" rel="noopener noreferrer">TMDB</a>
+              }
             </p>
           }
         </div>
@@ -152,6 +158,22 @@ export class AnimeDetailPage {
   });
 
   protected readonly anime = loadOn(this.id, (id) => this.api.anime(id));
+
+  /** Titre français (TMDB), autre titre, année : sans répéter le titre principal. */
+  protected readonly subtitle = computed(() => {
+    const a = this.anime().data;
+    if (!a) return null;
+    const seen = new Set([a.title.toLowerCase()]);
+    const parts: string[] = [];
+    for (const t of [a.frenchTitle, a.alternativeTitle]) {
+      if (t && !seen.has(t.toLowerCase())) {
+        seen.add(t.toLowerCase());
+        parts.push(t);
+      }
+    }
+    if (a.year) parts.push(String(a.year));
+    return parts.length ? parts.join(' · ') : null;
+  });
 
   /** Saison choisie, sinon la première (les Spéciaux sont toujours en dernier). */
   protected readonly season = computed<Season | null>(() => {

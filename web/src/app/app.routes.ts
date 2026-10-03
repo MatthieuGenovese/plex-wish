@@ -10,6 +10,11 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/login/login').then((m) => m.LoginPage),
   },
   {
+    path: 'a-propos',
+    title: 'À propos · Anime Server',
+    loadComponent: () => import('./pages/about/about').then((m) => m.AboutPage),
+  },
+  {
     path: '',
     canActivateChild: [authGuard],
     children: [

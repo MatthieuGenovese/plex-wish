@@ -27,6 +27,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () => import('./metadata').then((m) => m.MetadataPage),
       },
       {
+        path: 'tmdb',
+        title: 'Synopsis français · Administration · Anime Server',
+        loadComponent: () => import('./tmdb').then((m) => m.TmdbPage),
+      },
+      {
         path: 'users',
         title: 'Utilisateurs · Administration · Anime Server',
         loadComponent: () => import('./users').then((m) => m.UsersPage),

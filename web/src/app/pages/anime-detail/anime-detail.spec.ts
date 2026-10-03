@@ -79,8 +79,30 @@ describe('AnimeDetailPage', () => {
     expect(el.querySelector('.hero img')?.getAttribute('src')).toBe('https://s4.anilist.co/l.jpg');
     expect(el.querySelector('.subtitle')?.textContent).toContain('Frieren: Beyond Journey’s End · 2023');
     expect(el.querySelector('.synopsis')?.getAttribute('lang')).toBe('en');
-    expect(el.querySelector('.source')?.textContent?.replace(/\s+/g, ' ')).toContain('Synopsis en anglais · Source : AniList');
+    expect(el.querySelector('.source')?.textContent?.replace(/\s+/g, ' ')).toContain('Synopsis en anglais (pas de traduction française) · Sources : AniList');
     expect(el.querySelector('.source a')?.getAttribute('href')).toBe('https://anilist.co/anime/154587');
+  });
+
+  it('synopsis français de TMDB : titre français, pas de mention « anglais », lien TMDB', async () => {
+    const fixture = TestBed.createComponent(AnimeDetailPage);
+    fixture.componentRef.setInput('id', '9');
+    await fixture.whenStable();
+    http.expectOne('/api/anime/9').flush({
+      id: 9, title: 'Sousou no Frieren', alternativeTitle: 'Frieren', frenchTitle: 'Frieren', year: 2023,
+      synopsis: 'Synopsis en français.', synopsisLanguage: 'fr', synopsisSource: 'TMDB', posterUrl: null, posterLargeUrl: null,
+      metadataSource: 'AniList', metadataUrl: 'https://anilist.co/anime/154587', tmdbUrl: 'https://www.themoviedb.org/tv/209867',
+      seasons: [{ id: 90, seasonNumber: 1, label: 'Saison 1', episodeCount: 1 }],
+    });
+    await fixture.whenStable();
+    http.expectOne('/api/seasons/90/episodes').flush(episodes(1));
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.subtitle')?.textContent?.trim()).toBe('Frieren · 2023');
+    expect(el.querySelector('.synopsis')?.getAttribute('lang')).toBe('fr');
+    expect(el.querySelector('[data-testid=english-hint]')).toBeNull();
+    expect(el.querySelector('.source')?.textContent?.replace(/\s+/g, ' ')).toContain('Sources : AniList · TMDB');
+    expect([...el.querySelectorAll('.source a')].map((a) => a.getAttribute('href')))
+      .toEqual(['https://anilist.co/anime/154587', 'https://www.themoviedb.org/tv/209867']);
   });
 
   it('sans fiche : visuel de remplacement, ni synopsis ni source', async () => {

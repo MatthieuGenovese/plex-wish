@@ -11,6 +11,10 @@ import {
   Page,
   Role,
   ScanReport,
+  TmdbEntry,
+  TmdbSheet,
+  TmdbSummary,
+  TmdbType,
   User,
 } from './api-types';
 
@@ -124,5 +128,43 @@ export class AdminApi {
 
   requeueMetadata(status: string): Observable<{ requeued: number }> {
     return this.http.post<{ requeued: number }>('/api/admin/metadata/requeue', null, { params: { status } });
+  }
+
+  // --- TMDB ------------------------------------------------------------------------------------
+
+  tmdbSummary(): Observable<TmdbSummary> {
+    return this.http.get<TmdbSummary>('/api/admin/tmdb/summary');
+  }
+
+  /** noFrench : seulement les animés sans synopsis français. */
+  tmdb(query: { status?: string; q?: string; noFrench?: boolean; page?: number; size?: number }): Observable<Page<TmdbEntry>> {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null && v !== '') params = params.set(k, String(v));
+    }
+    return this.http.get<Page<TmdbEntry>>('/api/admin/tmdb', { params });
+  }
+
+  tmdbPreview(animeId: number, type: TmdbType, tmdbId: number): Observable<TmdbSheet> {
+    return this.http.get<TmdbSheet>(`/api/admin/anime/${animeId}/tmdb/preview`, { params: { type, tmdbId } });
+  }
+
+  /** tmdbId null : « aucune fiche TMDB » (synopsis anglais), verrouillé. */
+  setTmdb(animeId: number, sheet: { type: TmdbType; tmdbId: number } | null, replace = false): Observable<TmdbEntry> {
+    const params = replace ? new HttpParams().set('replace', 'true') : undefined;
+    return this.http.put<TmdbEntry>(`/api/admin/anime/${animeId}/tmdb`, sheet ?? { type: null, tmdbId: null }, { params });
+  }
+
+  unlockTmdb(animeId: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/anime/${animeId}/tmdb`);
+  }
+
+  requeueTmdb(status: string): Observable<{ requeued: number }> {
+    return this.http.post<{ requeued: number }>('/api/admin/tmdb/requeue', null, { params: { status } });
+  }
+
+  /** Fin de licence TMDB : efface toutes les données TMDB. */
+  purgeTmdb(): Observable<{ purged: number }> {
+    return this.http.post<{ purged: number }>('/api/admin/tmdb/purge', null, { params: { confirm: 'true' } });
   }
 }

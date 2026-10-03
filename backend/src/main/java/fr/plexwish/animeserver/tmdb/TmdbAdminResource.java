@@ -91,6 +91,8 @@ public class TmdbAdminResource {
     ObjectMapper json;
     @Inject
     JsonWebToken jwt;
+    @Inject
+    fr.plexwish.animeserver.poster.PosterService posters;
 
     @GET
     @Path("/tmdb/summary")
@@ -250,9 +252,12 @@ public class TmdbAdminResource {
         if (!confirm) {
             throw new ApiException(400, "CONFIRMATION_REQUIRED", "Purge de toutes les données TMDB : confirmer avec confirm=true");
         }
+        int purged;
         try (Connection c = dataSource.getConnection(); PreparedStatement st = c.prepareStatement("DELETE FROM anime_tmdb")) {
-            return Map.of("purged", st.executeUpdate());
+            purged = st.executeUpdate();
         }
+        // Affiches TMDB stockées sur le NAS : effacées aussi (fichiers compris).
+        return Map.of("purged", purged, "postersPurged", posters.purgeTmdb());
     }
 
     // --- Utilitaires --------------------------------------------------------------------------------

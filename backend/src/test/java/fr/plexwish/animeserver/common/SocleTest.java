@@ -31,7 +31,7 @@ class SocleTest {
 
     @Test
     void flywayMigrationsAreApplied() throws SQLException {
-        assertEquals("8", flyway.info().current().getVersion().getVersion());
+        assertEquals("9", flyway.info().current().getVersion().getVersion());
         assertEquals(0, flyway.info().pending().length);
 
         Set<String> tables = new HashSet<>();

@@ -29,5 +29,8 @@ Thumbs.db
 # Données réelles (noms de personnes dans les chemins) : jamais versionnées
 docs/private/
 
+# Affiches téléchargées (POSTERS_HOST_PATH par défaut)
+posters/
+
 # Bibliothèque factice (scripts/generate-fake-library.sh)
 fake-media/

@@ -42,12 +42,17 @@ services:
       # Synopsis en français (TMDB, facultatif) : lu par le backend uniquement, jamais envoyé au navigateur.
       TMDB_READ_TOKEN: ${TMDB_READ_TOKEN:-}
       TMDB_API_KEY: ${TMDB_API_KEY:-}
+      # Affiches téléchargées sur le NAS (dossier du conteneur, monté en écriture ci-dessous).
+      POSTERS_PATH: /data/posters
+      POSTERS_ENABLED: ${POSTERS_ENABLED:-true}
       # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
     volumes:
       # Lecture seule : l'application ne modifie jamais les fichiers média.
       - ${MEDIA_PATH:?MEDIA_PATH manquant dans .env}:/media:ro
+      # Affiches : seul dossier où le backend écrit. Distinct de /media. Doit appartenir à PUID:PGID (voir README).
+      - ${POSTERS_HOST_PATH:-./posters}:/data/posters
     depends_on:
       postgres:
         condition: service_healthy

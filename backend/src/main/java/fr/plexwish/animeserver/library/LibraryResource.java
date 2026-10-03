@@ -56,6 +56,8 @@ public class LibraryResource {
     EntityManager em;
     @Inject
     fr.plexwish.animeserver.tmdb.TmdbConfig tmdbConfig;
+    @Inject
+    fr.plexwish.animeserver.poster.PosterService posters;
 
     public record AnimePage(long total, int page, int size, List<AnimeSummary> items) {
     }
@@ -89,6 +91,12 @@ public class LibraryResource {
             items.setParameter("q", search);
         }
         List<AnimeSummary> list = items.setFirstResult(page * size).setMaxResults(size).getResultList();
+        // Affiche : fichier sur le NAS, sinon URL distante (TMDB, puis AniList), sinon null (ARCHITECTURE §17).
+        var urls = posters.urls(list.stream().map(AnimeSummary::id).toList());
+        list = list.stream().map(x -> {
+            var u = urls.get(x.id());
+            return new AnimeSummary(x.id(), x.title(), x.year(), u == null ? null : u.small(), x.episodeCount(), x.lastAddedAt());
+        }).toList();
         return new AnimePage(count.getSingleResult(), page, size, list);
     }
 
@@ -112,8 +120,10 @@ public class LibraryResource {
         String frTitle = tmdb == null ? null : (String) tmdb[0];
         String tmdbUrl = tmdb == null || tmdb[3] == null ? null : "https://www.themoviedb.org/" + tmdb[3] + "/" + tmdb[4];
         String anilist = "ANILIST".equals(a.metadataProvider) ? "AniList" : a.metadataProvider;
+        var poster = posters.urls(List.of(id)).get(id);
         return new AnimeDetail(a.id, a.title, a.alternativeTitle, frSynopsis != null ? frSynopsis : a.synopsis,
-                frSynopsis != null ? (String) tmdb[2] : a.synopsisLanguage, a.posterUrl, a.posterLargeUrl, a.year, anilist,
+                frSynopsis != null ? (String) tmdb[2] : a.synopsisLanguage, poster == null ? null : poster.small(),
+                poster == null ? null : poster.large(), a.year, anilist,
                 a.metadataUrl, seasons, frSynopsis != null ? "TMDB" : a.synopsis != null ? anilist : null, frTitle,
                 frSynopsis != null || frTitle != null ? tmdbUrl : null);
     }

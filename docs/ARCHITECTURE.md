@@ -626,3 +626,58 @@ Animés sans synopsis français par défaut (non appariés, douteux, ou fiche TM
 
 ### 17.5 Administration (onglet « Affiches »)
 Nombre d'affiches sur le NAS (TMDB / AniList), distantes, absentes, en échec ; place utilisée, estimation une fois tout téléchargé (taille moyenne × animés avec une affiche), espace libre du volume ; liste filtrable avec l'erreur ; « Retélécharger » par animé (oublie les échecs ; l'affiche actuelle reste servie en attendant).
+
+## 18. Distribution (personnages et comédiens) : étude (étape 6.3, 2026-10-03)
+
+Besoin : sur la fiche d'un animé, les personnages (nom, image, rôle principal / secondaire) et leurs comédiens de doublage (nom, image, langue : japonais par défaut, la langue reste dans le modèle pour les doubleurs français plus tard) ; une page comédien qui liste **les animés de la bibliothèque** où il joue, avec le personnage. L'identité d'un comédien doit être la même d'un animé à l'autre, sinon sa page est incomplète sans que personne le voie.
+
+### 18.1 Mesure sur 25 animés de la vraie bibliothèque
+Échantillon : 12 titres connus (One Piece, Naruto Shippuden, Bleach, Death Note, Frieren, L'Attaque des Titans, Demon Slayer, Jujutsu Kaisen, Spy x Family, Steins;Gate, Evangelion, Mob Psycho 100) et 13 tirés au hasard parmi les appariés (Chobits, Inukami!, Myself Yourself, Chaos;Head, Triage X, séries 2026…). Fiches AniList déjà appariées en phase 6 ; fiches TMDB trouvées pour les 25. AniList : `characters` (rôles MAIN / SUPPORTING / BACKGROUND, comédiens avec `languageV2`) ; TMDB : `tv/{id}/aggregate_credits`. Mesure TMDB faite sur le PC (le jeton n'en sort pas).
+
+| | AniList | TMDB |
+|---|---|---|
+| Animés avec une distribution | 25 / 25 | 25 / 25 |
+| Rôle principal / secondaire | **oui** (100 principaux, 826 secondaires, 224 figurants sur 1 150 personnages lus) | **non** (seulement un ordre et un nombre d'épisodes ; 39 % des comédiens n'ont qu'un épisode) |
+| Doubleur japonais | **100 %** des rôles principaux, **99 %** des secondaires | tous les comédiens reconnus sont japonais, mais **aucune langue indiquée** (impossible d'y distinguer un doublage français) |
+| Langue du comédien | **oui** (`Japanese`, `French`, `English`…) ; doubleurs français présents sur 13 / 25 (titres connus surtout) | non |
+| Nom du comédien | romanisé (« Mayumi Tanaka ») **et** natif (« 田中真弓 ») : 99,8 % | **62 % des noms seulement en japonais** (35 % même parmi les 10 premiers crédités) ; un nom d'origine à côté dans 37 % des cas |
+| Nom du personnage | propre (« Frieren ») | presque toujours avec « (voice) » ; 6 % vides ; quelques noms en chinois (Mekakucity Actors) |
+| Photo du comédien | 99,9 % | 98 % |
+| Image du personnage | 95 % | non (TMDB n'a pas de fiche personnage) |
+| Saisons | une fiche **par saison** : distribution de la saison appariée seulement | une série : **toutes les saisons** (L'Attaque des Titans : 221 comédiens contre 77 sur la fiche AniList de la saison 1) |
+
+Recoupement : 95 % des doubleurs japonais des rôles principaux d'AniList se retrouvent dans TMDB (110 / 116), 78 % de tous ceux des rôles principaux et secondaires (708 / 910), en comparant les noms romanisés **et** les noms japonais ; avec les seuls noms romanisés, l'écriture japonaise de TMDB ferait échouer la majorité des rapprochements.
+
+21 % des dossiers de la bibliothèque (277 / 1 316) contiennent plusieurs saisons.
+
+### 18.2 Conditions d'utilisation (lues le 2026-10-03)
+- **AniList** (docs.anilist.co, « Terms of use ») : usage gratuit sous 150 $ de revenus par mois ; si « AniList » figure dans le nom de l'application, dire qu'elle n'est pas officielle (sans objet) ; **interdit : se servir de l'API comme sauvegarde ou stockage de données, et « l'accumulation ou la collecte massive » de données**. Aucune règle écrite sur la durée de conservation ni sur les images. Débit : 90 requêtes / min, **30 en ce moment** (mode dégradé), blocage d'IP en cas d'abus. Conséquence : ne récupérer **que** la distribution des animés de la bibliothèque, plafonnée, jamais la filmographie complète d'un comédien ; les images restent la propriété de leurs ayants droit, affichées telles quelles pour l'usage privé du groupe.
+- **TMDB** (texte du 20 octobre 2023 fourni le 2026-10-03 ; la page officielle refuse les robots, pas relue en direct) : non commercial, attribution, **6 mois au plus** pour toute donnée et image (photos des comédiens comprises), purge en fin de licence, pas d'œuvre dérivée.
+
+### 18.3 Deux conceptions
+**(a) Source unique.** Une personne = un identifiant d'un seul fournisseur ; la page comédien est complète par construction pour les animés qui ont une distribution.
+
+**(b) Deux sources, TMDB d'abord, AniList en repli.** Une personne = (fournisseur, identifiant), page comédien limitée à un fournisseur, fusion manuelle par l'admin. Problèmes mesurés : TMDB a une distribution pour 25 / 25, donc AniList ne servirait presque jamais de repli et la source réelle serait TMDB, **sans rôle principal / secondaire ni langue**, avec 62 % de noms illisibles pour qui ne lit pas le japonais, et des personnages « Frieren (voice) » sans image. Dès qu'un animé tombe en repli AniList, son comédien devient une **autre personne** : sa page est incomplète sans signe visible. Fusionner à la main des milliers de comédiens n'est pas réaliste ; un rapprochement automatique par nom japonais marche souvent (95 % sur les rôles principaux) mais pas toujours, et se tromperait en silence sur les homonymes. Les photos TMDB doivent en plus être renouvelées tous les 6 mois.
+
+### 18.4 Recommandation : (a), source unique **AniList** pour la distribution
+Contraire à la règle générale « TMDB d'abord » (synopsis, affiches), mais c'est la seule source qui donne à la fois rôle, langue, noms lisibles et natifs, image du personnage, et une identité de comédien stable (identifiant AniList « staff ») ; elle permettra d'ajouter les doubleurs français (déjà là pour les titres connus). TMDB n'est pas utilisé pour la distribution.
+
+Limites :
+- **Saisons** : une fiche AniList = une saison. Pour les 21 % de dossiers à plusieurs saisons, proposition : suivre la chaîne de suites d'AniList (relations `SEQUEL`, formats TV / ONA) jusqu'au nombre de saisons du dossier, au plus 6 ; les personnages déjà vus ne sont pas dupliqués. Sans cela, les personnages apparus après la saison 1 manquent (et le comédien n'a pas l'animé sur sa page).
+- Animés sans appariement AniList (5 % non appariés, et les douteux non validés) : pas de distribution (signalés dans l'admin). Aucun nouvel appariement n'est fait par cette étape.
+- Doublons de personnes chez AniList même : rares ; fusion manuelle notée dans `FUTURE.md`.
+- Dépendance au débit d'AniList (partagé avec la tâche des métadonnées : même limiteur).
+
+### 18.5 Plafonds, espace disque, durée
+- **Rôles** : tous les principaux puis les secondaires par pertinence, **20 au plus** par fiche AniList (une seule page de requête ; moyenne mesurée 19,9 avec un plafond de 25) ; pas de figurants. **Un** doubleur japonais par rôle (le plus pertinent) ; la langue est stockée (doubleurs français plus tard, même requête).
+- **Images** : personnage en taille `medium` (100 × 150, 21 Ko en moyenne, mesuré) ; comédien en `large` (230 × 345, 88 Ko en moyenne), réduite à l'affichage sur la fiche. 1 Mo au plus par image (refus au-delà). Même mécanisme que les affiches (§17).
+- **Espace** (1 316 animés) : ~25 000 rôles × 21 Ko ≈ **0,5 Go** d'images de personnages ; ~4 000 à 7 000 comédiens distincts (351 pour l'échantillon de 25) × 88 Ko ≈ **0,35 à 0,6 Go**. Total **≈ 1 Go**. Variante économe (12 rôles, comédiens en `medium`) : ≈ 0,4 Go.
+- **Durée du premier passage** : une requête AniList par fiche (personnages + comédiens dans la même réponse) → 1 316 requêtes, plus ~600 pour les suites, au rythme actuel (une requête toutes les 2,5 s, partagé avec les métadonnées) : **≈ 1 h 20**. Images (CDN d'AniList, hors limite de l'API mais sans abus) : ~30 000 fichiers à 2 par seconde → **≈ 4 h**, en tâche de fond.
+- **Nouveaux animés** : la distribution ne peut pas être ajoutée à la requête existante de la phase 6, qui est une **recherche** renvoyant plusieurs candidats (on paierait la distribution de chaque candidat) : une requête de plus par animé apparié, sans importance au rythme des ajouts.
+- **Rafraîchissement** : AniList n'impose rien ; redemander une distribution tous les 6 mois suffit (nouveaux personnages d'une série en cours). Le modèle garde fournisseur, langue et date de récupération : si TMDB servait un jour, ses règles (5 / 6 mois, purge) s'appliqueraient comme en §16.
+
+### 18.6 Décisions à prendre avant d'implémenter
+1. Source unique AniList (recommandé) ou deux sources ?
+2. Suivre les suites AniList pour les dossiers à plusieurs saisons (+ ~600 requêtes) ?
+3. Plafonds : 20 rôles, personnages `medium`, comédiens `large` (≈ 1 Go), ou la variante économe (≈ 0,4 Go) ?
+

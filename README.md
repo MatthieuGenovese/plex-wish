@@ -168,6 +168,54 @@ Une tâche de fond (séparée du scan) télécharge l'affiche de chaque animé, 
 
 Si un fichier disparaît (dossier vidé, disque changé), l'affiche distante est affichée et le fichier retéléchargé automatiquement. Affiches TMDB : retéléchargées à 5 mois, effacées à 6 (conditions TMDB), et effacées par « Effacer toutes les données TMDB ». `POSTERS_ENABLED=false` : pas de téléchargement.
 
+## Sauvegarde de la base
+
+Toutes les données de l'application sont dans PostgreSQL (volume Docker `pgdata`) ; les vidéos ne sont jamais modifiées et ne font pas partie de la sauvegarde.
+
+| Perdu sans sauvegarde (à sauvegarder) | Régénérable (pas besoin de sauvegarde) |
+|---|---|
+| Comptes, rôles, mots de passe (empreintes) | Bibliothèque (animés, saisons, épisodes) : nouveau scan de `/media` |
+| Progressions de lecture (« Continuer à regarder ») | Métadonnées AniList et TMDB : retéléchargées par les tâches de fond (~1 h pour AniList) |
+| **Corrections manuelles** : fichiers rattachés à la main, appariements AniList / TMDB verrouillés | Affiches du dossier `POSTERS_HOST_PATH` : retéléchargées |
+| Historique des scans (rapports) | Sessions : il suffit de se reconnecter |
+
+Attention : les progressions et les corrections pointent vers les fichiers de la base. Après une perte de la base, un nouveau scan recrée la bibliothèque, mais **pas** les progressions ni les corrections. D'où la sauvegarde.
+
+### Sauvegarder : `scripts/backup-db.sh`
+
+```sh
+scripts/backup-db.sh                                     # depuis la racine du dépôt, stack démarrée
+BACKUP_DIR=/volume1/backups/anime-server BACKUP_KEEP=30 scripts/backup-db.sh
+```
+
+- Un fichier par exécution, `anime-db-AAAAMMJJ-HHMMSS.dump` (format compressé de `pg_dump`, quelques dizaines de Ko à quelques Mo), vérifié avec `pg_restore --list` avant d'être gardé.
+- Rotation : seules les `BACKUP_KEEP` dernières (14 par défaut) sont conservées. Dossier : `BACKUP_DIR` (défaut `<dépôt>/backups`, ignoré par git).
+- Aucun mot de passe : le dump est fait dans le conteneur `postgres` (connexion locale). Le fichier est lisible par son seul propriétaire (il contient les empreintes des mots de passe).
+- Mettre le dossier de sauvegarde **sur un autre volume ou un autre appareil** (Hyper Backup, Synology Drive, disque USB) : une sauvegarde sur le même disque ne protège pas d'une panne de ce disque.
+
+### Planifier avec le Planificateur de tâches du DSM
+
+*Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur* :
+
+1. **Général** : nom « Sauvegarde anime-server », utilisateur **root** (nécessaire pour Docker).
+2. **Programmer** : tous les jours, par exemple à 4 h.
+3. **Paramètres de tâche** : cocher « Envoyer les détails de l'exécution par e-mail » et « uniquement si le script se termine de manière anormale » (le script sort en erreur si la sauvegarde échoue). Script :
+
+   ```sh
+   BACKUP_DIR=/volume1/backups/anime-server BACKUP_KEEP=30 /volume1/docker/anime-server/scripts/backup-db.sh
+   ```
+4. Clic droit sur la tâche → **Exécuter**, puis vérifier qu'un fichier `.dump` est apparu dans le dossier.
+
+### Restaurer : `scripts/restore-db.sh`
+
+```sh
+scripts/restore-db.sh /volume1/backups/anime-server/anime-db-20261003-040000.dump
+```
+
+Le script vérifie le fichier, demande de taper `RESTAURER`, fait une **sauvegarde de sécurité** de la base actuelle (`avant-restauration-….dump`, 5 gardées), arrête le backend et le web, recrée la base vide, restaure en une seule transaction et redémarre. Une sauvegarde d'une version plus ancienne de l'application est mise à niveau au démarrage (migrations Flyway). En cas d'échec, il affiche la commande pour revenir à l'état d'avant. `RESTORE_YES=1` évite la question (script).
+
+Testé sur la stack Docker : base abîmée (utilisateur, bibliothèque et progressions supprimés), restauration, puis connexion avec l'utilisateur supprimé ; fichier tronqué refusé sans rien toucher ; rotation à 2 fichiers.
+
 ## Tester le scan complet (bibliothèque factice)
 
 Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.

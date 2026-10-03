@@ -29,6 +29,9 @@ Thumbs.db
 # Données réelles (noms de personnes dans les chemins) : jamais versionnées
 docs/private/
 
+# Sauvegardes de la base (scripts/backup-db.sh)
+backups/
+
 # Affiches téléchargées (POSTERS_HOST_PATH par défaut)
 posters/
 

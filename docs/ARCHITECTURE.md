@@ -558,7 +558,7 @@ Besoin : synopsis (et si possible titre) en français, via un second `MetadataPr
 | Usage non commercial | **Gratuit pour un usage non commercial, avec attribution** (« free to use for non-commercial purposes as long as you attribute TMDB ») | Gratuit sous 50 k$/an de revenus, **attribution + lien obligatoires** | — | — |
 | Attribution | Mention « This product uses the TMDB API but is not endorsed or certified by TMDB » + logo officiel TMDB, **moins visible** que le logo de l'application, dans une page « À propos / Crédits » ; logo non modifié ; nommer « TMDB » ou « The Movie Database » | « Metadata provided by TheTVDB » avec lien direct vers thetvdb.com, visible des utilisateurs | — | — |
 | Images | URL `image.tmdb.org/t/p/<taille>/<fichier>` | **La licence de l'API n'autorise pas l'usage des images** (« it is your responsibility to secure … all rights ») | — | — |
-| Conservation | **À confirmer** : les conditions d'utilisation de l'API (`themoviedb.org/api-terms-of-use`) refusent la lecture automatique (robots.txt) ; le FAQ développeur ne dit rien de la durée de conservation | Rien de précis dans les CGU | — | Obligation de cache local ; redemander la même fiche le même jour peut valoir un bannissement |
+| Conservation | **6 mois au plus** pour toute information obtenue de TMDB, images comprises (conditions de l'API, §1.C : « Cache, for longer than 6 months, any information obtained through or from TMDB ») ; en cas de fin de licence, tout effacer, cache compris (§1.D) | Rien de précis dans les CGU | — | Obligation de cache local ; redemander la même fiche le même jour peut valoir un bannissement |
 | Débit | ~40 requêtes/s (« somewhere in the 40 requests per second range »), 429 au-delà | « Pas d'appels excessifs », sans chiffre | Non documenté | **1 page / 2 s**, bannissement en cas d'abus |
 
 Pistes écartées : sites français (Nautiljon, Anime-Sanctuary) sans API publique (et leur recopie serait du scraping) ; Crunchyroll / ADN sans API publique ; Kitsu et AniDB sans français.
@@ -574,6 +574,15 @@ Piste notée pour plus tard : la liste de correspondances **Kometa Anime-IDs** (
 - **Attribution** : page « À propos » (mention exigée + logo TMDB officiel, plus petit que le nom de l'application) et mention discrète « Synopsis : TMDB » sous le synopsis.
 - **Avant de tout construire**, mesurer la couverture réelle : un essai à blanc sur les 1 247 animés appariés, avec ta clé, donne le pourcentage d'animés qui auraient un synopsis français.
 
-### 16.3 Points ouverts (à trancher avant d'implémenter)
-1. **Durée de conservation TMDB** : je n'ai pas pu lire le texte officiel des conditions de l'API (robots.txt). Il faut le passage exact sur la mise en cache / conservation des données et des images (https://www.themoviedb.org/api-terms-of-use), pour fixer la période de rafraîchissement (6.1) et celle des affiches stockées (6.2).
-2. **Clé TMDB** : à créer sur ton compte TMDB (Paramètres → API, usage personnel / non commercial), puis à mettre dans `.env` (`TMDB_READ_TOKEN`). Elle n'est nécessaire ni pour l'implémentation ni pour les tests (faux serveur), seulement pour la mesure de couverture et l'usage réel.
+### 16.3 Conditions d'utilisation de l'API TMDB (texte du 20 octobre 2023, fourni le 2026-10-03)
+Ce qui nous concerne, et ce que le projet en fait :
+- **Usage non commercial uniquement** (§2) : serveur privé, gratuit, sans publicité : conforme. Le jour où l'usage deviendrait payant, il faudrait un accord commercial.
+- **Conservation : 6 mois au plus** (§1.C), données **et images** : chaque fiche TMDB (et en 6.2 chaque affiche venue de TMDB) porte sa date de récupération et est **rafraîchie avant 6 mois** (marge : rafraîchissement à 5 mois) ; une donnée qui n'a pas pu être rafraîchie à temps est **effacée** à 6 mois (repli AniList anglais).
+- **Fin de licence** (§1.D) : tout effacer, cache compris → une action d'admin (et la suppression de la clé) purge toutes les données et images TMDB.
+- **Pas d'œuvre dérivée** (§1.C « Make derivatives … of TMDB Content ») : synopsis affiché tel quel (pas de résumé, troncature ni traduction automatique), affiches non retouchées.
+- **Attribution** (§3) : logo TMDB **moins visible** que le nom de l'application, et la mention exacte, placée **bien en vue** dans l'application : « This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. » → pied de page de l'application (toutes les pages) et page « À propos », plus la source « TMDB » sous chaque synopsis concerné.
+- **Débit** (§1.C) : pas de consommation excessive → espacement des appels même si la limite technique (~40/s) est large, et pas de rafraîchissement inutile.
+- **Pas d'usage IA** de l'API ni des données (§1.C, §2) : sans objet ici.
+
+### 16.4 Point restant avant d'implémenter
+1. **Clé TMDB** : à créer sur ton compte TMDB (Paramètres → API, usage personnel / non commercial), puis à mettre dans `.env` (`TMDB_READ_TOKEN`). Elle n'est nécessaire ni pour l'implémentation ni pour les tests (faux serveur), seulement pour la mesure de couverture et l'usage réel.

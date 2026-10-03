@@ -39,6 +39,9 @@ services:
       REFRESH_REUSE_GRACE_SECONDS: ${REFRESH_REUSE_GRACE_SECONDS:-20}
       STREAM_URL_LIFETIME: ${STREAM_URL_LIFETIME:-6h}
       METADATA_ENABLED: ${METADATA_ENABLED:-true}
+      # Synopsis en français (TMDB, facultatif) : lu par le backend uniquement, jamais envoyé au navigateur.
+      TMDB_READ_TOKEN: ${TMDB_READ_TOKEN:-}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
       # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}

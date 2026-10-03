@@ -194,7 +194,8 @@ public class MetadataService {
     void applyToAnime(Connection c, long animeId, String folderTitle, Candidate candidate) throws SQLException {
         try (PreparedStatement st = c.prepareStatement("""
                 UPDATE anime SET alternative_title = ?, synopsis = ?, synopsis_language = ?, poster_url = ?,
-                    poster_large_url = ?, year = ?, metadata_provider = ?, metadata_provider_id = ?, metadata_url = ?
+                    poster_large_url = ?, year = ?, metadata_provider = ?, metadata_provider_id = ?, metadata_url = ?,
+                    metadata_fetched_at = CASE WHEN ?::text IS NULL THEN NULL ELSE now() END
                 WHERE id = ?""")) {
             st.setString(1, candidate == null ? null : alternativeTitle(folderTitle, candidate));
             st.setString(2, candidate == null ? null : candidate.synopsis());
@@ -205,7 +206,8 @@ public class MetadataService {
             st.setString(7, candidate == null ? null : provider.id());
             st.setString(8, candidate == null ? null : candidate.providerId());
             st.setString(9, candidate == null ? null : candidate.siteUrl());
-            st.setLong(10, animeId);
+            st.setString(10, candidate == null ? null : candidate.providerId());
+            st.setLong(11, animeId);
             st.executeUpdate();
         }
     }
@@ -264,6 +266,9 @@ public class MetadataService {
         m.put("providerId", c.providerId());
         m.put("title", c.displayTitle());
         m.put("romaji", c.romaji());
+        // Titres anglais et japonais : servent aussi à l'appariement TMDB (titre original japonais).
+        m.put("english", c.english());
+        m.put("nativeTitle", c.nativeTitle());
         m.put("year", c.year());
         m.put("format", c.format());
         m.put("episodes", c.episodes());

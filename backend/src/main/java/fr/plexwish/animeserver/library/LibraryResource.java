@@ -38,7 +38,8 @@ public class LibraryResource {
      */
     public record AnimeDetail(Long id, String title, String alternativeTitle, String synopsis, String synopsisLanguage,
                               String posterUrl, String posterLargeUrl, Integer year, String metadataSource,
-                              String metadataUrl, List<SeasonDto> seasons) {
+                              String metadataUrl, List<SeasonDto> seasons, String synopsisSource, String frenchTitle,
+                              String tmdbUrl) {
     }
 
     public record EpisodeSummary(Long id, int episodeNumber, String title, Integer durationSeconds) {
@@ -53,6 +54,8 @@ public class LibraryResource {
 
     @Inject
     EntityManager em;
+    @Inject
+    fr.plexwish.animeserver.tmdb.TmdbConfig tmdbConfig;
 
     public record AnimePage(long total, int page, int size, List<AnimeSummary> items) {
     }
@@ -99,9 +102,20 @@ public class LibraryResource {
     public AnimeDetail anime(@PathParam("id") long id) {
         List<SeasonDto> seasons = seasons(id);
         Anime a = Anime.findById(id);
-        return new AnimeDetail(a.id, a.title, a.alternativeTitle, a.synopsis, a.synopsisLanguage, a.posterUrl,
-                a.posterLargeUrl, a.year, "ANILIST".equals(a.metadataProvider) ? "AniList" : a.metadataProvider,
-                a.metadataUrl, seasons);
+        // Synopsis : français de TMDB s'il existe (et a moins de 6 mois), sinon anglais d'AniList (ARCHITECTURE §16).
+        Object[] tmdb = (Object[]) em.createNativeQuery("""
+                        SELECT title, synopsis, language, tmdb_type, tmdb_id FROM anime_tmdb
+                        WHERE anime_id = ?1 AND fetched_at > now() - make_interval(secs => ?2)""")
+                .setParameter(1, id).setParameter(2, tmdbConfig.maxAge().toSeconds())
+                .getResultStream().findFirst().orElse(null);
+        String frSynopsis = tmdb == null ? null : (String) tmdb[1];
+        String frTitle = tmdb == null ? null : (String) tmdb[0];
+        String tmdbUrl = tmdb == null || tmdb[3] == null ? null : "https://www.themoviedb.org/" + tmdb[3] + "/" + tmdb[4];
+        String anilist = "ANILIST".equals(a.metadataProvider) ? "AniList" : a.metadataProvider;
+        return new AnimeDetail(a.id, a.title, a.alternativeTitle, frSynopsis != null ? frSynopsis : a.synopsis,
+                frSynopsis != null ? (String) tmdb[2] : a.synopsisLanguage, a.posterUrl, a.posterLargeUrl, a.year, anilist,
+                a.metadataUrl, seasons, frSynopsis != null ? "TMDB" : a.synopsis != null ? anilist : null, frTitle,
+                frSynopsis != null || frTitle != null ? tmdbUrl : null);
     }
 
     /** Saisons dans l'ordre 1, 2, 3… puis Spéciaux (saison 0) en dernier. */

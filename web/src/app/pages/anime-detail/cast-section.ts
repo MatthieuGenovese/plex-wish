@@ -8,7 +8,7 @@ export const ROLE_LABELS: Record<string, string> = { MAIN: 'Principal', SUPPORTI
 
 /**
  * Distribution d'un animé : personnage (image, nom, rôle) et doubleur japonais (lien vers sa page).
- * Bande qui défile horizontalement ; rien n'est affiché s'il n'y a pas de distribution ou en cas d'erreur
+ * Grille qui passe à la ligne selon la largeur (pas de défilement horizontal) ; rien n'est affiché s'il n'y a pas de distribution ou en cas d'erreur
  * (la fiche reste utilisable).
  */
 @Component({
@@ -49,11 +49,10 @@ export const ROLE_LABELS: Record<string, string> = { MAIN: 'Principal', SUPPORTI
     .cast { margin-top: var(--space-6); }
     .lang { font-size: var(--font-size-md); font-weight: var(--font-weight-normal); }
     .strip {
-      display: grid; grid-auto-flow: column; grid-auto-columns: 9rem; gap: var(--space-3);
-      overflow-x: auto; margin: 0; padding: 0 0 var(--space-3); list-style: none;
-      scroll-snap-type: x proximity;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: var(--space-4) var(--space-3);
+      margin: 0 0 var(--space-3); padding: 0; list-style: none;
     }
-    .entry { display: flex; flex-direction: column; gap: var(--space-1); scroll-snap-align: start; min-width: 0; }
+    .entry { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
     .name { font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); overflow-wrap: anywhere; }
     .badge { align-self: flex-start; }
     .person {
@@ -65,7 +64,7 @@ export const ROLE_LABELS: Record<string, string> = { MAIN: 'Principal', SUPPORTI
     .face { width: 2.25rem; flex: 0 0 auto; }
     .person-none { font-size: var(--font-size-sm); margin-top: var(--space-1); }
     .source { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-    @media (max-width: 40rem) { .strip { grid-auto-columns: 7.5rem; } }
+    @media (max-width: 40rem) { .strip { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); } }
   `,
 })
 export class CastSection {

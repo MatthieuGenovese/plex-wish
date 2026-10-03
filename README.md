@@ -55,6 +55,22 @@ Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`) : la page de connexion s'aff
 - Arrêt : `docker compose down`. Les données restent dans le volume `pgdata` (`down -v` les efface).
 - Mise à jour du code : `docker compose up -d --build`.
 
+### Générer les secrets
+
+`JWT_SECRET` et `STREAM_SIGNING_SECRET` : 32 caractères au moins, **différents** l'un de l'autre. Lancer la commande deux fois, une valeur pour chacun (64 caractères hexadécimaux) :
+
+```powershell
+# Windows PowerShell (5.1 ou 7)
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') })
+```
+
+```sh
+# Linux, macOS, NAS en SSH
+openssl rand -hex 32
+```
+
+Les coller dans `.env` (jamais dans un fichier versionné). Changer `JWT_SECRET` invalide les jetons d'accès en cours (renouvelés automatiquement, sans reconnexion) ; changer `STREAM_SIGNING_SECRET` invalide les liens de lecture en cours. Même méthode pour `POSTGRES_PASSWORD` (avant le premier lancement : il est fixé à la création de la base).
+
 ### Sur le Synology (Container Manager)
 
 1. Copier le dépôt sur le NAS (ex. `/volume1/docker/anime-server`) et créer `.env` à partir de `.env.example`.

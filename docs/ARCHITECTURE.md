@@ -584,5 +584,18 @@ Ce qui nous concerne, et ce que le projet en fait :
 - **Débit** (§1.C) : pas de consommation excessive → espacement des appels même si la limite technique (~40/s) est large, et pas de rafraîchissement inutile.
 - **Pas d'usage IA** de l'API ni des données (§1.C, §2) : sans objet ici.
 
-### 16.4 Point restant avant d'implémenter
+### 16.4 Point restant avant d'implémenter (étude)
 1. **Clé TMDB** : à créer sur ton compte TMDB (Paramètres → API, usage personnel / non commercial), puis à mettre dans `.env` (`TMDB_READ_TOKEN`). Elle n'est nécessaire ni pour l'implémentation ni pour les tests (faux serveur), seulement pour la mesure de couverture et l'usage réel.
+
+### 16.5 Implémentation (étape 6.1)
+- **Table `anime_tmdb`** (V8), une ligne par animé : statut (mêmes valeurs qu'AniList), `tmdb_type` + `tmdb_id`, score, raison, candidats (pour l'admin), verrou, et les **champs récupérés avec leur langue et leur date** (`language`, `title`, `synopsis`, `poster_path`, `fetched_at`). Les champs AniList de `anime` ont désormais aussi leur date (`metadata_fetched_at`), à côté du fournisseur (`metadata_provider`) et de la langue (`synopsis_language`).
+- **Tâche de fond** `TmdbWorker` (même boucle que la tâche AniList : `BackgroundLoop`), inactive sans clé. À chaque pas : (1) effacer ce qui a plus de 6 mois ; (2) apparier un animé nouveau, **une fois AniList passé** (ses titres rendent la recherche sûre) ; (3) sinon, redemander une fiche de plus de 5 mois (sans refaire l'appariement, même verrouillée : une correction manuelle fixe l'identifiant, pas le contenu). Appels espacés de 250 ms ; 429 → pause selon `Retry-After` ; 401 → pause d'une heure, message dans l'admin.
+- **Recherche** : titres connus dans l'ordre japonais, romaji, anglais, autre titre, dossier ; mentions de saison retirées (« Season 2 », « 2nd Season », « Part 2 », « II »…), au plus 4 recherches par animé. `search/tv`, ou `search/movie` si AniList dit MOVIE (ou, sans fiche AniList, pour un dossier d'un seul fichier). `include_adult=false` et les résultats `adult` écartés.
+- **Décision** : similarité de titre (contre `name` et `original_name`) et seuils d'AniList (§15.2) ; départage : genre Animation (+), même année (+), série commencée après notre saison (−), série plus ancienne que notre première saison (−, pas pour une suite). **MATCHED exige le genre Animation** : une adaptation en prises de vue réelles au même titre reste au mieux « douteuse ».
+- **Saisons** : on prend le synopsis **de la série** TMDB ; le synopsis par saison est noté dans `docs/FUTURE.md`.
+- **Affichage** (`GET /api/anime/{id}`) : synopsis français de TMDB s'il existe et a moins de 6 mois, sinon anglais d'AniList ; `synopsisSource`, `synopsisLanguage`, `frenchTitle` (titre TMDB s'il diffère du titre original), `tmdbUrl`. La fiche web le dit discrètement : « Synopsis en anglais (pas de traduction française) » et les liens des sources.
+- **Clé** : `TMDB_READ_TOKEN` en en-tête `Authorization: Bearer` (ou `TMDB_API_KEY` en paramètre) ; jamais dans un message d'erreur, un log ni une réponse (test). Redirections HTTP refusées.
+- **Attribution** : pied de page (mention exacte) et page publique « À propos » (`/a-propos`) avec le logo officiel en petit (fichier à déposer : `web/public/attribution/tmdb-logo.svg`, nom « TMDB » en texte à défaut).
+
+### 16.6 Administration (onglet « Synopsis français »)
+Animés sans synopsis français par défaut (non appariés, douteux, ou fiche TMDB sans traduction) ; correction par candidat, par adresse ou identifiant TMDB (`tv/209867`, `movie/372058`, avec prévisualisation), ou « aucune fiche TMDB ». Verrouillée ; remplacer une fiche existante → 409 `TMDB_CONFLICT` puis confirmation (`replace=true`). Relance des non appariés / douteux. **Purge** (`POST /api/admin/tmdb/purge?confirm=true`) : efface toutes les données TMDB, corrections comprises (fin de licence, §1.D) ; retirer aussi la clé, sinon la tâche recommence.

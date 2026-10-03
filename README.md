@@ -147,6 +147,16 @@ Récupérées sur [AniList](https://anilist.co) (API publique, sans clé) par un
 - **Affiches** : seule l'URL est stockée ; le navigateur les charge depuis `s4.anilist.co` (autorisé par la CSP : `img-src https:`). AniList voit donc l'adresse IP des spectateurs ; les télécharger sur le NAS est noté dans `docs/FUTURE.md`.
 - **Administration → Métadonnées** : avancement, non appariés et douteux, correction par candidat ou par identifiant AniList (le nombre dans `anilist.co/anime/<id>`), « aucune fiche ». Une correction est verrouillée : jamais écrasée. Remplacer une fiche existante demande une confirmation.
 
+### Synopsis en français (TMDB, facultatif)
+
+Sans configuration, les synopsis restent en anglais. Pour les avoir en français quand ils existent :
+
+1. Créer un compte sur [themoviedb.org](https://www.themoviedb.org), puis *Paramètres → API* : demander une clé (usage personnel, non commercial).
+2. Copier le **jeton d'accès en lecture** (« API Read Access Token », le long) dans `.env` : `TMDB_READ_TOKEN=…`, puis `docker compose up -d`.
+3. *Administration → Synopsis français* : avancement (après AniList, quelques minutes), et animés restés sans synopsis français, à corriger à la main au besoin (adresse de la fiche TMDB).
+
+Le jeton reste côté serveur (jamais envoyé au navigateur ni écrit dans les logs). **Conditions TMDB** : usage non commercial ; rien n'est conservé plus de 6 mois (fiches redemandées à 5 mois, effacées à 6) ; logo et mention dans *À propos* (déposer le logo officiel dans `web/public/attribution/tmdb-logo.svg`, voir le README de ce dossier) ; pour arrêter, bouton « Effacer toutes les données TMDB » puis retirer le jeton.
+
 ## Tester le scan complet (bibliothèque factice)
 
 Pour tester sans les vrais fichiers : une copie de l'arborescence réelle en **fichiers vides** (≈ 33 000, tirés de `library-sample.txt`), créée dans un **volume Docker**. Les fichiers sont créés sous Linux, dans un conteneur, parce que certains noms sont interdits sous Windows.

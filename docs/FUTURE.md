@@ -27,6 +27,9 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Affiches : plusieurs tailles (vignette légère pour la grille, w500 pour la fiche) si la bibliothèque paraît lente sur téléphone ; aujourd'hui une seule taille (~100 Ko).
 - CSP `img-src 'self'` stricte une fois toutes les affiches locales (miniatures de l'admin AniList / TMDB comprises).
 - Affiche et synopsis **par saison** (AniList a une fiche par saison) et titres d'épisodes.
+- **Recherche de comédien** (et de personnage) dans la bibliothèque.
+- **Doubleurs français** (langue déjà dans le modèle ; même requête AniList avec `language: FRENCH`), avec un choix VF / VOSTFR.
+- Fusion manuelle de deux fiches « comédien » si AniList en a en double (rare).
 - Rafraîchissement périodique des fiches appariées (synopsis complétés, nouvelles affiches) : aujourd'hui, uniquement via « Relancer » dans l'admin.
 
 ## Polish de l'interface web

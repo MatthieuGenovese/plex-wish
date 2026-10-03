@@ -686,3 +686,37 @@ Limites :
 2. Suivre les suites AniList pour les dossiers à plusieurs saisons (+ ~600 requêtes) ?
 3. Plafonds : 20 rôles, personnages `medium`, comédiens `large` (≈ 1 Go), ou la variante économe (≈ 0,4 Go) ?
 
+## 19. Distribution : implémentation (étape 6.3)
+
+Décisions validées le 2026-10-03 (§18.6) : source unique **AniList** ; suites suivies avec garde-fous ; 20 rôles par animé (`CAST_MAX_ROLES`), images ≈ 1 Go ; requêtes de distribution **après** celles des métadonnées.
+
+### 19.1 Modèle (V10)
+- `person` (fournisseur, identifiant, nom romanisé, nom natif, URL d'image) et `cast_character` (idem), **uniques par (fournisseur, identifiant)** : un comédien est le même d'un animé à l'autre (identifiant AniList « staff »).
+- `anime_cast` : (animé, personnage, **langue**) → comédien, rôle (`MAIN` / `SUPPORTING`), position, fiche AniList d'origine. Un personnage une seule fois par animé et par langue ; un comédien peut jouer plusieurs personnages. Langue `ja` seulement pour l'instant ; les doubleurs français s'ajouteront par la même requête (`voiceActors(language: FRENCH)`).
+- `anime_cast_state` : état par animé (`OK`, `NONE` = pas de distribution chez AniList, `EXCLUDED` = fiche adulte, `FAILED`, `PENDING`), fiche AniList appariée au moment de la récupération, saisons lues, nombre de rôles, date, essais, dernière erreur.
+- `cast_image` : une ligne par URL d'image, même mécanisme que les affiches (§17) ; fichiers dans `<dossier des affiches>/cast`.
+- Personnes, personnages et images que plus aucune distribution n'utilise sont effacés (fichiers compris).
+
+### 19.2 Récupération (tâche de fond `CastWorker`)
+- Séparée du scan et des métadonnées. **N'utilise que les appariements existants** (`anime.metadata_provider = 'ANILIST'`) : aucune recherche, aucun nouvel appariement. Seulement les animés de la bibliothèque, jamais la filmographie d'un comédien (conditions d'AniList : pas de collecte massive).
+- **Priorité aux métadonnées** : tant que la tâche des métadonnées a un animé à traiter, la distribution ne fait **aucune** requête AniList (elle revient voir chaque minute). Même limiteur que les métadonnées (une requête toutes les 2,5 s, 30/min) : au pire, une requête de distribution déjà partie retarde la suivante des métadonnées d'un créneau. Les images (CDN, hors API) continuent pendant ce temps.
+- Une requête par fiche : personnages triés par rôle puis pertinence (`perPage = CAST_MAX_ROLES`), doubleur japonais le plus pertinent, relations.
+- **Suites** : relation `SEQUEL` vers une fiche de format **TV ou TV_SHORT** (pas de film, d'OVA, d'ONA ni de spin-off), non adulte ; la plus ancienne s'il y en a plusieurs ; jusqu'au nombre de saisons du dossier (hors Spéciaux), **6 au plus**. Un personnage présent dans plusieurs saisons garde son **meilleur rôle** (principal avant secondaire). Ordre : principaux puis secondaires, saison puis pertinence ; figurants écartés ; plafond appliqué sur l'ensemble.
+- **Échec sur une suite** : ce qui a été lu est enregistré (état `OK`, saisons lues, erreur notée), la suite est retentée une heure plus tard ; AniList indisponible ou 429 : pause de la tâche, rien de perdu.
+- Fiche adulte (`isAdult`) : `EXCLUDED`, rien n'est gardé. Fiche introuvable : `FAILED`.
+- Rafraîchissement : la distribution est redemandée après 180 jours, et aussitôt si l'appariement AniList de l'animé change.
+
+### 19.3 Images
+Même chaîne que les affiches : hôtes autorisés (`s4.anilist.co`), pas de redirection, type + octets magiques, **1 Mo au plus**, noms par empreinte, écriture atomique, servies par `GET /api/cast-images/{identifiant aléatoire}` (sans authentification, voir §17.3), aucun chemin venu du client. Personnage : taille `medium` (100 × 150) ; comédien : `large` (230 × 345). Image générique d'AniList (`default.jpg`) ignorée (visuel de remplacement de l'application). Repli : fichier local, sinon URL d'origine, sinon visuel de remplacement. CSP inchangée.
+
+### 19.4 API
+- `GET /api/anime/{id}/cast` (connecté) : `{source, sourceUrl, items: [{character {name, nativeName, imageUrl}, role, language, person {id, name, nativeName, imageUrl} | null}]}` ; 404 si l'animé n'a aucun épisode disponible.
+- `GET /api/people/{identifiant AniList}` (connecté) : photo, noms, lien AniList, et les animés **de la bibliothèque ayant au moins un épisode disponible** où il joue, avec le personnage et le rôle ; 404 s'il n'y en a aucun.
+- Aucun chemin de fichier dans les réponses.
+
+### 19.5 Administration (onglet « Distribution »)
+Avancement (et attente derrière les métadonnées), comédiens, rôles, images sur le NAS / refusées / à télécharger, espace utilisé et estimé, animés sans distribution (avec la raison : pas d'appariement AniList, adulte, aucune chez AniList, échec), **Relancer** par animé, **Effacer toute la distribution** (données et images ; `CAST_ENABLED=false` empêche de la reprendre ensuite).
+
+### 19.6 Conditions d'AniList et conservation
+Les conditions d'AniList (lues le 2026-10-03) **ne disent rien de la durée de conservation** des données ni des images, ni de leur stockage local ; elles interdisent l'usage de l'API comme stockage de données et la collecte massive. La distribution est donc limitée à la bibliothèque et plafonnée, redemandée tous les 180 jours, et l'effacement complet est prévu dans l'admin si les conditions changeaient. Les données TMDB ne sont pas utilisées pour la distribution : « Effacer toutes les données TMDB » n'y touche pas.
+

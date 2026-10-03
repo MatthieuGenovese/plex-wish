@@ -212,6 +212,14 @@ Une tâche de fond (séparée du scan) télécharge l'affiche de chaque animé, 
 
 Si un fichier disparaît (dossier vidé, disque changé), l'affiche distante est affichée et le fichier retéléchargé automatiquement. Affiches TMDB : retéléchargées à 5 mois, effacées à 6 (conditions TMDB), et effacées par « Effacer toutes les données TMDB ». `POSTERS_ENABLED=false` : pas de téléchargement.
 
+### Distribution (personnages et comédiens)
+
+Sur la fiche d'un animé, la **distribution** : personnages (image, rôle principal ou secondaire) et leurs **doubleurs japonais** ; un clic sur un comédien ouvre sa page avec les animés **de la bibliothèque** où il joue. Source unique : AniList (ARCHITECTURE §18-19).
+
+- Tâche de fond, **après** les métadonnées (elle attend que celles-ci n'aient plus rien à faire) : ~1 h 20 de requêtes AniList pour ~1 300 animés au premier passage, puis ~4 h d'images. Les suites (saisons 2, 3…) sont suivies jusqu'au nombre de saisons du dossier.
+- `CAST_MAX_ROLES` (20 par défaut) : rôles gardés par animé. Images dans `POSTERS_HOST_PATH/cast`, **≈ 1 Go** au total.
+- *Administration → Distribution* : avancement, place, animés sans distribution, « Relancer », « Effacer toute la distribution ». `CAST_ENABLED=false` arrête la récupération.
+
 ## Accès depuis Internet
 
 L'application doit être servie en **HTTPS** (cookie de session `Secure`) sous **une seule adresse**, celle de `PUBLIC_URL`. Trois façons de faire, vérifiées le 2026-10-03 :

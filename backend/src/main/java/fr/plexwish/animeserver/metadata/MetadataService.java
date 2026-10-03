@@ -101,7 +101,7 @@ public class MetadataService {
     }
 
     /** Animés sans état, ou à refaire et dont l'heure est venue ; les plus anciens d'abord. */
-    Optional<Long> nextPending() throws SQLException {
+    public Optional<Long> nextPending() throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement st = c.prepareStatement("""
                      SELECT a.id FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id

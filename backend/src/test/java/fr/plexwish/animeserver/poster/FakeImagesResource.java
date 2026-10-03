@@ -9,7 +9,7 @@ import java.util.Map;
 /** Démarre le faux serveur d'images ; seul 127.0.0.1 est autorisé, en http (tests uniquement). */
 public class FakeImagesResource implements QuarkusTestResourceLifecycleManager {
 
-    static FakeImages server;
+    public static FakeImages server;
     static final long MAX_BYTES = 4096;
 
     @Override

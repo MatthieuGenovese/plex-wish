@@ -42,6 +42,11 @@ public class PosterStore {
         this(Path.of(config.path()));
     }
 
+    /** Autre dossier géré de la même façon (images de la distribution). */
+    public static PosterStore at(Path root) {
+        return new PosterStore(root);
+    }
+
     PosterStore(Path root) {
         this.root = root.toAbsolutePath().normalize();
     }

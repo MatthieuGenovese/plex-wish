@@ -42,6 +42,17 @@ public class AniListProvider implements MetadataProvider {
             + FIELDS + " } } }";
     static final String BY_ID = "query ($id: Int) { Media(id: $id, type: ANIME) { " + FIELDS + " } }";
 
+    /**
+     * Distribution d'une fiche (étape 6.3) : personnages triés par rôle puis pertinence (principaux, secondaires,
+     * figurants), avec le doubleur japonais le plus pertinent ; et les relations, pour suivre les suites.
+     */
+    static final String CAST = """
+            query ($id: Int, $perPage: Int) { Media(id: $id, type: ANIME) { id isAdult format
+              relations { edges { relationType node { id type format isAdult startDate { year } } } }
+              characters(page: 1, perPage: $perPage, sort: [ROLE, RELEVANCE, ID]) { edges { role
+                node { id name { full native } image { large medium } }
+                voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full native } image { large medium } languageV2 } } } } }""";
+
     private final URI endpoint;
     private final ObjectMapper json;
     private final RateLimiter limiter;
@@ -106,6 +117,16 @@ public class AniListProvider implements MetadataProvider {
         JsonNode data = call(BY_ID, Map.of("id", id));
         return data == null || data.path("Media").isMissingNode() || data.path("Media").isNull()
                 ? Optional.empty() : Optional.of(candidate(data.path("Media")));
+    }
+
+    /**
+     * Distribution brute d'une fiche (nœud {@code Media}), ou vide si elle n'existe pas. Même limiteur que les
+     * métadonnées : 30 requêtes/min au total.
+     */
+    public Optional<JsonNode> cast(int mediaId, int perPage) throws ProviderUnavailableException {
+        JsonNode data = call(CAST, Map.of("id", mediaId, "perPage", perPage));
+        return data == null || data.path("Media").isMissingNode() || data.path("Media").isNull()
+                ? Optional.empty() : Optional.of(data.path("Media"));
     }
 
     /** Un appel GraphQL ; null si la fiche n'existe pas (404). */

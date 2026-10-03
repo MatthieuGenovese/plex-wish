@@ -45,6 +45,9 @@ services:
       # Affiches téléchargées sur le NAS (dossier du conteneur, monté en écriture ci-dessous).
       POSTERS_PATH: /data/posters
       POSTERS_ENABLED: ${POSTERS_ENABLED:-true}
+      # Distribution (personnages et doubleurs, AniList) : images dans <dossier des affiches>/cast.
+      CAST_ENABLED: ${CAST_ENABLED:-true}
+      CAST_MAX_ROLES: ${CAST_MAX_ROLES:-20}
       # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}

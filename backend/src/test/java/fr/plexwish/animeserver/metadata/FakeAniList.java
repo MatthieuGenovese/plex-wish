@@ -36,6 +36,7 @@ public final class FakeAniList {
     private final Map<String, List<ObjectNode>> searches = new HashMap<>();
     private final Map<Integer, ObjectNode> byId = new HashMap<>();
     private final Deque<Forced> forced = new ArrayDeque<>();
+    private final Map<Integer, Forced> failById = new HashMap<>();
     private volatile Forced always;
     private final List<String> log = Collections.synchronizedList(new ArrayList<>());
     /** Dernière requête GraphQL reçue (pour vérifier ses filtres). */
@@ -59,6 +60,7 @@ public final class FakeAniList {
         searches.clear();
         byId.clear();
         forced.clear();
+        failById.clear();
         always = null;
         log.clear();
     }
@@ -102,6 +104,11 @@ public final class FakeAniList {
         forced.addAll(List.of(responses));
     }
 
+    /** Réponse forcée pour une fiche donnée (par identifiant) ; null pour revenir à la normale. */
+    public synchronized void failId(int id, Forced response) {
+        if (response == null) failById.remove(id); else failById.put(id, response);
+    }
+
     /** Toutes les réponses (panne prolongée) ; null pour revenir à la normale. */
     public void always(Forced response) {
         always = response;
@@ -123,6 +130,9 @@ public final class FakeAniList {
         Forced f;
         synchronized (this) {
             f = always != null ? always : forced.poll();
+            if (f == null && !vars.has("search")) {
+                f = failById.get(vars.path("id").asInt());
+            }
         }
         if (f != null) {
             f.headers().forEach((k, v) -> ex.getResponseHeaders().add(k, v));

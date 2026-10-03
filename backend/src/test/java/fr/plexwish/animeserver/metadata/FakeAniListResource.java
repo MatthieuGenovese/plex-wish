@@ -9,7 +9,7 @@ import java.util.Map;
 /** Démarre le faux AniList pour les tests Quarkus et y pointe l'application. */
 public class FakeAniListResource implements QuarkusTestResourceLifecycleManager {
 
-    static FakeAniList server;
+    public static FakeAniList server;
 
     @Override
     public Map<String, String> start() {

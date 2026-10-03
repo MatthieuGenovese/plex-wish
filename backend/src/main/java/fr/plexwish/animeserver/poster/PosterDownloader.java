@@ -86,6 +86,11 @@ public class PosterDownloader {
     }
 
     public Image download(String url) throws Rejected, Retry, ProviderUnavailableException {
+        return download(url, config.maxBytes());
+    }
+
+    /** Avec une taille maximale propre (images de la distribution : plus petites que les affiches). */
+    public Image download(String url, long maxBytes) throws Rejected, Retry, ProviderUnavailableException {
         Optional<String> refused = check(url);
         if (refused.isPresent()) {
             throw new Rejected(refused.get());
@@ -124,10 +129,10 @@ public class PosterDownloader {
                 throw new Rejected("pas une image acceptée (" + (type.isEmpty() ? "type absent" : type) + ")");
             }
             long declared = response.headers().firstValueAsLong("Content-Length").orElse(-1);
-            if (declared > config.maxBytes()) {
+            if (declared > maxBytes) {
                 throw new Rejected("image trop grosse (" + declared + " octets)");
             }
-            byte[] bytes = readAtMost(body, config.maxBytes());
+            byte[] bytes = readAtMost(body, maxBytes);
             String detected = detect(bytes);
             if (detected == null) {
                 throw new Rejected("le contenu n'est pas une image JPEG, PNG ou WebP");

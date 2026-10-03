@@ -53,7 +53,7 @@ public class ProgressResource {
     public record ContinueWatching(long episodeId, int episodeNumber, String episodeTitle,
                                    long seasonId, int seasonNumber, String seasonLabel,
                                    long animeId, String animeTitle,
-                                   int positionSeconds, int durationSeconds, Instant updatedAt) {
+                                   int positionSeconds, int durationSeconds, Instant updatedAt, String posterUrl) {
     }
 
     private static final String VISIBLE = """
@@ -144,12 +144,22 @@ public class ProgressResource {
                     int season = rs.getInt(5);
                     list.add(new ContinueWatching(rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getLong(4), season,
                             season == 0 ? "Spéciaux" : "Saison " + season, rs.getLong(6), rs.getString(7),
-                            rs.getInt(8), rs.getInt(9), instant(rs, 10)));
+                            rs.getInt(8), rs.getInt(9), instant(rs, 10), null));
                 }
             }
-            return list;
+            // Affiche : même résolution que la bibliothèque (fichier sur le NAS, sinon URL distante), ARCHITECTURE §17.
+            var urls = posters.urls(list.stream().map(ContinueWatching::animeId).distinct().toList());
+            return list.stream().map(x -> {
+                var u = urls.get(x.animeId());
+                return new ContinueWatching(x.episodeId(), x.episodeNumber(), x.episodeTitle(), x.seasonId(), x.seasonNumber(),
+                        x.seasonLabel(), x.animeId(), x.animeTitle(), x.positionSeconds(), x.durationSeconds(), x.updatedAt(),
+                        u == null ? null : u.small());
+            }).toList();
         }
     }
+
+    @Inject
+    fr.plexwish.animeserver.poster.PosterService posters;
 
     private long userId() {
         return Long.parseLong(jwt.getSubject());

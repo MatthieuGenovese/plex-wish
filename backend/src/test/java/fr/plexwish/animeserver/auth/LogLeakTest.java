@@ -118,6 +118,18 @@ class LogLeakTest {
         given().cookie(AuthResource.COOKIE, refresh2).post("/api/auth/logout").then().statusCode(204);
         String adminAccess = adminToken();
 
+        // Client natif : refresh token dans le corps (login, refresh, logout, et un refresh refusé).
+        Response app = given().contentType(ContentType.JSON).header("X-Forwarded-For", newIp())
+                .body(Map.of("login", name, "password", newPassword, "device", "Test")).post("/api/auth/app/login");
+        String appRefresh = app.path("refreshToken");
+        String appAccess = app.path("accessToken");
+        String appRefresh2 = given().contentType(ContentType.JSON).body(Map.of("refreshToken", appRefresh))
+                .post("/api/auth/app/refresh").path("refreshToken");
+        given().contentType(ContentType.JSON).body(Map.of("refreshToken", appRefresh2)).post("/api/auth/app/logout")
+                .then().statusCode(204);
+        given().contentType(ContentType.JSON).body(Map.of("refreshToken", appRefresh2)).post("/api/auth/app/refresh")
+                .then().statusCode(401);
+
         // URL de lecture signée : la signature ne doit apparaître nulle part, même avec le journal d'accès.
         String exp = String.valueOf(java.time.Instant.now().plusSeconds(600).getEpochSecond());
         String sig = streamSigner.signature(424242, id, Long.parseLong(exp));
@@ -132,7 +144,8 @@ class LogLeakTest {
         assertTrue(logs.contains("GET /api/stream/424242"), "la lecture doit apparaître dans le journal d'accès");
         assertTrue(capture.debugRecords > 0, "les logs DEBUG doivent être actifs");
         for (String secret : List.of(password, "wrong-" + password, newPassword, "x".repeat(300), access, adminAccess,
-                refresh, refresh2, RefreshTokenService.hash(refresh), "admin-test-password", "$2a$12$", "$2y$12$", sig)) {
+                refresh, refresh2, RefreshTokenService.hash(refresh), "admin-test-password", "$2a$12$", "$2y$12$", sig,
+                appRefresh, appRefresh2, appAccess, RefreshTokenService.hash(appRefresh2))) {
             assertFalse(logs.contains(secret), "secret trouvé dans les logs : " + secret.substring(0, Math.min(12, secret.length())) + "…");
         }
     }

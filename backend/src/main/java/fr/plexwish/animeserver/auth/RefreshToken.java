@@ -49,4 +49,11 @@ public class RefreshToken extends PanacheEntityBase {
 
     @Column(name = "last_used_at")
     public Instant lastUsedAt;
+
+    /** WEB (cookie) ou ANDROID (corps de la réponse), ARCHITECTURE §5.1.1. */
+    @Column(name = "client", nullable = false, length = 10)
+    public String client = "WEB";
+
+    @Column(name = "device", length = 100)
+    public String device;
 }

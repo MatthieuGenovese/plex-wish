@@ -58,47 +58,19 @@ public class AuthResource {
     }
 
     @Inject
-    PasswordService passwords;
+    LoginService login;
     @Inject
     AccessTokenService accessTokens;
     @Inject
     RefreshTokenService refreshTokens;
-    @Inject
-    LoginAttemptLimiter limiter;
     @Inject
     AuthConfig config;
 
     @POST
     @Path("/login")
     public Response login(@Valid @NotNull LoginRequest request, @Context HttpServerRequest http) {
-        String ip = ClientIp.of(http);
-        String login = request.login().trim();
-        if (limiter.isBlocked(ip, login)) {
-            LOG.warnf("Connexion bloquée (trop d'échecs) : identifiant '%s' depuis %s", login, ip);
-            long minutes = Math.max(1, (limiter.blockedForMillis(ip, login) + 59_999) / 60_000);
-            throw new ApiException(429, "TOO_MANY_ATTEMPTS", "Trop de tentatives de connexion. Réessayez dans "
-                    + minutes + (minutes > 1 ? " minutes." : " minute."));
-        }
-        User user = checkCredentials(login, request.password());
-        if (user == null) {
-            limiter.recordFailure(ip, login);
-            LOG.infof("Échec de connexion : identifiant '%s' depuis %s", login, ip);
-            throw new ApiException(401, "INVALID_CREDENTIALS", "Identifiant ou mot de passe incorrect");
-        }
-        limiter.recordSuccess(ip, login);
-        LOG.infof("Connexion de '%s' depuis %s", user.username, ip);
+        User user = login.authenticate(request.login(), request.password(), ClientIp.of(http));
         return Response.ok(tokens(user)).cookie(refreshCookie(refreshTokens.create(user))).build();
-    }
-
-    /** Renvoie l'utilisateur si identifiants valides ET compte actif ; sinon null (réponse neutre). */
-    User checkCredentials(String login, String password) {
-        User user = User.findByLogin(login).orElse(null);
-        if (user == null) {
-            passwords.burnTime(password); // même durée que si le compte existait
-            return null;
-        }
-        boolean ok = passwords.matches(password, user.passwordHash);
-        return ok && user.enabled ? user : null;
     }
 
     @POST
@@ -123,7 +95,7 @@ public class AuthResource {
         return Response.noContent().cookie(clearCookie()).build();
     }
 
-    private TokenResponse tokens(User user) {
+    TokenResponse tokens(User user) {
         return new TokenResponse(accessTokens.issue(user), "Bearer", accessTokens.lifetimeSeconds(), UserDto.of(user));
     }
 

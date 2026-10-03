@@ -44,8 +44,16 @@ public class RefreshTokenService {
     /** Crée un refresh token pour l'utilisateur et renvoie sa valeur en clair (jamais stockée). */
     @Transactional
     public String create(User user) {
+        return create(user, "WEB", null);
+    }
+
+    /** {@code client} : WEB ou ANDROID ; {@code device} : libellé facultatif de l'appareil. */
+    @Transactional
+    public String create(User user, String client, String device) {
         String token = newToken();
         RefreshToken rt = new RefreshToken();
+        rt.client = client;
+        rt.device = device;
         rt.userId = user.id;
         rt.tokenHash = hash(token);
         rt.createdAt = Instant.now();
@@ -56,6 +64,17 @@ public class RefreshTokenService {
 
     @Transactional
     public Outcome refresh(String token) {
+        return refresh(token, false);
+    }
+
+    /**
+     * {@code rotateOnGrace} (app native) : dans la fenêtre de tolérance, un nouveau refresh token est émis au lieu
+     * du seul access token. Cas réel : la réponse d'un refresh est perdue (réseau coupé, app tuée) et l'app
+     * réessaie avec l'ancien token ; sans nouveau token, son refresh suivant passerait pour un vol et couperait
+     * toutes ses sessions. Le navigateur, lui, a déjà reçu le bon cookie.
+     */
+    @Transactional
+    public Outcome refresh(String token, boolean rotateOnGrace) {
         if (token == null || token.isBlank()) {
             return new Rejected();
         }
@@ -69,16 +88,18 @@ public class RefreshTokenService {
             return new Rejected();
         }
         if (rt.revokedAt != null) {
-            return reuse(rt, user, now);
+            Outcome o = reuse(rt, user, now);
+            return o instanceof Grace && rotateOnGrace ? new Rotated(user, create(user, rt.client, rt.device)) : o;
         }
         // Révocation atomique : si deux requêtes arrivent en même temps, une seule gagne.
         int updated = RefreshToken.update(
                 "revokedAt = ?1, revokedReason = ?2, lastUsedAt = ?1 where id = ?3 and revokedAt is null",
                 now, RevokedReason.ROTATED, rt.id);
         if (updated == 0) {
-            return new Grace(user); // l'autre requête vient de le faire tourner
+            // L'autre requête vient de le faire tourner.
+            return rotateOnGrace ? new Rotated(user, create(user, rt.client, rt.device)) : new Grace(user);
         }
-        return new Rotated(user, create(user));
+        return new Rotated(user, create(user, rt.client, rt.device));
     }
 
     private Outcome reuse(RefreshToken rt, User user, Instant now) {

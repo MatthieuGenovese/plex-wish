@@ -5,13 +5,14 @@ import { EpisodeSummary, Season } from '../../core/api-types';
 import { LibraryApi } from '../../core/library-api';
 import { loadOn } from '../../shared/load-state';
 import { Poster } from '../../shared/poster';
+import { CastSection } from './cast-section';
 
 /** Au-delà, les épisodes d'une saison sont présentés par tranches (One Piece : 1 000+ épisodes). */
 export const CHUNK = 100;
 
 @Component({
   selector: 'app-anime-detail',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, CastSection],
   template: `
     @let a = anime();
     @if (a.error) {
@@ -98,6 +99,7 @@ export const CHUNK = 100;
           }
         </section>
       }
+      <app-cast-section [animeId]="id()" />
     } @else {
       <p class="muted" role="status">Chargement…</p>
     }

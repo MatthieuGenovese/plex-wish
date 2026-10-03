@@ -18,7 +18,7 @@ export const TMDB_NOTICE =
     <h2>Sources des informations</h2>
     <section class="card" aria-labelledby="about-anilist">
       <h3 id="about-anilist">AniList</h3>
-      <p>Affiches, synopsis en anglais et années viennent d’<a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>.</p>
+      <p>Synopsis en anglais, années, personnages et comédiens de doublage viennent d’<a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>, ainsi que les affiches quand TMDB n’en a pas.</p>
     </section>
     <section class="card" aria-labelledby="about-tmdb">
       <h3 id="about-tmdb" class="tmdb-title">

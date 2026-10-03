@@ -37,6 +37,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () => import('./posters').then((m) => m.PostersPage),
       },
       {
+        path: 'cast',
+        title: 'Distribution · Administration · Anime Server',
+        loadComponent: () => import('./cast').then((m) => m.CastPage),
+      },
+      {
         path: 'users',
         title: 'Utilisateurs · Administration · Anime Server',
         loadComponent: () => import('./users').then((m) => m.UsersPage),

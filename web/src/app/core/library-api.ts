@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { AnimeDetail, AnimeSummary, EpisodeSummary, Page } from './api-types';
+import { AnimeCast, AnimeDetail, AnimeSummary, EpisodeSummary, Page, PersonDetail } from './api-types';
 
 export interface AnimeQuery {
   sort?: 'title' | 'recent';
@@ -31,5 +31,13 @@ export class LibraryApi {
 
   episodes(seasonId: number): Observable<EpisodeSummary[]> {
     return this.http.get<EpisodeSummary[]>(`/api/seasons/${seasonId}/episodes`);
+  }
+
+  cast(animeId: number | string): Observable<AnimeCast> {
+    return this.http.get<AnimeCast>(`/api/anime/${encodeURIComponent(animeId)}/cast`);
+  }
+
+  person(id: string): Observable<PersonDetail> {
+    return this.http.get<PersonDetail>(`/api/people/${encodeURIComponent(id)}`);
   }
 }

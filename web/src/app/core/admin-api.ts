@@ -2,6 +2,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
+  CastAdminEntry,
+  CastSummary,
   IssuePage,
   MetadataEntry,
   MetadataSheet,
@@ -186,5 +188,28 @@ export class AdminApi {
 
   redownloadPoster(animeId: number): Observable<{ queued: boolean; running: boolean }> {
     return this.http.post<{ queued: boolean; running: boolean }>(`/api/admin/anime/${animeId}/poster/redownload`, null);
+  }
+
+  // --- Distribution ------------------------------------------------------------------------------
+
+  castSummary(): Observable<CastSummary> {
+    return this.http.get<CastSummary>('/api/admin/cast/summary');
+  }
+
+  castList(query: { filter?: string; q?: string; page?: number; size?: number }): Observable<Page<CastAdminEntry>> {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null && v !== '') params = params.set(k, String(v));
+    }
+    return this.http.get<Page<CastAdminEntry>>('/api/admin/cast', { params });
+  }
+
+  refreshCast(animeId: number): Observable<{ queued: boolean; running: boolean }> {
+    return this.http.post<{ queued: boolean; running: boolean }>(`/api/admin/anime/${animeId}/cast/refresh`, null);
+  }
+
+  /** Efface toute la distribution (données et images). */
+  purgeCast(): Observable<{ purged: number; running: boolean }> {
+    return this.http.post<{ purged: number; running: boolean }>('/api/admin/cast/purge', null, { params: { confirm: 'true' } });
   }
 }

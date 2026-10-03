@@ -35,6 +35,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/anime-detail/anime-detail').then((m) => m.AnimeDetailPage),
       },
       {
+        path: 'personne/:id',
+        title: 'Comédien · Anime Server',
+        loadComponent: () => import('./pages/person/person').then((m) => m.PersonPage),
+      },
+      {
         path: 'admin',
         canActivate: [adminGuard],
         canActivateChild: [adminGuard],

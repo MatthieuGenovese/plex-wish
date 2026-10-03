@@ -354,3 +354,87 @@ export interface PosterEntry {
   bytes: number | null;
   fetchedAt: string | null;
 }
+
+// --- Distribution (personnages et comédiens) ---------------------------------------------------
+
+export type CastRole = 'MAIN' | 'SUPPORTING';
+
+export interface CastCharacter {
+  name: string;
+  nativeName: string | null;
+  /** Image locale (/api/cast-images/…), sinon l'URL d'origine, sinon null (visuel de remplacement). */
+  imageUrl: string | null;
+}
+
+export interface CastPersonRef {
+  /** Identifiant AniList du comédien (route /personne/:id). */
+  id: string;
+  name: string;
+  nativeName: string | null;
+  imageUrl: string | null;
+}
+
+export interface CastEntry {
+  character: CastCharacter;
+  role: CastRole;
+  /** Langue du doublage (ISO 639-1) : « ja » pour l'instant. */
+  language: string;
+  person: CastPersonRef | null;
+}
+
+export interface AnimeCast {
+  /** « AniList », null s'il n'y a pas de distribution. */
+  source: string | null;
+  sourceUrl: string | null;
+  items: CastEntry[];
+}
+
+export interface PersonRole {
+  animeId: number;
+  animeTitle: string;
+  year: number | null;
+  posterUrl: string | null;
+  character: CastCharacter;
+  role: CastRole;
+}
+
+export interface PersonDetail {
+  id: string;
+  name: string;
+  nativeName: string | null;
+  imageUrl: string | null;
+  sourceUrl: string;
+  /** Animés de la bibliothèque (disponibles) où il joue. */
+  roles: PersonRole[];
+}
+
+export type CastStatus = 'OK' | 'PENDING' | 'NONE' | 'FAILED' | 'EXCLUDED' | 'NO_MATCH';
+
+export interface CastSummary {
+  enabled: boolean;
+  running: boolean;
+  folderUsable: boolean;
+  maxRoles: number;
+  withAniList: number;
+  counts: Record<'OK' | 'PENDING' | 'NONE' | 'FAILED' | 'EXCLUDED', number>;
+  people: number;
+  characters: number;
+  roles: number;
+  images: Record<'OK' | 'PENDING' | 'FAILED', number>;
+  diskBytes: number;
+  estimatedBytes: number;
+  /** Les métadonnées ont du travail : la distribution attend son tour. */
+  waitingForMetadata: boolean;
+  pausedUntil: string | null;
+  lastUnavailable: string | null;
+}
+
+export interface CastAdminEntry {
+  animeId: number;
+  title: string;
+  status: CastStatus;
+  roles: number;
+  seasons: number;
+  fetchedAt: string | null;
+  lastError: string | null;
+}

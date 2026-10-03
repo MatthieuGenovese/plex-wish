@@ -599,3 +599,29 @@ Ce qui nous concerne, et ce que le projet en fait :
 
 ### 16.6 Administration (onglet « Synopsis français »)
 Animés sans synopsis français par défaut (non appariés, douteux, ou fiche TMDB sans traduction) ; correction par candidat, par adresse ou identifiant TMDB (`tv/209867`, `movie/372058`, avec prévisualisation), ou « aucune fiche TMDB ». Verrouillée ; remplacer une fiche existante → 409 `TMDB_CONFLICT` puis confirmation (`replace=true`). Relance des non appariés / douteux. **Purge** (`POST /api/admin/tmdb/purge?confirm=true`) : efface toutes les données TMDB, corrections comprises (fin de licence, §1.D) ; retirer aussi la clé, sinon la tâche recommence.
+
+## 17. Affiches stockées sur le NAS (étape 6.2)
+
+### 17.1 Stockage
+- Dossier **`POSTERS_PATH`** (défaut `/data/posters` dans le conteneur), monté **en écriture** depuis `POSTERS_HOST_PATH` (`.env`). C'est le seul dossier où le backend écrit ; `/media` reste en lecture seule. Dossier absent ou non accessible en écriture : la tâche ne démarre pas (avertissement dans le journal et dans l'admin), les affiches restent distantes.
+- Fichiers **nommés par leur empreinte** SHA-256, rangés par les 2 premiers caractères : `ab/ab12…64.jpg` (extension d'après le contenu réel : jpg, png, webp). Écriture dans un fichier temporaire puis déplacement atomique ; un fichier déjà présent n'est jamais réécrit. Deux animés avec la même image (deux saisons d'une série TMDB) partagent le fichier. Au démarrage de la tâche : ménage des fichiers temporaires laissés par une interruption et des fichiers que plus aucune ligne ne référence.
+- Table **`anime_poster`** (V9), une ligne par animé : statut, fournisseur, URL source, identifiant public, chemin relatif, empreinte, type, taille, date de récupération, source en échec, essais.
+
+### 17.2 Téléchargement (tâche de fond, séparée du scan)
+- Source voulue : **affiche TMDB** (`image.tmdb.org/t/p/w500<poster_path>`) si la fiche TMDB a moins de 6 mois, **sinon AniList** (`extraLarge`). On ne télécharge que ce qui manque ou a changé de source ; une image déjà présente pour la même source est réutilisée sans appel réseau. État en base : reprise après redémarrage, idempotent.
+- Contrôles : **hôtes autorisés** seulement (`image.tmdb.org`, `s4.anilist.co`), https, pas d'identifiants dans l'URL ; **aucune redirection suivie** ; `Content-Type` image/jpeg, png ou webp ; **octets magiques** cohérents avec ce type ; **5 Mo au plus** (en-tête et lecture plafonnée). Un refus (pas une image, trop grosse, 404, hôte, redirection) n'est plus retenté tant que la source ne change pas (ou « Retélécharger ») ; un échec passager (HTTP 5xx) est retenté avec un délai croissant, 5 fois ; serveur injoignable ou 429 : pause de la tâche.
+- Débit : une image toutes les 0,5 s.
+- **Conditions TMDB** : une affiche TMDB est retéléchargée après 5 mois et **effacée à 6** (ligne et fichier), comme quand sa fiche TMDB disparaît ; la purge TMDB (fin de licence) efface aussi toutes les affiches TMDB.
+
+### 17.3 Service des affiches : identifiant aléatoire (décision)
+- `GET /api/posters/{publicId}`, **sans authentification**, `publicId` = 128 bits aléatoires (32 caractères hexadécimaux), cherché en base. **Aucun chemin ne vient du client** ; même le chemin lu en base est vérifié (forme exacte `xx/<64 hex>.ext`, résolu à l'intérieur du dossier, fichier ordinaire) : test de path traversal.
+- Pourquoi pas d'authentification ni d'URL signée : une balise `<img>` n'envoie pas l'en-tête `Authorization`. Une URL signée (comme le streaming, §6) changerait à chaque expiration et casserait le cache navigateur pour un gain faible : une affiche n'est pas une donnée sensible. Un identifiant aléatoire n'est connu que de qui a appelé l'API authentifiée.
+- **Limites** : qui a obtenu une URL d'affiche (utilisateur, historique, journal d'un proxy) peut la recharger sans compte tant qu'elle existe ; elle ne révèle qu'une image publique. Les noms de fichiers (empreintes) ne sont jamais exposés : on ne peut pas tester « ce serveur a-t-il telle affiche » en calculant l'empreinte d'une image connue.
+- L'identifiant change quand l'image change : `Cache-Control: private, max-age=30 jours, immutable`, `ETag` = empreinte. 30 jours restent sous la limite TMDB (retéléchargement à 5 mois + 30 jours < 6 mois).
+- API : `posterUrl` / `posterLargeUrl` = **fichier local**, sinon **URL distante** (TMDB, puis AniList), sinon `null` (visuel de remplacement côté web). Fichier local disparu : URL distante, et la tâche le retélécharge.
+
+### 17.4 CSP
+`img-src 'self' data: https://image.tmdb.org https://s4.anilist.co` (au lieu de `https:`) : affiches locales servies par l'application, repli distant limité aux deux sources. Si AniList change d'hôte d'images, les affiches distantes concernées tombent sur le visuel de remplacement : il suffit d'ajouter l'hôte ici et dans `anime.posters.allowed-hosts`.
+
+### 17.5 Administration (onglet « Affiches »)
+Nombre d'affiches sur le NAS (TMDB / AniList), distantes, absentes, en échec ; place utilisée, estimation une fois tout téléchargé (taille moyenne × animés avec une affiche), espace libre du volume ; liste filtrable avec l'erreur ; « Retélécharger » par animé (oublie les échecs ; l'affiche actuelle reste servie en attendant).

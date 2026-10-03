@@ -144,7 +144,7 @@ Récupérées sur [AniList](https://anilist.co) (API publique, sans clé) par un
 - **Durée** : AniList limite le débit (30 requêtes/min en ce moment) ; la tâche fait un appel toutes les 2,5 s. Premier lancement sur ~1 300 animés : **environ une heure** ; ensuite, seulement les nouveaux animés, à la fin de chaque scan. Elle reprend où elle en était après un redémarrage.
 - **Accès Internet sortant** du conteneur backend vers `graphql.anilist.co` nécessaire (le cas par défaut avec Docker). Sans accès, rien ne casse : la tâche réessaie plus tard. `METADATA_ENABLED=false` la désactive.
 - **Synopsis en anglais** (AniList n'en a pas d'autre). Le titre de l'animé reste le nom du dossier ; le titre anglais ou romaji s'affiche en dessous.
-- **Affiches** : seule l'URL est stockée ; le navigateur les charge depuis `s4.anilist.co` (autorisé par la CSP : `img-src https:`). AniList voit donc l'adresse IP des spectateurs ; les télécharger sur le NAS est noté dans `docs/FUTURE.md`.
+- **Affiches** : téléchargées sur le NAS (voir ci-dessous) ; en attendant, ou si le dossier n'est pas utilisable, le navigateur les charge depuis leur source.
 - **Administration → Métadonnées** : avancement, non appariés et douteux, correction par candidat ou par identifiant AniList (le nombre dans `anilist.co/anime/<id>`), « aucune fiche ». Une correction est verrouillée : jamais écrasée. Remplacer une fiche existante demande une confirmation.
 
 ### Synopsis en français (TMDB, facultatif)
@@ -156,6 +156,17 @@ Sans configuration, les synopsis restent en anglais. Pour les avoir en français
 3. *Administration → Synopsis français* : avancement (après AniList, quelques minutes), et animés restés sans synopsis français, à corriger à la main au besoin (adresse de la fiche TMDB).
 
 Le jeton reste côté serveur (jamais envoyé au navigateur ni écrit dans les logs). **Conditions TMDB** : usage non commercial ; rien n'est conservé plus de 6 mois (fiches redemandées à 5 mois, effacées à 6) ; logo et mention dans *À propos* (déposer le logo officiel dans `web/public/attribution/tmdb-logo.svg`, voir le README de ce dossier) ; pour arrêter, bouton « Effacer toutes les données TMDB » puis retirer le jeton.
+
+### Affiches sur le NAS
+
+Une tâche de fond (séparée du scan) télécharge l'affiche de chaque animé, **TMDB d'abord, AniList sinon**, dans un dossier à part : les navigateurs ne contactent plus TMDB ni AniList (adresse IP des spectateurs, disponibilité). Environ 100 Ko par animé, soit ~150 Mo pour 1 300 animés ; premier passage en une quinzaine de minutes (une image toutes les 0,5 s).
+
+1. **Créer le dossier** sur le NAS, **hors du dossier média** (qui reste en lecture seule et n'est jamais modifié), par exemple `/volume1/docker/anime-server/posters` (File Station ou SSH : `mkdir -p /volume1/docker/anime-server/posters`).
+2. **Droits** : le conteneur backend tourne avec `PUID:PGID` (voir `.env`). Le dossier doit lui appartenir : en SSH, `sudo chown -R <PUID>:<PGID> /volume1/docker/anime-server/posters` (ou, dans File Station, donner Lecture/Écriture à cet utilisateur).
+3. Dans `.env` : `POSTERS_HOST_PATH=/volume1/docker/anime-server/posters`, puis `docker compose up -d`.
+4. *Administration → Affiches* : nombre d'affiches sur le NAS, distantes, absentes ou en échec, place utilisée et estimée, bouton « Retélécharger ». Si le dossier n'est pas accessible en écriture, un avertissement l'indique (et le journal du backend aussi) : rien ne casse, les affiches restent distantes.
+
+Si un fichier disparaît (dossier vidé, disque changé), l'affiche distante est affichée et le fichier retéléchargé automatiquement. Affiches TMDB : retéléchargées à 5 mois, effacées à 6 (conditions TMDB), et effacées par « Effacer toutes les données TMDB ». `POSTERS_ENABLED=false` : pas de téléchargement.
 
 ## Tester le scan complet (bibliothèque factice)
 

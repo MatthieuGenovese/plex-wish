@@ -32,6 +32,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () => import('./tmdb').then((m) => m.TmdbPage),
       },
       {
+        path: 'posters',
+        title: 'Affiches · Administration · Anime Server',
+        loadComponent: () => import('./posters').then((m) => m.PostersPage),
+      },
+      {
         path: 'users',
         title: 'Utilisateurs · Administration · Anime Server',
         loadComponent: () => import('./users').then((m) => m.UsersPage),

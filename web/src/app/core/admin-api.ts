@@ -9,6 +9,8 @@ import {
   Override,
   OverrideRequest,
   Page,
+  PosterEntry,
+  PosterSummary,
   Role,
   ScanReport,
   TmdbEntry,
@@ -166,5 +168,23 @@ export class AdminApi {
   /** Fin de licence TMDB : efface toutes les données TMDB. */
   purgeTmdb(): Observable<{ purged: number }> {
     return this.http.post<{ purged: number }>('/api/admin/tmdb/purge', null, { params: { confirm: 'true' } });
+  }
+
+  // --- Affiches ----------------------------------------------------------------------------------
+
+  posterSummary(): Observable<PosterSummary> {
+    return this.http.get<PosterSummary>('/api/admin/posters/summary');
+  }
+
+  posters(query: { filter?: string; q?: string; page?: number; size?: number }): Observable<Page<PosterEntry>> {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null && v !== '') params = params.set(k, String(v));
+    }
+    return this.http.get<Page<PosterEntry>>('/api/admin/posters', { params });
+  }
+
+  redownloadPoster(animeId: number): Observable<{ queued: boolean; running: boolean }> {
+    return this.http.post<{ queued: boolean; running: boolean }>(`/api/admin/anime/${animeId}/poster/redownload`, null);
   }
 }

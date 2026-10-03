@@ -24,7 +24,8 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - **Synopsis TMDB par saison** (`tv/{id}/season/{n}`, en français) sur la fiche, quand une saison a le sien ; aujourd'hui, synopsis de la série.
 - Si la recherche TMDB par titre déçoit : pont d'identifiants AniList → TMDB (liste Kometa Anime-IDs, licence MIT), voir ARCHITECTURE §16.1.
 - Réapparier TMDB automatiquement quand l'appariement AniList d'un animé est corrigé (aujourd'hui : « Relancer » dans l'onglet Synopsis français).
-- **Télécharger les affiches sur le NAS** (cache local servi par nginx) : les navigateurs n'appelleraient plus le CDN d'AniList (adresse IP des spectateurs, disponibilité, CSP `img-src 'self'`).
+- Affiches : plusieurs tailles (vignette légère pour la grille, w500 pour la fiche) si la bibliothèque paraît lente sur téléphone ; aujourd'hui une seule taille (~100 Ko).
+- CSP `img-src 'self'` stricte une fois toutes les affiches locales (miniatures de l'admin AniList / TMDB comprises).
 - Affiche et synopsis **par saison** (AniList a une fiche par saison) et titres d'épisodes.
 - Rafraîchissement périodique des fiches appariées (synopsis complétés, nouvelles affiches) : aujourd'hui, uniquement via « Relancer » dans l'admin.
 

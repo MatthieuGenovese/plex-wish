@@ -315,3 +315,42 @@ export interface TmdbConflict extends ApiError {
   current: TmdbSheet | null;
   proposed: TmdbSheet | null;
 }
+
+// --- Affiches sur le NAS -------------------------------------------------------------------
+
+export interface PosterSummary {
+  enabled: boolean;
+  /** false : dossier absent ou non accessible en écriture (affiches distantes uniquement). */
+  folderUsable: boolean;
+  folder: string;
+  total: number;
+  local: number;
+  localTmdb: number;
+  localAniList: number;
+  remote: number;
+  missing: number;
+  failed: number;
+  diskBytes: number;
+  averageBytes: number;
+  estimatedBytes: number;
+  /** Espace libre sur le volume des affiches (-1 si inconnu). */
+  freeBytes: number;
+  pausedUntil: string | null;
+  lastUnavailable: string | null;
+}
+
+export type PosterState = 'LOCAL' | 'REMOTE' | 'MISSING';
+export type PosterFilter = 'local' | 'remote' | 'missing' | 'failed';
+
+export interface PosterEntry {
+  animeId: number;
+  title: string;
+  state: PosterState;
+  provider: 'TMDB' | 'ANILIST' | null;
+  sourceUrl: string | null;
+  posterUrl: string | null;
+  failed: boolean;
+  lastError: string | null;
+  bytes: number | null;
+  fetchedAt: string | null;
+}

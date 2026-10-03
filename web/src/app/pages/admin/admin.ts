@@ -13,6 +13,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
         <li><a routerLink="corrections" routerLinkActive="active" ariaCurrentWhenActive="page">Corrections</a></li>
         <li><a routerLink="metadata" routerLinkActive="active" ariaCurrentWhenActive="page">Métadonnées</a></li>
         <li><a routerLink="tmdb" routerLinkActive="active" ariaCurrentWhenActive="page">Synopsis français</a></li>
+        <li><a routerLink="posters" routerLinkActive="active" ariaCurrentWhenActive="page">Affiches</a></li>
         <li><a routerLink="users" routerLinkActive="active" ariaCurrentWhenActive="page">Utilisateurs</a></li>
       </ul>
     </nav>

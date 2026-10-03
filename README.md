@@ -207,6 +207,28 @@ Limites :
 | Installation chez les amis | rien (navigateur, app) | rien | client Tailscale |
 | TV Samsung / LG (plus tard) | oui | oui | non |
 
+## Checklist de déploiement sur le DSM
+
+À dérouler au premier déploiement, puis après tout changement réseau (box, reverse proxy, `DOCKER_SUBNET`). Commandes en SSH sur le NAS, depuis le dossier du dépôt, avec `sudo` si nécessaire.
+
+1. **Droits PUID/PGID.** `id <utilisateur>` donne les numéros à mettre dans `.env`. Vérifier depuis le conteneur :
+   ```sh
+   docker compose exec backend sh -c 'id; ls /media | head -3'                       # lecture du dossier média
+   docker compose exec backend sh -c 'touch /data/posters/.t && rm /data/posters/.t && echo écriture OK'
+   ```
+   Le dossier média doit être **lisible** (jamais besoin d'écriture : il est monté en lecture seule) ; le dossier des affiches doit être **inscriptible** (*Administration → Affiches* ne doit pas afficher d'avertissement).
+2. **Démarrage.** `docker compose ps` : trois conteneurs `healthy`. Sinon `docker compose logs backend` dit quoi corriger (secrets, `PUBLIC_URL`).
+3. **Reverse proxy.** Destination `http://127.0.0.1:<WEB_PORT>` : écrire `127.0.0.1`, **pas** `localhost` (qui peut désigner l'adresse IPv6 `::1`, sur laquelle le port n'écoute pas).
+4. **IP des clients.** `ADMIN_USER=admin ADMIN_PASSWORD='…' scripts/check-client-ip.sh` → trois lignes `OK`.
+5. **Test depuis la 4G.** Wifi coupé sur un téléphone : ouvrir `https://<nom public>`, se connecter, recharger la page (F5 : la session doit tenir). Puis `docker compose logs backend | grep Connexion` : l'IP affichée est celle de l'opérateur mobile, pas `172.30.64.1`.
+6. **Lecture et seek d'un gros fichier à travers le reverse proxy.** Prendre un des plus gros fichiers (`find /volume1/animes -size +2G | head`), le lire sur le téléphone en 4G :
+   - aller à 80 % puis revenir au début : l'image doit repartir en quelques secondes ;
+   - mettre en pause **plus d'une minute**, puis reprendre : la connexion est fermée au bout d'environ 60 s de pause (délai par défaut de nginx, côté DSM comme côté application, mesuré) et le lecteur doit la rouvrir seul à la bonne position. S'il reste bloqué, le noter (à traiter avec le lecteur Android) ;
+   - **mise en tampon côté DSM (point connu)** : un nginx réglé par défaut, comme le reverse proxy du DSM, recopie la vidéo dans un fichier temporaire sur le disque système quand le spectateur lit moins vite que le NAS n'envoie : mesuré ici, **1 Go écrit en 5 secondes pour un seul spectateur** lent. Pendant la lecture, surveiller `df -h /` sur le NAS. Correctif proposé (en attente de validation) : faire envoyer par le nginx de l'application l'en-tête `X-Accel-Buffering: no` sur `/api/stream/`, que le nginx du DSM respecte ; essayé ici, il supprime le fichier temporaire sans changer le seek.
+   - les délais d'attente du reverse proxy (*Paramètres avancés* de la règle, 60 s par défaut) n'ont pas besoin d'être changés pour la lecture : la vidéo arrive en continu.
+7. **Sauvegarde.** Tâche planifiée créée et exécutée une fois (voir « Sauvegarde de la base ») ; le fichier `.dump` existe, sur un autre disque ou copié ailleurs.
+8. **Métadonnées et affiches.** *Administration → Métadonnées*, *Synopsis français*, *Affiches* : la récupération avance (premier passage ~1 h pour AniList, puis TMDB et affiches).
+
 ## Sauvegarde de la base
 
 Toutes les données de l'application sont dans PostgreSQL (volume Docker `pgdata`) ; les vidéos ne sont jamais modifiées et ne font pas partie de la sauvegarde.

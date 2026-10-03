@@ -59,7 +59,7 @@ Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`) : la page de connexion s'aff
 
 1. Copier le dépôt sur le NAS (ex. `/volume1/docker/anime-server`) et créer `.env` à partir de `.env.example`.
 2. Container Manager → **Projet** → **Créer** → chemin du dossier → il détecte `docker-compose.yml`.
-3. Reverse proxy DSM (*Panneau de configuration → Portail de connexion → Avancé → Proxy inversé*) : `https://anime.mondomaine` → `http://localhost:<WEB_PORT>`. Le HTTPS se termine au DSM.
+3. Reverse proxy DSM (*Panneau de configuration → Portail de connexion → Avancé → Proxy inversé*) : `https://<nom public>` → `http://127.0.0.1:<WEB_PORT>`. Le HTTPS se termine au DSM. Voir « Accès depuis Internet » et la « Checklist de déploiement sur le DSM ».
 
 ## Dossier média
 
@@ -167,6 +167,45 @@ Une tâche de fond (séparée du scan) télécharge l'affiche de chaque animé, 
 4. *Administration → Affiches* : nombre d'affiches sur le NAS, distantes, absentes ou en échec, place utilisée et estimée, bouton « Retélécharger ». Si le dossier n'est pas accessible en écriture, un avertissement l'indique (et le journal du backend aussi) : rien ne casse, les affiches restent distantes.
 
 Si un fichier disparaît (dossier vidé, disque changé), l'affiche distante est affichée et le fichier retéléchargé automatiquement. Affiches TMDB : retéléchargées à 5 mois, effacées à 6 (conditions TMDB), et effacées par « Effacer toutes les données TMDB ». `POSTERS_ENABLED=false` : pas de téléchargement.
+
+## Accès depuis Internet
+
+L'application doit être servie en **HTTPS** (cookie de session `Secure`) sous **une seule adresse**, celle de `PUBLIC_URL`. Trois façons de faire, vérifiées le 2026-10-03 :
+
+### Option A : DDNS Synology + certificat Let's Encrypt + reverse proxy du DSM (recommandée)
+
+1. *Panneau de configuration → Accès externe → DDNS → Ajouter* : fournisseur **Synology**, nom `monnas.synology.me` (gratuit, compte Synology), cocher l'obtention du certificat **Let's Encrypt**. Le DSM le renouvelle seul (validité 90 jours).
+2. Reverse proxy (*Portail de connexion → Avancé → Proxy inversé*) : source `HTTPS`, nom d'hôte `monnas.synology.me`, port `443` → destination `HTTP`, `127.0.0.1`, port `WEB_PORT` (voir « Port publié : `WEB_BIND` »). Puis `PUBLIC_URL=https://monnas.synology.me`. L'application est à la racine de ce nom ; le DSM lui-même reste sur ses ports 5000/5001.
+3. Box : rediriger le port **443** (TCP) vers le NAS. Ne **pas** rediriger 5000/5001 (interface du DSM).
+
+Limites :
+- **Il faut une IPv4 publique joignable.** Certains fournisseurs partagent une IPv4 entre plusieurs clients (CGNAT) : aucune connexion entrante possible. Vérifier : si l'adresse WAN affichée par la box (10.x, 100.64–127.x…) diffère de celle d'un site comme « quel est mon IP », la ligne est en CGNAT. Free : demander une « adresse IPv4 fixe full-stack » dans l'espace abonné (irréversible, à redemander après un déménagement). SFR : IPv4 partagée sur certaines lignes, une « IPv4 full stack » s'obtient en appelant l'assistance. Orange fibre : pas de partage d'IPv4 à ce jour d'après Orange (été 2025), prévu plus tard avec une option pour s'en sortir. Autres : à vérifier.
+- **Port 80** : pas nécessaire pour le certificat d'un nom `synology.me` (le DSM le valide par le DNS de Synology). Port 443 : nécessaire (sinon il faut un port non standard dans `PUBLIC_URL`, que certains réseaux d'entreprise ou de wifi publics bloquent).
+- Le NAS est exposé sur Internet (port 443) : DSM à jour, blocage automatique des IP activé, 2FA sur les comptes DSM.
+- Depuis le réseau local, `monnas.synology.me` doit aussi répondre : la plupart des box gèrent ce « retour » (NAT loopback) ; sinon, ajouter le nom dans le DNS local.
+
+### Option B : nom de domaine personnel
+
+Même chose avec `anime.mondomaine.fr` (environ 10 € par an) : un enregistrement DNS `CNAME` vers `monnas.synology.me` suit l'IP dynamique, puis certificat Let's Encrypt pour ce nom dans *Sécurité → Certificat*. Limites : les mêmes que A, plus le **port 80** à rediriger vers le NAS pour la validation Let's Encrypt (défi HTTP-01, uniquement sur le port 80) à chaque renouvellement. Un certificat générique (`*.mondomaine.fr`) demande la validation par DNS (API du registraire), pas gérée simplement par le DSM.
+
+### Option C : Tailscale (réseau privé, sans ouvrir de port)
+
+Paquet Tailscale pour le DSM ; chaque spectateur installe Tailscale et rejoint le réseau. Aucun port ouvert, **fonctionne derrière un CGNAT** (connexions sortantes ; si la connexion directe est impossible, le trafic passe par les relais Tailscale, plus lents). HTTPS : certificat fourni par Tailscale pour le nom en `.ts.net` (fonction HTTPS à activer).
+
+Limites :
+- Formule gratuite « Personal » : **6 utilisateurs** au plus (3 avant avril 2026), appareils illimités. Pour ~10 amis, il faut la formule payante ou les faire passer par le partage d'appareil (à vérifier avant).
+- Clients officiels : Windows, macOS, Linux, iOS, Android, Apple TV, Amazon Fire. **Pas de Samsung (Tizen) ni de LG (webOS)** : ces TV n'y ont pas accès (sauf un routeur de sous-réseau Tailscale chez le spectateur, peu réaliste).
+- Chaque ami doit installer et laisser actif un client VPN : bonne option pour l'admin ou un dépannage, contraignante pour tout le groupe.
+
+### En résumé
+
+| | A : DDNS Synology | B : domaine perso | C : Tailscale |
+|---|---|---|---|
+| IPv4 publique (pas de CGNAT) | requise | requise | non |
+| Ports à rediriger | 443 | 443 et 80 | aucun |
+| Coût | gratuit | ~10 €/an | gratuit jusqu'à 6 utilisateurs |
+| Installation chez les amis | rien (navigateur, app) | rien | client Tailscale |
+| TV Samsung / LG (plus tard) | oui | oui | non |
 
 ## Sauvegarde de la base
 

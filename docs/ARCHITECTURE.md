@@ -722,3 +722,25 @@ Avancement (et attente derrière les métadonnées), comédiens, rôles, images 
 ### 19.6 Conditions d'AniList et conservation
 Les conditions d'AniList (lues le 2026-10-03) **ne disent rien de la durée de conservation** des données ni des images, ni de leur stockage local ; elles interdisent l'usage de l'API comme stockage de données et la collecte massive. La distribution est donc limitée à la bibliothèque et plafonnée, redemandée tous les 180 jours, et l'effacement complet est prévu dans l'admin si les conditions changeaient. Les données TMDB ne sont pas utilisées pour la distribution : « Effacer toutes les données TMDB » n'y touche pas.
 
+## 20. Application Android (phase 7)
+
+### 20.1 Structure
+Une seule application, `android/app` (projet Gradle autonome, un module), organisée en paquets :
+- `data` : accès au serveur, sans interface. `ServerUrl` (adresse saisie → origine, HTTPS exigé hors debug), `ImageUrls` (seules les images de notre serveur), `api` (OkHttp + kotlinx.serialization, DTO, `ApiException` avec messages en français), `auth` (session, chiffrement, rafraîchissement).
+- `feature/<écran>` : **ViewModels** (état en `StateFlow`, sans type d'interface), fabriques dans `ViewModels`.
+- `ui/phone` : écrans Compose du téléphone et leur navigation ; `ui/components`, `ui/theme` partagés.
+- Injection légère : `AppContainer` crée une fois les objets partagés (clients HTTP, session, dépôts) ; pas de Hilt / Koin pour une dizaine d'objets.
+- **TV (phase 8)** : un paquet `ui/tv` avec ses propres écrans et son NavHost, sur les **mêmes ViewModels** et le même `data` ; rien de spécifique à la TV n'est fait maintenant.
+
+### 20.2 Choix
+- **minSdk 26** (Android 8.0) : `java.time` sans désucrage, Keystore AES-GCM, icônes adaptatives ; couvre la quasi-totalité des téléphones en service. targetSdk / compileSdk 35.
+- **Bibliothèques** : Compose (BOM) + Material 3, Navigation Compose, Lifecycle ViewModel, OkHttp (sans Retrofit : quelques appels), kotlinx.serialization, Coil 2 (images, cache mémoire et disque, même client OkHttp), Media3 pour le lecteur. Pas de Paging 3 (pages simples de 60), pas de framework d'injection.
+- **Connexion** : endpoints natifs `/api/auth/app/*` (§5.1.1). L'app vérifie d'abord `GET /api/status` (le serveur répond comme un Anime Server) avant d'envoyer le mot de passe. Libellé de l'appareil (fabricant + modèle) envoyé au login.
+- **Jetons** : access token en mémoire ; refresh token chiffré **AES-256-GCM avec une clé de l'Android Keystore** (non exportable, matérielle si possible), texte chiffré dans des préférences privées. `EncryptedSharedPreferences` (androidx.security:security-crypto) est déprécié ; Tink conviendrait mais n'apporte rien pour un seul secret chiffré une fois par connexion ou rafraîchissement : Keystore direct, sans dépendance. Clé perdue (restauration, réinitialisation) → simple reconnexion. `allowBackup=false` et `dataExtractionRules` excluant tout : ni sauvegarde Google, ni transfert vers un autre appareil.
+- **Rafraîchissement** : un `Authenticator` OkHttp sur 401, **un seul refresh à la fois** (verrou) ; les requêtes en attente rejouent avec le nouveau jeton. Refresh refusé (401) → session effacée, retour à la connexion avec « session expirée ». Réseau indisponible pendant le refresh → erreur réseau, session gardée. Le jeton n'est envoyé qu'à notre serveur, jamais aux endpoints de connexion ; aucun journal HTTP (aucun jeton dans les logs), `toString()` masqués.
+- **Réseau** : délais de 10 s (connexion) et 30 s (lecture), nouvel essai OkHttp sur échec de connexion ; erreurs traduites en messages utiles (serveur introuvable, injoignable, certificat, http refusé, délai dépassé). HTTP en clair seulement dans le build debug (`network_security_config` propre au debug). Pas de certificate pinning (§5.1.1).
+- **Images** : l'API renvoie un chemin local (`/api/posters/…`, `/api/cast-images/…`) ou, en repli, l'URL d'origine TMDB / AniList. L'app ne charge **que** les chemins de notre serveur : jamais d'appel à TMDB ni AniList depuis le téléphone ; sinon visuel de remplacement (initiales sur une couleur tirée du titre, comme le web).
+- **Bibliothèque** : recherche (côté serveur, sans accents) avec 300 ms d'attente, tri titre / récents, pages de 60 chargées en approchant de la fin ; recherche et tri dans `SavedStateHandle` (rotation, navigation, mort du processus), position de la grille conservée par la navigation.
+- **Accessibilité** : textes en `sp` (taille système), couleurs du web (contrastes vérifiés), descriptions TalkBack sur les images et boutons d'icône, erreurs annoncées (`liveRegion`), cibles tactiles Material (48 dp).
+- **Tests** : tests unitaires JVM sur la logique (adresse, URL d'images, messages d'erreur, rafraîchissement concurrent, déconnexion, connexion, pages) contre une fausse API (MockWebServer) ; `LiveServerContractTest` facultatif contre un vrai serveur (`PLEXWISH_IT_SERVER`).
+

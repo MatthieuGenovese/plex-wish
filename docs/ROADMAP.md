@@ -12,7 +12,9 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 3 | Bibliothèque | ✅ validée le 2026-10-02 |
 | 4 | Interface web | ✅ validée le 2026-10-02 (correctifs : corrections en conflit, validés) |
 | 5 | Streaming définitif et progression (backend) | ✅ validée le 2026-10-02 |
-| 6 | Métadonnées (AniList) | 🔧 livrée — en attente de validation |
+| 6 | Métadonnées (AniList) | ✅ validée le 2026-10-03 |
+| 6.1 | Synopsis en français (TMDB) | ✅ validée le 2026-10-03 |
+| 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 
 ---
 
@@ -77,3 +79,9 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 - Appariement par similarité de titre avec seuil de confiance ; non appariés et douteux corrigés par l'admin, corrections verrouillées avec confirmation.
 - Affiches (URL), synopsis et année dans la grille, sur l'accueil et sur la fiche ; onglet admin « Métadonnées ».
 - Mesuré sur la vraie liste (1 316 animés) contre AniList : voir le résumé de livraison.
+
+## Phase 6.1 — Synopsis en français (TMDB) ✅
+- Second fournisseur TMDB (clé facultative), appariement depuis les titres AniList, repli anglais ; conditions TMDB (6 mois, attribution, purge). ARCHITECTURE §16.
+
+## Phase 6.2 — Affiches stockées sur le NAS ✅
+- Téléchargement en tâche de fond (TMDB puis AniList), contrôles stricts, fichiers nommés par empreinte, service par identifiant aléatoire, repli distant. ARCHITECTURE §17.

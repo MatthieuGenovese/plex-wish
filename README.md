@@ -7,7 +7,7 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
-> État : **phase 4 (interface web)** : connexion, accueil, bibliothèque, fiche anime et administration (scan, rapport, corrections, utilisateurs). Pas encore de lecteur vidéo.
+> État (2026-10-03) : **phases 0 à 6.2 terminées**. Connexion, bibliothèque, fiche anime et administration (phases 1 à 4) ; streaming par URL signée avec Range et progression par utilisateur, testables avec `curl` (phase 5) ; métadonnées AniList : affiches, synopsis anglais, année (phase 6) ; synopsis en français via TMDB (6.1) ; affiches stockées sur le NAS (6.2). Pas encore de lecteur vidéo web ni d'application Android complète.
 
 ## Prérequis
 

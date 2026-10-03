@@ -51,7 +51,7 @@ docker compose up -d --build
 
 Puis ouvrir <http://localhost:8080> (ou `WEB_PORT`) : la page de connexion s'affiche. Se connecter avec l'admin initial, puis *Administration → Scan → Lancer un scan*.
 
-- Trois conteneurs : `postgres` (non exposé), `backend` (non exposé), `web` (nginx, seul port publié).
+- Trois conteneurs : `postgres` (non exposé), `backend` (non exposé), `web` (nginx, seul port publié, sur `127.0.0.1` par défaut : voir `WEB_BIND`).
 - Arrêt : `docker compose down`. Les données restent dans le volume `pgdata` (`down -v` les efface).
 - Mise à jour du code : `docker compose up -d --build`.
 
@@ -112,9 +112,13 @@ Ce qui ne dépend **pas** de `PUBLIC_URL` : les clients hors navigateur (`curl`,
 La session du navigateur tient dans un cookie `HttpOnly; Secure; SameSite=Strict`. `Secure` impose le HTTPS et n'est pas désactivable avec Docker (le backend refuse de démarrer sinon). Deux cas :
 
 - `http://localhost:8080` sur la machine qui fait tourner Docker : fonctionne, les navigateurs acceptent les cookies `Secure` sur `localhost` ;
-- adresse en HTTP depuis une autre machine (`http://192.168.1.20:8080`) : la connexion semble réussir mais la session est perdue au rechargement (F5). Passer par le reverse proxy HTTPS du DSM.
+- adresse en HTTP depuis une autre machine (`http://192.168.1.20:8080`, seulement avec `WEB_BIND=0.0.0.0`) : la connexion semble réussir mais la session est perdue au rechargement (F5). Passer par le reverse proxy HTTPS du DSM.
 
 En développement (`mvnw quarkus:dev`), `Secure` est désactivé par défaut (`COOKIE_SECURE=false`).
+
+### Port publié : `WEB_BIND`
+
+Le port `WEB_PORT` est publié **sur `127.0.0.1` seulement** par défaut (`WEB_BIND=127.0.0.1`) : seul le NAS lui-même y accède, donc le reverse proxy du DSM, et personne du réseau local ne peut contourner le HTTPS en appelant `http://<ip-du-nas>:8080`. La détection de la vraie IP n'est pas affectée (vérifié avec `scripts/check-client-ip.sh`). Dans la règle du reverse proxy, mettre `127.0.0.1` comme destination, pas `localhost`. Pour un essai sans reverse proxy depuis une autre machine : `WEB_BIND=0.0.0.0`. Sur un PC, `http://localhost:8080` fonctionne dans les deux cas.
 
 ### Vraie IP des clients (anti brute force)
 

@@ -62,7 +62,9 @@ services:
     image: anime-server-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8080}:80"
+      # Par défaut, joignable seulement depuis le NAS lui-même (le reverse proxy DSM) : pas d'accès HTTP
+      # direct depuis le réseau local. WEB_BIND=0.0.0.0 pour l'ouvrir (essai sans reverse proxy).
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80"
     environment:
       # Qui a le droit de fournir X-Forwarded-For à nginx : le reverse proxy DSM.
       # Le DSM, qui tourne sur l'hôte, arrive par la passerelle du réseau Docker (x.x.x.1).

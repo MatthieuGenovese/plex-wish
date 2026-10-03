@@ -543,3 +543,37 @@ Les 1 316 dossiers d'animés de `library-sample.txt` (bibliothèque factice), co
 | Non apparié | 69 | 5,2 % (49 sans résultat, 15 titres trop différents, 5 ambigus) |
 
 Avec une fiche (affiche, synopsis, année) : 1 247 animés (94,8 %). Durée du premier passage : environ 1 h (une seule limite de débit 429 rencontrée, gérée). Sur un échantillon relu à la main, les appariés sont justes ; les douteux le sont en majorité, avec quelques erreurs (ex. `Granblue Fantasy` → une fiche dont un synonyme commence pareil) : c'est leur rôle d'être revus. Non appariés typiques : titre français (`Le Seigneur des Yôkai`), coupure différente (`To Aru` / `Toaru`, `Summertime` / `Summer Time`), fiche marquée « adulte » sur AniList (`Yosuga no Sora`, exclue de la recherche automatique pour ne jamais afficher une affiche pour adultes par erreur), raccourci (`Iruma`). Tous se corrigent dans l'admin par identifiant AniList.
+
+## 16. Synopsis en français : étude (étape 6.1, 2026-10-03)
+
+Besoin : synopsis (et si possible titre) en français, via un second `MetadataProvider`, AniList restant la base (affiche, année, appariement) et le repli anglais.
+
+### 16.1 Options comparées (sources officielles lues le 2026-10-03)
+
+| | **TMDB** | TheTVDB (v4) | Kitsu | AniDB |
+|---|---|---|---|---|
+| Synopsis français | Oui : `language=fr-FR` sur les séries, saisons et films (« most of our metadata endpoints support translated data ») ; couverture des animés **à mesurer** (traductions communautaires, souvent vides pour les titres de niche) | Traductions par langue (couverture non vérifiée) | **Non** : synopsis en anglais seulement, titres sans français (vérifié sur l'API) | Descriptions multilingues annoncées, en pratique surtout anglais |
+| Modèle | Une **série** avec ses saisons (une fiche AniList par saison) ; films à part ; `original_name` = titre japonais | Comme TMDB (séries / saisons) | Une fiche par saison (comme AniList) | Une fiche par saison |
+| Clé | Oui, gratuite : **jeton de lecture** (Bearer, méthode recommandée) ou clé `api_key` | Oui | Non | Client à enregistrer |
+| Usage non commercial | **Gratuit pour un usage non commercial, avec attribution** (« free to use for non-commercial purposes as long as you attribute TMDB ») | Gratuit sous 50 k$/an de revenus, **attribution + lien obligatoires** | — | — |
+| Attribution | Mention « This product uses the TMDB API but is not endorsed or certified by TMDB » + logo officiel TMDB, **moins visible** que le logo de l'application, dans une page « À propos / Crédits » ; logo non modifié ; nommer « TMDB » ou « The Movie Database » | « Metadata provided by TheTVDB » avec lien direct vers thetvdb.com, visible des utilisateurs | — | — |
+| Images | URL `image.tmdb.org/t/p/<taille>/<fichier>` | **La licence de l'API n'autorise pas l'usage des images** (« it is your responsibility to secure … all rights ») | — | — |
+| Conservation | **À confirmer** : les conditions d'utilisation de l'API (`themoviedb.org/api-terms-of-use`) refusent la lecture automatique (robots.txt) ; le FAQ développeur ne dit rien de la durée de conservation | Rien de précis dans les CGU | — | Obligation de cache local ; redemander la même fiche le même jour peut valoir un bannissement |
+| Débit | ~40 requêtes/s (« somewhere in the 40 requests per second range »), 429 au-delà | « Pas d'appels excessifs », sans chiffre | Non documenté | **1 page / 2 s**, bannissement en cas d'abus |
+
+Pistes écartées : sites français (Nautiljon, Anime-Sanctuary) sans API publique (et leur recopie serait du scraping) ; Crunchyroll / ADN sans API publique ; Kitsu et AniDB sans français.
+Piste notée pour plus tard : la liste de correspondances **Kometa Anime-IDs** (licence MIT, régénérée chaque jour) donne pour un animé AniList l'identifiant de série / film TMDB et TVDB : un pont d'identifiants qui éviterait la recherche par titre pour une bonne partie de la bibliothèque. Dépendance supplémentaire (un fichier JSON à télécharger) : à n'ajouter que si la recherche par titre déçoit.
+
+### 16.2 Recommandation : TMDB
+- Seule option qui coche à la fois **français**, **conditions compatibles** (usage privé non commercial avec attribution), **débit confortable**, **images utilisables** (utile pour 6.2) et API documentée. TheTVDB est la seule alternative sérieuse, mais sa licence n'autorise pas les images et sa couverture française n'est pas vérifiable sans clé.
+- **Clé** : `TMDB_READ_TOKEN` (Bearer, recommandé par TMDB) ou `TMDB_API_KEY`, lues côté backend uniquement, jamais renvoyées au client ni écrites dans les logs (même traitement que les secrets : `toString` masqué, en-tête Authorization jamais journalisé, test `LogLeakTest`). **Sans clé : démarrage normal**, le fournisseur TMDB est simplement inactif et le synopsis anglais d'AniList reste affiché.
+- **Appariement prévu** : repartir de la fiche AniList déjà trouvée (titre romaji, anglais, **natif japonais** comparé à `original_name` de TMDB, année de début, format). AniList TV / ONA → `search/tv` ; MOVIE → `search/movie` ; `include_adult=false`. Même similarité et mêmes seuils qu'en §15.2, même état « non apparié », même correction manuelle verrouillée (identifiant TMDB) avec confirmation.
+- **Saisons** : notre animé est un dossier, souvent plusieurs saisons ; on prend le **synopsis de la série** TMDB. Si la fiche AniList retenue est une suite (« Season 2 »), on cherche la série de base et, si la saison TMDB correspondante a un synopsis français (`tv/{id}/season/{n}`), on peut le proposer par saison sur la fiche ; sinon celui de la série.
+- **Ce qui est enregistré par champ** : fournisseur, langue, date de récupération (synopsis FR TMDB, sinon EN AniList ; titre FR TMDB s'il existe). Priorité : correction manuelle > TMDB FR > AniList EN.
+- **Rafraîchissement** : chaque fiche TMDB est redemandée avant la durée de conservation maximale autorisée par TMDB (paramétrable ; valeur à fixer d'après le texte officiel, voir 16.3). 1 300 fiches à 2 appels chacune = quelques minutes, sans souci de débit.
+- **Attribution** : page « À propos » (mention exigée + logo TMDB officiel, plus petit que le nom de l'application) et mention discrète « Synopsis : TMDB » sous le synopsis.
+- **Avant de tout construire**, mesurer la couverture réelle : un essai à blanc sur les 1 247 animés appariés, avec ta clé, donne le pourcentage d'animés qui auraient un synopsis français.
+
+### 16.3 Points ouverts (à trancher avant d'implémenter)
+1. **Durée de conservation TMDB** : je n'ai pas pu lire le texte officiel des conditions de l'API (robots.txt). Il faut le passage exact sur la mise en cache / conservation des données et des images (https://www.themoviedb.org/api-terms-of-use), pour fixer la période de rafraîchissement (6.1) et celle des affiches stockées (6.2).
+2. **Clé TMDB** : à créer sur ton compte TMDB (Paramètres → API, usage personnel / non commercial), puis à mettre dans `.env` (`TMDB_READ_TOKEN`). Elle n'est nécessaire ni pour l'implémentation ni pour les tests (faux serveur), seulement pour la mesure de couverture et l'usage réel.

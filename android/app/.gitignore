@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.kotlin/
+.idea/
+*.iml
+# Clé de signature et ses mots de passe : jamais versionnés (README, « APK de release »).
+keystore.properties
+*.jks
+*.keystore

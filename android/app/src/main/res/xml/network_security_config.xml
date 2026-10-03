@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Version release : HTTPS uniquement. Certificats système (Let's Encrypt du DSM), pas d'épinglage
+     (le certificat change tous les trois mois). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

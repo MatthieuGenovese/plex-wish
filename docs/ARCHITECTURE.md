@@ -222,6 +222,11 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Un épisode devenu indisponible disparaît des listes ; sa progression est conservée et revient avec le fichier.
 - La durée envoyée par le lecteur n'est pas recopiée dans `episode.duration_seconds` : elle vient d'un client, la durée « officielle » viendra de ffprobe (FUTURE).
 
+### 6.4 Derrière le reverse proxy du DSM (2026-10-03)
+- **Mise en tampon** : un nginx réglé par défaut (le reverse proxy du DSM en est un) recopie une réponse dans un fichier temporaire quand le client lit moins vite que l'amont n'envoie, jusqu'à 1 Go par requête. Mesuré avec un nginx réglé comme le DSM devant l'application : **1 Go écrit en 5 s** pour un client à 300 Ko/s. Le nginx de l'application envoie donc `X-Accel-Buffering: no` sur `/api/stream/` (nginx le respecte et ne le transmet pas au navigateur) : plus de fichier temporaire, seek identique (206 en ~10 ms au milieu d'un fichier de 3 Go).
+- **Pause longue** : après ~60 s de pause, la connexion est fermée (délai d'envoi par défaut de nginx, des deux côtés ; indépendant des délais réglables du DSM, mesuré). Le lecteur doit rouvrir une requête `Range` à la bonne position.
+- **À tester en phase 7 (lecteur)**, sur téléphone en 4G à travers le DSM : lancer la lecture, pause de plus de 60 s, reprise ; vérifier que le lecteur rouvre la connexion sans erreur visible et repart **au bon endroit** (pas au début), et que la progression enregistrée reste juste. Même test avec un seek pendant la pause.
+
 ### 6.2 Risques de compatibilité vidéo (à vérifier par le spike)
 Pour situer : un fichier vidéo = un **conteneur** (MKV, MP4…) qui contient des **pistes** encodées avec des **codecs** (vidéo, audio, sous-titres). Le lecteur doit comprendre le conteneur **et** chaque codec ; sinon il faut transcoder (convertir à la volée avec ffmpeg), ce qui est coûteux pour le Ryzen R1600 sans GPU.
 

@@ -52,6 +52,12 @@ server {
         proxy_buffering off;
         proxy_read_timeout 1h;
         proxy_send_timeout 1h;
+        # Demande au reverse proxy placé devant (DSM) de ne pas mettre la vidéo en tampon : sinon il la recopie
+        # dans un fichier temporaire sur son disque système (mesuré : 1 Go en 5 s pour un spectateur lent).
+        # nginx consomme cet en-tête sans le transmettre au navigateur.
+        add_header X-Accel-Buffering no always;
+        # Un add_header dans ce bloc annule ceux du serveur : on remet les en-têtes de sécurité.
+        include /etc/nginx/snippets/security-headers.conf;
     }
 
     # --- Swagger (404 côté backend tant que SWAGGER_ENABLED=false) --------------------

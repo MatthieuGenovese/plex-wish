@@ -77,6 +77,30 @@ Les coller dans `.env` (jamais dans un fichier versionné). Changer `JWT_SECRET`
 2. Container Manager → **Projet** → **Créer** → chemin du dossier → il détecte `docker-compose.yml`.
 3. Reverse proxy DSM (*Panneau de configuration → Portail de connexion → Avancé → Proxy inversé*) : `https://<nom public>` → `http://127.0.0.1:<WEB_PORT>`. Le HTTPS se termine au DSM. Voir « Accès depuis Internet » et la « Checklist de déploiement sur le DSM ».
 
+### Construire les images sur un NAS à 4 Go de RAM ?
+
+Mesuré le 2026-10-03 (machine à 2 cœurs, 8 Go) : compilation du backend (Maven) **26 s, pic 660 Mo** ; interface web (Angular) **19 s, pic 940 Mo**. Premier build : environ **1,3 Go à télécharger** (images Maven 810 Mo et Node 240 Mo, dépendances ~220 Mo et ~300 Mo) et ~2,5 Go de disque pour les images de build et leur cache.
+
+Sur un DS923+ (Ryzen R1600, 2 cœurs, 4 Go) : faisable, mais `docker compose up -d --build` construit les deux images **en parallèle** (~1,6 Go) pendant que la stack tourne (backend ~0,7 Go, PostgreSQL ~0,2 Go) et que le DSM occupe 1 à 1,5 Go : le NAS risque de passer en swap, lent mais sans casse. Compter 10 à 20 min la première fois (téléchargements, disques durs), quelques minutes ensuite. Pour limiter la mémoire, construire l'une après l'autre :
+
+```sh
+docker compose build backend && docker compose build web && docker compose up -d
+docker image prune -f        # enlève les anciennes images remplacées
+```
+
+**Repli si le NAS peine** (non outillé, à faire à la main) : construire sur le PC, exporter, importer sur le NAS.
+
+```powershell
+docker compose build                                            # sur le PC
+docker save anime-server-backend anime-server-web -o anime-images.tar   # ~180 Mo (mesuré)
+```
+```sh
+docker load -i anime-images.tar          # sur le NAS, après copie du fichier (accepte aussi un .tar.gz)
+docker compose up -d --no-build
+```
+
+Le DS923+ et un PC Windows classique sont tous deux en `amd64` : les images sont compatibles. Depuis un Mac à puce Apple, ajouter `--platform linux/amd64` au build. Avec ce repli, Maven et Node ne sont jamais téléchargés sur le NAS.
+
 ## Dossier média
 
 - `MEDIA_PATH` (dans `.env`) = dossier des vidéos **sur l'hôte**, par ex. `/volume1/animes` sur le NAS, `./dev-media` en local.

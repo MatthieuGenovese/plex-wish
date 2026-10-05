@@ -2,6 +2,8 @@ package fr.plexwish.anime.data.api
 
 import fr.plexwish.anime.data.auth.SessionStore
 import okhttp3.HttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -48,6 +50,17 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
     suspend fun person(id: String): PersonDetail {
         if (!id.matches(Regex("[0-9]{1,10}"))) throw ApiException(404, "PERSON_NOT_FOUND", "Comédien introuvable.")
         return get(url("/api/people/$id"))
+    }
+
+    /** Enregistre la position (le serveur marque l'épisode terminé au-delà de 90 %). */
+    suspend fun saveProgress(episodeId: Long, positionSeconds: Int, durationSeconds: Int) {
+        val body = """{"positionSeconds":$positionSeconds,"durationSeconds":$durationSeconds}"""
+            .toRequestBody("application/json".toMediaType())
+        try {
+            call(Request.Builder().url(url("/api/episodes/$episodeId/progress")).put(body).build()).requireSuccess()
+        } catch (e: IOException) {
+            throw ApiException.fromNetwork(e)
+        }
     }
 
     suspend fun episode(id: Long): EpisodeDetail = get(url("/api/episodes/$id"))

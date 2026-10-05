@@ -57,6 +57,11 @@ class LiveServerContractTest {
                     ok.use { assertEquals(206, it.code) }
                     val bad = base.newCall(okhttp3.Request.Builder().url(signed.url.replace(Regex("sig=[^&]+"), "sig=0000")).build()).execute()
                     bad.use { assertEquals(403, it.code) }
+                    // Progression : enregistrée, puis relue ; terminé au-delà de 90 %.
+                    api.saveProgress(ep.id, 30, 1440)
+                    assertEquals(30, api.progress(a.id).first { it.episodeId == ep.id }.positionSeconds)
+                    api.saveProgress(ep.id, 1300, 1440)
+                    assertTrue(api.progress(a.id).first { it.episodeId == ep.id }.completed)
                 }
             }
             println("Fiche OK : ${detail.title}, ${detail.seasons.size} saison(s), ${cast.items.size} rôle(s)")

@@ -30,7 +30,7 @@ object ViewModels {
         initializer { PersonViewModel(container().api, container().session, createSavedStateHandle()) }
         initializer {
             val c = container()
-            PlayerViewModel(c.api, c::newPlaybackEngine, createSavedStateHandle())
+            PlayerViewModel(c.api, c::newPlaybackEngine, createSavedStateHandle(), c.appScope)
         }
     }
 }

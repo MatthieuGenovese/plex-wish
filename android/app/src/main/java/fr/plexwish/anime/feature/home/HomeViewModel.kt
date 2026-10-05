@@ -47,4 +47,19 @@ class HomeViewModel(private val api: AnimeApi, private val session: SessionStore
             }
         }
     }
+
+    /**
+     * Retour sur l'accueil (après le lecteur) : « Continuer à regarder » relu sans tout recharger. Petit délai : la
+     * dernière position part en arrière-plan à la sortie du lecteur. Une erreur ici n'est pas affichée.
+     */
+    fun refreshContinueWatching() {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            try {
+                val cw = api.continueWatching(20).map { it.copy(posterUrl = session.image(it.posterUrl)) }
+                _state.update { it.copy(continueWatching = cw) }
+            } catch (_: ApiException) {
+            }
+        }
+    }
 }

@@ -84,8 +84,10 @@ open class PlayerTestBase {
 
     fun failure(code: Int, http: Int? = null, cause: String = "") = PlaybackFailure(code, "ERROR_$code", http, cause)
 
-    fun player(engine: FakeEngine, saved: SavedStateHandle = SavedStateHandle(mapOf("id" to 5L))) =
-        PlayerViewModel(api, { engine }, saved, RecoveryPolicy(networkDelaysMs = listOf(0, 0, 0)))
+    val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
+    fun player(engine: FakeEngine, saved: SavedStateHandle = SavedStateHandle(mapOf("id" to 5L)), intervalMs: Long = 10_000) =
+        PlayerViewModel(api, { engine }, saved, appScope, RecoveryPolicy(networkDelaysMs = listOf(0, 0, 0)), progressIntervalMs = intervalMs)
 }
 
 class PlayerViewModelTest : PlayerTestBase() {

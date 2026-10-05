@@ -14,6 +14,9 @@ import fr.plexwish.anime.data.auth.TokenRefresher
 import fr.plexwish.anime.feature.player.PlaybackEngine
 import fr.plexwish.anime.feature.player.TrackPrefsStore
 import fr.plexwish.anime.playback.ExoPlaybackEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -67,6 +70,9 @@ class AppContainer(private val context: Context) {
             playerPrefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
         }
     })
+
+    /** Travaux qui doivent survivre à un écran (envoi de la progression à la sortie du lecteur). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Flux vidéo : client de base, sans intercepteur d'authentification (l'URL signée suffit). */
     fun newPlaybackEngine(): PlaybackEngine = ExoPlaybackEngine(context.applicationContext, baseClient, trackPrefs)

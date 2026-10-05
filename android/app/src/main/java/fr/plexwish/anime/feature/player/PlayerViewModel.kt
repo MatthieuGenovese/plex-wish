@@ -8,6 +8,7 @@ import fr.plexwish.anime.data.api.ApiException
 import fr.plexwish.anime.data.api.EpisodeDetail
 import fr.plexwish.anime.data.api.SignedStream
 import fr.plexwish.anime.data.log.SafeLog
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,8 +40,11 @@ class PlayerViewModel(
     private val api: AnimeApi,
     engineFactory: () -> PlaybackEngine,
     private val saved: SavedStateHandle,
+    /** Portée de l'app : l'envoi de la progression à la sortie survit au ViewModel. */
+    progressScope: CoroutineScope,
     private val policy: RecoveryPolicy = RecoveryPolicy(),
     private val clock: () -> Long = System::currentTimeMillis,
+    progressIntervalMs: Long = 10_000,
 ) : ViewModel(), PlaybackEngine.Listener {
 
     val episodeId: Long = checkNotNull(saved.get<Long>("id")) { "identifiant d'épisode manquant" }
@@ -56,6 +60,10 @@ class PlayerViewModel(
     private var networkAttempts = 0
     private var urlRefreshes = 0
     private var recovery: Job? = null
+    private val progress = ProgressReporter(
+        send = { pos, dur -> api.saveProgress(episodeId, pos, dur) },
+        scope = progressScope, clock = clock, intervalMs = progressIntervalMs,
+    )
 
     /** Dernière position sûre (ms) : sert à repartir au bon endroit après une erreur. */
     private var lastPositionMs: Long
@@ -67,6 +75,24 @@ class PlayerViewModel(
     init {
         engine.setListener(this)
         start()
+        // Chaque seconde pendant la lecture : position gardée (mort du processus) et progression envoyée toutes les ~10 s.
+        viewModelScope.launch {
+            while (true) {
+                delay(1_000)
+                if (engine.isPlaying && _state.value.phase == PlayerPhase.PLAYING) {
+                    lastPositionMs = engine.positionMs
+                    progress.tick(engine.positionMs, durationMs())
+                }
+            }
+        }
+    }
+
+    /** Durée : celle du fichier (lecteur), sinon celle connue du serveur. */
+    private fun durationMs(): Long = engine.durationMs.takeIf { it > 0 } ?: ((episode?.durationSeconds ?: 0) * 1000L)
+
+    /** Envoi immédiat, seulement dans un état sûr (pas pendant une erreur ou une reconnexion : position douteuse). */
+    private fun flushProgress(positionMs: Long = engine.positionMs) {
+        if (_state.value.phase == PlayerPhase.PLAYING || _state.value.phase == PlayerPhase.ENDED) progress.flush(positionMs, durationMs())
     }
 
     private fun start() {
@@ -125,11 +151,14 @@ class PlayerViewModel(
             _state.update { it.copy(phase = PlayerPhase.PLAYING, error = null) }
         }
         lastPositionMs = currentPosition()
+        if (!playing) flushProgress() // pause (ou attente de données : dédoublonné si la position n'a pas bougé)
     }
 
     override fun onEnded() {
-        lastPositionMs = engine.durationMs.coerceAtLeast(0)
+        val end = durationMs()
+        lastPositionMs = end.coerceAtLeast(0)
         _state.update { it.copy(phase = PlayerPhase.ENDED) }
+        flushProgress(end)
     }
 
     override fun onTracks(tracks: List<TrackInfo>) {
@@ -217,13 +246,15 @@ class PlayerViewModel(
 
     fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
 
-    /** L'app passe en arrière-plan : pause (pas de lecture en fond). */
+    /** L'app passe en arrière-plan : position envoyée, puis pause (pas de lecture en fond). */
     fun onBackground() {
         lastPositionMs = currentPosition()
+        flushProgress()
         engine.pause()
     }
 
     override fun onCleared() {
+        flushProgress() // sortie du lecteur : envoyé par la portée de l'app, même ViewModel détruit
         engine.setListener(null)
         engine.release()
     }

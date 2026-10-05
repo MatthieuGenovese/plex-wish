@@ -111,6 +111,16 @@ Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, r�
 6. **Lien expiré** (facultatif, sur le PC) : mettre `STREAM_URL_LIFETIME=3m` dans `.env`, relancer le backend, lancer un épisode, pause plus longue que ce délai, reprendre. Attendu : reprise sans message (nouvelle URL).
 7. Dans chaque cas, revenir à la fiche : la position enregistrée doit correspondre (voir « Progression »).
 
+### Progression
+
+- Envoyée au serveur toutes les ~10 s pendant la lecture, et aussitôt à la **pause**, au passage en **arrière-plan** (bouton d'accueil, appel, écran éteint : la lecture se met en pause), à la **fin** de l'épisode et à la **sortie** du lecteur.
+- **Terminé** au-delà de 90 % (décidé par le serveur) : coche sur la fiche, l'épisode repart du début à la prochaine lecture.
+- Rien n'est envoyé si la position est incohérente (durée inconnue, position négative ou au-delà de la fin, moins d'une seconde, pendant une reconnexion).
+- Sans réseau, la lecture continue ; la position est renvoyée à la prochaine occasion (envoi suivant, pause, sortie).
+- Au retour sur la fiche ou l'accueil, la progression et « Continuer à regarder » sont relues.
+
+À vérifier : regarder 2 minutes, revenir à la fiche (barre « en cours »), relancer (reprise au même endroit) ; avancer à 95 %, quitter (coche « vu ») ; même chose en mode avion pendant 30 s au milieu (la position finale arrive quand même).
+
 ## APK de release (sans Play Store)
 
 ### Clé de signature (une fois)

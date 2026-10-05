@@ -81,7 +81,10 @@ fun AnimeDetailScreen(
     LaunchedEffect(lifecycle) {
         var first = true
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            if (!first) vm.refreshProgress()
+            if (!first) {
+                kotlinx.coroutines.delay(800) // la dernière position part en arrière-plan à la sortie du lecteur
+                vm.refreshProgress()
+            }
             first = false
         }
     }

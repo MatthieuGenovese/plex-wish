@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import fr.plexwish.anime.data.api.AnimeSummary
 import fr.plexwish.anime.data.api.ContinueWatching
 import fr.plexwish.anime.feature.home.HomeViewModel
@@ -38,6 +39,14 @@ import fr.plexwish.anime.ui.components.Poster
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(vm: HomeViewModel, onContinue: (ContinueWatching) -> Unit, onAnime: (Long) -> Unit, padding: PaddingValues) {
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.LaunchedEffect(lifecycle) {
+        var first = true
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            if (!first) vm.refreshContinueWatching()
+            first = false
+        }
+    }
     val s by vm.state.collectAsStateWithLifecycle()
     PullToRefreshBox(isRefreshing = s.loading && (s.recent.isNotEmpty() || s.continueWatching.isNotEmpty()),
         onRefresh = vm::load, modifier = Modifier.fillMaxSize().padding(padding)) {

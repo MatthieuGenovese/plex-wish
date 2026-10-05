@@ -15,6 +15,10 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6 | Métadonnées (AniList) | ✅ validée le 2026-10-03 |
 | 6.1 | Synopsis en français (TMDB) | ✅ validée le 2026-10-03 |
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
+| 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
+| 7 | Application Android (téléphone) | en cours (connexion et bibliothèque livrées) |
+| 8 | Traitement média (ffprobe, remux, sous-titres) | à faire, avant le lecteur web |
+| 9 | Lecteur web | à faire |
 
 ---
 
@@ -66,6 +70,7 @@ Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéo
 
 ## Fin de l'étape
 Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), lecteur web, progression, métadonnées, Android complet.
+(Réalisé ensuite : streaming et progression en phase 5, métadonnées en 6, Android en 7 ; le lecteur web, oublié, devient la phase 9, après le traitement média en phase 8.)
 
 ## Phase 5 — Streaming définitif et progression (backend, testable avec curl)
 - URL de lecture signée (HMAC, 6 h, liée au fichier et à l'utilisateur) et endpoint Range durci : ARCHITECTURE §6.
@@ -85,3 +90,41 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 
 ## Phase 6.2 — Affiches stockées sur le NAS ✅
 - Téléchargement en tâche de fond (TMDB puis AniList), contrôles stricts, fichiers nommés par empreinte, service par identifiant aléatoire, repli distant. ARCHITECTURE §17.
+
+## Phase 6.3 — Distribution et comédiens de doublage ✅
+- AniList seule source, suites TV suivies jusqu'au nombre de saisons du dossier, 20 rôles au plus par animé, images sur le NAS. ARCHITECTURE §18–19.
+
+## Phase 7 — Application Android (téléphone)
+- Kotlin, Compose, Media3 dans `android/app`, structure prête pour la TV. ARCHITECTURE §20, `android/README.md`.
+- Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque. Reste : fiche et distribution, page comédien, lecteur (URL signée), progression ; puis suppression de `android/spike` et de `/api/dev/stream`.
+
+## Phase 8 — Traitement média (ffprobe, remux, sous-titres)
+But : savoir ce que contient chaque fichier, et rendre lisibles sans ré-encodage ceux qui ne le sont que par leur conteneur. Prérequis du lecteur web (phase 9), utile aussi à l'app Android. **Le transcodage (ré-encodage vidéo ou audio) reste hors périmètre.**
+
+Règles communes :
+- `/media` reste en lecture seule ; rien n'y est jamais écrit. Tout résultat va dans un **dossier de cache à part** (volume dédié, ex. `${MEDIA_CACHE_PATH}:/cache`), nommé par identifiant en base, jamais d'après un nom venant du client.
+- ffprobe et ffmpeg lancés par `ProcessBuilder` avec une **liste d'arguments fixe** (aucun shell, aucune chaîne construite par concaténation ; le seul argument variable est le chemin résolu depuis l'identifiant en base, précédé de `file:` pour qu'un nom de fichier ne soit jamais pris pour une option ou un protocole).
+- Sur un NAS de 4 Go : un seul processus ffmpeg à la fois (ffprobe : 1 ou 2), priorité basse (`nice`/`ionice`), **délai maximal** par processus (puis arrêt forcé), **limite de mémoire** par processus (`prlimit --as`, ou un conteneur dédié avec `mem_limit` si c'est plus simple), sortie standard et erreur lues en continu et tronquées dans les logs.
+- ffmpeg/ffprobe ajoutés à l'image du backend (environ +100 Mo) ; version affichée dans l'admin.
+
+### 8.1 Analyse ffprobe du catalogue
+- Tâche de fond séparée du scan (le scan reste sans ffprobe), reprenable, idempotente, relançable par l'admin ; incrémentale ensuite (fichiers nouveaux ou dont la taille ou la date de modification ont changé).
+- `ffprobe -show_format -show_streams -show_chapters -of json`, en-têtes seulement (jamais `-count_frames` ni `-count_packets`, qui lisent tout le fichier).
+- Stocké en base (nouvelle table liée à `media_file`) : durée ; conteneur réel ; vidéo (codec, profil, profondeur 8/10 bits, définition, images/s) ; pistes audio (codec, canaux, langue, titre, défaut) ; pistes de sous-titres (format texte ASS/SRT ou image PGS/VobSub, langue, titre, défaut, forcé) ; chapitres ; polices jointes (MKV) ; erreur de lecture le cas échéant. La durée renseigne `episode.duration`.
+- **Rapport admin** par catégorie, avec liste filtrable comme le rapport de scan : *lisible sur Android* / *lisible dans un navigateur* / *remux nécessaire* (codecs acceptés, conteneur refusé : AVI, OGM, MKV pour le navigateur) / *transcodage nécessaire* (codec refusé : ex. audio AC3/DTS dans Chrome, HEVC selon le navigateur, sous-titres image dans un navigateur) / *illisible ou corrompu*. Règles de classement écrites au démarrage de la phase, prudentes (« navigateur » = Chrome et Firefox récents).
+
+### 8.2 Remux sans ré-encodage, à la demande
+- Copie des pistes (`-c copy`) dans un autre conteneur : AVI, OGM, MKV → MP4 (navigateur, quand les codecs le permettent) ou MKV (Android, pour AVI/OGM). Pas de ré-encodage : si un codec ne convient pas, le fichier reste dans « transcodage nécessaire ».
+- Déclenché à la demande (lecture d'un fichier classé « remux nécessaire », ou action admin), file d'attente à un seul ffmpeg ; écriture dans un fichier temporaire du cache puis renommage (jamais de fichier à moitié écrit servi) ; servi par le même streaming signé (Range) que les originaux.
+- Cache borné : **taille maximale** configurable, vérification de l'espace libre avant de commencer, **purge** des plus anciennement lus au-delà de la limite et action admin « vider le cache ». Le cache se régénère : rien à sauvegarder.
+
+### 8.3 Extraction des sous-titres (pour le lecteur web)
+- Sous-titres texte muxés (ASS/SSA/SRT) extraits dans le cache : WebVTT (lu nativement par le navigateur, sans les styles ASS) et ASS d'origine conservé pour un éventuel moteur de rendu ASS côté navigateur (décision en phase 9, avec les polices jointes).
+- Sous-titres image (PGS, VobSub) : non extractibles en texte ; les afficher dans un navigateur demanderait de les incruster, donc du transcodage → hors périmètre, signalés dans le rapport.
+- À la demande, mêmes limites (délai, mémoire, cache borné) : l'extraction lit tout le fichier, son coût disque est proche de celui d'un remux.
+
+### Tests prévus
+Analyse d'un JSON ffprobe enregistré (sans ffmpeg), classement par catégorie, arguments ffmpeg figés (aucune entrée client), délai dépassé → processus tué et fichier temporaire supprimé, purge du cache, aucune écriture hors du cache, permissions admin.
+
+## Phase 9 — Lecteur web
+- Lecteur `<video>` dans l'interface web sur l'URL signée : originaux lisibles par le navigateur, sinon fichier remuxé ; sous-titres WebVTT (ou rendu ASS) issus de la phase 8 ; reprise et progression comme sur Android ; message clair pour les fichiers classés « transcodage nécessaire ».

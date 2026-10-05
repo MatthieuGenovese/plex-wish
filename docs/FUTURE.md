@@ -7,9 +7,9 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Appliquer une correction manuelle immédiatement, sans attendre le scan suivant.
 - Scan automatique périodique ou à la détection de changements (aujourd'hui : lancement manuel par l'admin).
 - Interprétation automatique des doubles épisodes (`03-04`) et des numéros décimaux (`E05.5`).
-- ffprobe (codecs, durée, pistes audio/sous-titres) en tâche de fond après le scan, ou à la demande depuis la fiche d'un épisode. Jamais pendant le scan.
 
 ## Lecture
+- Transcodage (vidéo, ou audio seul AC3/DTS → AAC, bien moins coûteux) pour les fichiers classés « transcodage nécessaire » par la phase 8. Hors périmètre tant que le rapport n'a pas montré combien de fichiers sont concernés.
 - Extension ffmpeg de Media3 côté Android si le spike montre des pistes audio AC3/DTS non décodées.
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.
 - Association des sous-titres externes (`.ass`, `.srt`, `.sup`) aux vidéos : même nom de base (24 cas sur 434), puis dossiers du type `sous-titres + police/` (avec les polices ASS à charger).

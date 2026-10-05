@@ -9,6 +9,8 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Interprétation automatique des doubles épisodes (`03-04`) et des numéros décimaux (`E05.5`).
 
 ## Lecture
+- Épisode suivant enchaîné automatiquement à la fin d'un épisode (avec compte à rebours et « Annuler ») sur Android, puis sur le web.
+- Rendu ASS fidèle sur Android (polices jointes, balises en ligne, « signs ») : libass via une extension native de Media3, ou sous-titres convertis côté serveur ; aujourd'hui rendu simplifié de Media3 (voir `android/README.md`).
 - Transcodage (vidéo, ou audio seul AC3/DTS → AAC, bien moins coûteux) pour les fichiers classés « transcodage nécessaire » par la phase 9 (traitement média). Hors périmètre tant que le rapport n'a pas montré combien de fichiers sont concernés.
 - Extension ffmpeg de Media3 côté Android si le spike montre des pistes audio AC3/DTS non décodées.
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.

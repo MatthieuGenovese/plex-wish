@@ -3,7 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Pas de sauvegarde (Google ou transfert d'appareil) : la session contient le refresh token chiffré,
+    <!-- configChanges : passer en paysage pour le lecteur ne recrée pas l'activité (Compose suit seul).
+         Pas de sauvegarde (Google ou transfert d'appareil) : la session contient le refresh token chiffré,
          dont la clé ne quitte pas le Keystore de ce téléphone. HTTP en clair refusé, sauf build debug
          (network_security_config). -->
     <application
@@ -20,6 +21,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

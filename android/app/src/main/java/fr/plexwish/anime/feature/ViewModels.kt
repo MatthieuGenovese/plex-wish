@@ -12,6 +12,7 @@ import fr.plexwish.anime.feature.home.HomeViewModel
 import fr.plexwish.anime.feature.library.LibraryViewModel
 import fr.plexwish.anime.feature.login.LoginViewModel
 import fr.plexwish.anime.feature.person.PersonViewModel
+import fr.plexwish.anime.feature.player.PlayerViewModel
 
 /**
  * Fabriques des ViewModels. Les ViewModels ne connaissent que le conteneur (dépôts, API) : ils servent tels
@@ -27,5 +28,9 @@ object ViewModels {
         initializer { LibraryViewModel(container().api, container().session, createSavedStateHandle()) }
         initializer { AnimeDetailViewModel(container().api, container().session, createSavedStateHandle()) }
         initializer { PersonViewModel(container().api, container().session, createSavedStateHandle()) }
+        initializer {
+            val c = container()
+            PlayerViewModel(c.api, c::newPlaybackEngine, createSavedStateHandle())
+        }
     }
 }

@@ -45,8 +45,10 @@ object Routes {
     const val LIBRARY = "library"
     const val ANIME = "anime/{id}"
     const val PERSON = "person/{id}"
+    const val PLAYER = "play/{id}"
     fun anime(id: Long) = "anime/$id"
     fun person(id: String) = "person/$id"
+    fun player(episodeId: Long) = "play/$episodeId"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,7 +72,7 @@ fun PhoneApp(container: AppContainer) {
 
     Scaffold(
         topBar = {
-            if (route != null && route != Routes.LOGIN) {
+            if (route != null && route != Routes.LOGIN && route != Routes.PLAYER) {
                 TopAppBar(
                     title = {
                         Text(when (route) {
@@ -97,14 +99,18 @@ fun PhoneApp(container: AppContainer) {
             composable(Routes.LOGIN) { LoginScreen(viewModel(factory = ViewModels.Factory)) }
             composable(Routes.HOME) {
                 HomeScreen(viewModel(factory = ViewModels.Factory),
-                    onContinue = { nav.navigate(Routes.anime(it.animeId)) },
+                    onContinue = { nav.navigate(Routes.player(it.episodeId)) },
                     onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)
             }
             composable(Routes.LIBRARY) {
                 LibraryScreen(viewModel(factory = ViewModels.Factory), onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)
             }
             composable(Routes.ANIME, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
-                AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) }, padding = padding)
+                AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) }, padding = padding,
+                    onEpisode = { nav.navigate(Routes.player(it.id)) })
+            }
+            composable(Routes.PLAYER, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
+                PlayerScreen(viewModel(factory = ViewModels.Factory), onBack = { nav.popBackStack() })
             }
             composable(Routes.PERSON, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
                 PersonScreen(viewModel(factory = ViewModels.Factory), onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)

@@ -49,4 +49,23 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
         if (!id.matches(Regex("[0-9]{1,10}"))) throw ApiException(404, "PERSON_NOT_FOUND", "Comédien introuvable.")
         return get(url("/api/people/$id"))
     }
+
+    suspend fun episode(id: Long): EpisodeDetail = get(url("/api/episodes/$id"))
+
+    /** URL signée de lecture, déjà rendue absolue (même serveur). Secrète : ne jamais la journaliser. */
+    suspend fun streamUrl(episodeId: Long): SignedStream {
+        val dto = get<StreamUrlDto>(url("/api/episodes/$episodeId/stream-url"))
+        val server = session.serverUrl ?: throw ApiException(401, "NO_SERVER", "Session expirée, reconnectez-vous.")
+        val absolute = server.resolve(dto.url) ?: throw ApiException(0, null, "Réponse inattendue du serveur.")
+        if (absolute.host != server.host || absolute.port != server.port) {
+            throw ApiException(0, null, "Réponse inattendue du serveur.") // jamais une URL vers un autre hôte
+        }
+        val expires = dto.expiresAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+        return SignedStream(absolute.toString(), expires)
+    }
+}
+
+/** URL signée absolue et son expiration (ms epoch, null si inconnue). {@code toString} masqué. */
+class SignedStream(val url: String, val expiresAtMs: Long?) {
+    override fun toString() = "SignedStream(url=***, expiresAtMs=$expiresAtMs)"
 }

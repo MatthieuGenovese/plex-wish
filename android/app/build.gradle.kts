@@ -91,6 +91,11 @@ dependencies {
     // Images (cache mémoire + disque), avec le même client OkHttp.
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // Lecteur (même version que le spike, validée sur le Galaxy S24).
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

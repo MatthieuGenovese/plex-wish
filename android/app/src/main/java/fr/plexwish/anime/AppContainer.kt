@@ -11,6 +11,9 @@ import fr.plexwish.anime.data.auth.KeystoreTokenCipher
 import fr.plexwish.anime.data.auth.SessionStore
 import fr.plexwish.anime.data.auth.TokenAuthenticator
 import fr.plexwish.anime.data.auth.TokenRefresher
+import fr.plexwish.anime.feature.player.PlaybackEngine
+import fr.plexwish.anime.feature.player.TrackPrefsStore
+import fr.plexwish.anime.playback.ExoPlaybackEngine
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -18,7 +21,7 @@ import java.util.concurrent.TimeUnit
  * Injection légère : les objets partagés de l'app, créés une fois (pas de framework d'injection pour si peu).
  * Les écrans (téléphone aujourd'hui, TV en phase 8) ne dépendent que des ViewModels et de ce conteneur.
  */
-class AppContainer(context: Context) {
+class AppContainer(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("session", Context.MODE_PRIVATE)
 
@@ -54,4 +57,17 @@ class AppContainer(context: Context) {
         .okHttpClient(baseClient)
         .crossfade(true)
         .build()
+
+    private val playerPrefs = context.getSharedPreferences("player", Context.MODE_PRIVATE)
+
+    /** Pistes préférées (audio japonais, sous-titres français par défaut). */
+    val trackPrefs = TrackPrefsStore(object : KeyValueStore {
+        override fun get(key: String) = playerPrefs.getString(key, null)
+        override fun put(key: String, value: String?) {
+            playerPrefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+        }
+    })
+
+    /** Flux vidéo : client de base, sans intercepteur d'authentification (l'URL signée suffit). */
+    fun newPlaybackEngine(): PlaybackEngine = ExoPlaybackEngine(context.applicationContext, baseClient, trackPrefs)
 }

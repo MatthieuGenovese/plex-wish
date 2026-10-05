@@ -115,3 +115,24 @@ data class PersonDetail(
     val sourceUrl: String? = null,
     val roles: List<PersonRole> = emptyList(),
 )
+
+@Serializable
+data class EpisodeDetail(
+    val id: Long,
+    val animeId: Long,
+    val animeTitle: String,
+    val seasonId: Long,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val title: String? = null,
+    val durationSeconds: Int? = null,
+    /** Extension du fichier (« mkv », « avi »…) : sert au diagnostic quand la lecture échoue. */
+    val container: String? = null,
+    val fileSize: Long = 0,
+)
+
+/** URL de lecture signée (relative au serveur). Secrète : jamais dans un log ni un message. */
+@Serializable
+data class StreamUrlDto(val url: String, val expiresAt: String? = null, val mimeType: String? = null, val fileSize: Long = 0) {
+    override fun toString() = "StreamUrlDto(url=***, expiresAt=$expiresAt)"
+}

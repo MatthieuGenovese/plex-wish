@@ -49,6 +49,16 @@ class LiveServerContractTest {
             api.progress(a.id)
             val cast = api.cast(a.id)
             cast.items.firstNotNullOfOrNull { it.person }?.let { p -> assertTrue(api.person(p.id).roles.isNotEmpty()) }
+            // URL signée : lisible par Range sans jeton (client de base), refusée (403) si la signature est altérée.
+            detail.seasons.firstOrNull()?.let { season ->
+                api.episodes(season.id).firstOrNull()?.let { ep ->
+                    val signed = api.streamUrl(ep.id)
+                    val ok = base.newCall(okhttp3.Request.Builder().url(signed.url).header("Range", "bytes=0-1").build()).execute()
+                    ok.use { assertEquals(206, it.code) }
+                    val bad = base.newCall(okhttp3.Request.Builder().url(signed.url.replace(Regex("sig=[^&]+"), "sig=0000")).build()).execute()
+                    bad.use { assertEquals(403, it.code) }
+                }
+            }
             println("Fiche OK : ${detail.title}, ${detail.seasons.size} saison(s), ${cast.items.size} rôle(s)")
         }
 

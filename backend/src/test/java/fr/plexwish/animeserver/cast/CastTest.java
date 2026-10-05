@@ -47,6 +47,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,6 +117,7 @@ class CastTest {
         // Gone : plus aucun fichier disponible ; son comédien 41 n'existe que là.
         anilist.onId(media(400, false, rel(), role("MAIN", 40, "Fantôme", 41, "Comédien Fantôme", null)));
         for (int id : new int[]{1, 2, 3, 5, 6, 7, 20, 40}) {
+            // Servies si on les demandait : les tests vérifient qu'on ne les demande jamais.
             images.on("/c/" + id + ".png", Reply.image("image/png", FakeImages.png(500, id)));
         }
         for (int id : new int[]{11, 12, 13, 41}) {
@@ -363,20 +365,16 @@ class CastTest {
 
     @Test
     void imagesAreStoredValidatedAndServedLocally() throws Exception {
-        images.on("/c/3.png", new Reply(200, Map.of("Content-Type", "text/html"), "<html>".getBytes(), false));
-        images.on("/c/5.png", Reply.image("image/png", FakeImages.png(1024 * 1024 + 1, 5)));
-        images.on("/c/6.png", Reply.image("image/png", "GIF89a…".getBytes()));
+        images.on("/p/12.jpg", new Reply(200, Map.of("Content-Type", "text/html"), "<html>".getBytes(), false));
+        images.on("/p/13.jpg", Reply.image("image/jpeg", FakeImages.jpeg(1024 * 1024 + 1, 13)));
         processAll();
         Response r = admin().get("/api/anime/" + id("Frieren") + "/cast");
-        String frierenImage = r.path("items[0].character.imageUrl");
         String tanezaki = r.path("items[0].person.imageUrl");
-        assertTrue(frierenImage.matches("/api/cast-images/[0-9a-f]{32}"), frierenImage);
         assertTrue(tanezaki.matches("/api/cast-images/[0-9a-f]{32}"), tanezaki);
-        // Refusées : pas une image, trop grosse, signature fausse → URL d'origine (le web affichera le repli).
-        assertEquals(images.url("/c/3.png"), r.path("items[2].character.imageUrl"));
-        assertEquals(images.url("/c/5.png"), r.path("items[3].character.imageUrl"));
-        assertEquals(images.url("/c/6.png"), r.path("items[4].character.imageUrl"));
-        assertEquals(3, count(ds, "SELECT count(*) FROM cast_image WHERE status = 'FAILED'"));
+        // Refusées : pas une image, trop grosse → URL d'origine (le client affichera le repli).
+        assertEquals(images.url("/p/12.jpg"), r.path("items[1].person.imageUrl"));
+        assertEquals(images.url("/p/13.jpg"), r.path("items[2].person.imageUrl"));
+        assertEquals(2, count(ds, "SELECT count(*) FROM cast_image WHERE status = 'FAILED'"));
         // Aucune réponse ne contient de chemin de fichier.
         assertFalse(r.asString().contains(".png\"") && r.asString().contains("cast/"));
         assertFalse(r.asString().contains("test-posters"));
@@ -398,6 +396,30 @@ class CastTest {
         processAll();
         admin().get("/api/anime/" + id("Frieren") + "/cast").then().body("items[0].person.imageUrl", startsWith("/api/cast-images/"));
         assertEquals(2, images.hits("/p/11.jpg"));
+    }
+
+    @Test
+    void charactersHaveNoImage() throws Exception {
+        processAll();
+        // Seules les photos des comédiens sont téléchargées et stockées ; jamais celles des personnages.
+        assertEquals(0, images.hits("/c/1.png") + images.hits("/c/2.png") + images.hits("/c/L1.png"));
+        assertEquals(0, count(ds, "SELECT count(*) FROM cast_image WHERE source_url LIKE '%/c/%'"));
+        assertEquals(count(ds, "SELECT count(DISTINCT image_url) FROM person"), count(ds, "SELECT count(*) FROM cast_image"));
+        Response r = admin().get("/api/anime/" + id("Frieren") + "/cast");
+        assertEquals("Frieren", r.path("items[0].character.name"));
+        assertFalse(r.asString().contains("/c/"), r.asString());
+        assertNull(r.path("items[0].character.imageUrl"));
+        Response p = admin().get("/api/people/11");
+        assertFalse(p.asString().contains("/c/"), p.asString());
+        assertNull(p.path("roles[0].character.imageUrl"));
+
+        // Ancienne image de personnage restée sur le disque (avant V12) : supprimée par le ménage du démarrage.
+        Path old = CAST_IMAGES.resolve("ab/" + "ab".repeat(32) + ".png");
+        Files.createDirectories(old.getParent());
+        Files.write(old, FakeImages.png(500, 1));
+        Files.setLastModifiedTime(old, java.nio.file.attribute.FileTime.from(java.time.Instant.now().minusSeconds(3600)));
+        assertEquals(1, service.sweep());
+        assertFalse(Files.exists(old));
     }
 
     private String relPath(String publicId) throws Exception {

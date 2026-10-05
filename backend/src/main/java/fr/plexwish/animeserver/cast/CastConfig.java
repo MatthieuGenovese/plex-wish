@@ -25,7 +25,7 @@ public interface CastConfig {
     @WithDefault("180d")
     Duration refreshAfter();
 
-    /** Taille maximale d'une image de personnage ou de comédien. */
+    /** Taille maximale d'une photo de comédien. */
     @WithDefault("1048576")
     long imageMaxBytes();
 

@@ -25,14 +25,9 @@ public class CastWorker extends BackgroundLoop {
     }
 
     void onStart(@Observes StartupEvent event) {
-        if (!config.enabled()) {
-            LOG.info("Distribution : tâche désactivée (CAST_ENABLED=false)");
-            return;
-        }
-        if (!service.store().usable()) {
-            LOG.warnf("Distribution : dossier %s non accessible en écriture : images chargées depuis AniList",
-                    service.store().root());
-        } else {
+        // Ménage même tâche arrêtée : fichiers temporaires et photos que plus rien ne référence (par exemple les
+        // anciennes images de personnages, retirées par V12).
+        if (service.store().usable()) {
             try {
                 int removed = service.sweep();
                 if (removed > 0) {
@@ -41,6 +36,14 @@ public class CastWorker extends BackgroundLoop {
             } catch (Exception e) {
                 LOG.warnf("Distribution : ménage impossible (%s)", e.getClass().getSimpleName());
             }
+        }
+        if (!config.enabled()) {
+            LOG.info("Distribution : tâche désactivée (CAST_ENABLED=false)");
+            return;
+        }
+        if (!service.store().usable()) {
+            LOG.warnf("Distribution : dossier %s non accessible en écriture : photos chargées depuis AniList",
+                    service.store().root());
         }
         start();
     }

@@ -359,11 +359,10 @@ export interface PosterEntry {
 
 export type CastRole = 'MAIN' | 'SUPPORTING';
 
+/** Personnage : nom seulement, jamais d'image (seuls les comédiens ont une photo). */
 export interface CastCharacter {
   name: string;
   nativeName: string | null;
-  /** Image locale (/api/cast-images/…), sinon l'URL d'origine, sinon null (visuel de remplacement). */
-  imageUrl: string | null;
 }
 
 export interface CastPersonRef {
@@ -371,6 +370,7 @@ export interface CastPersonRef {
   id: string;
   name: string;
   nativeName: string | null;
+  /** Photo locale (/api/cast-images/…), sinon l'URL d'origine, sinon null (visuel de remplacement). */
   imageUrl: string | null;
 }
 

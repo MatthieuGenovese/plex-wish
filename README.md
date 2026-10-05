@@ -214,10 +214,10 @@ Si un fichier disparaît (dossier vidé, disque changé), l'affiche distante est
 
 ### Distribution (personnages et comédiens)
 
-Sur la fiche d'un animé, la **distribution** : les **doubleurs japonais** (photo et nom), chacun avec le personnage qu'il joue dans cet animé et son rôle (principal ou secondaire) ; un clic sur un comédien ouvre sa page avec les animés **de la bibliothèque** où il joue. Source unique : AniList (ARCHITECTURE §18-19).
+Sur la fiche d'un animé, la **distribution** : les **doubleurs japonais** (photo et nom), chacun avec le nom du personnage qu'il joue dans cet animé et son rôle (principal ou secondaire), sans image de personnage ; un clic sur un comédien ouvre sa page avec les animés **de la bibliothèque** où il joue. Source unique : AniList (ARCHITECTURE §18-19).
 
-- Tâche de fond, **après** les métadonnées (elle attend que celles-ci n'aient plus rien à faire) : ~1 h 20 de requêtes AniList pour ~1 300 animés au premier passage, puis ~4 h d'images. Les suites (saisons 2, 3…) sont suivies jusqu'au nombre de saisons du dossier.
-- `CAST_MAX_ROLES` (20 par défaut) : rôles gardés par animé. Images dans `POSTERS_HOST_PATH/cast`, **≈ 1 Go** au total.
+- Tâche de fond, **après** les métadonnées (elle attend que celles-ci n'aient plus rien à faire) : ~1 h 20 de requêtes AniList pour ~1 300 animés au premier passage, puis ~35 min à 1 h de photos de comédiens. Les suites (saisons 2, 3…) sont suivies jusqu'au nombre de saisons du dossier.
+- `CAST_MAX_ROLES` (20 par défaut) : rôles gardés par animé. Photos des comédiens dans `POSTERS_HOST_PATH/cast`, **≈ 0,35 à 0,6 Go** au total (les anciennes images de personnages sont supprimées au démarrage de cette version).
 - *Administration → Distribution* : avancement, place, animés sans distribution, « Relancer », « Effacer toute la distribution ». `CAST_ENABLED=false` arrête la récupération.
 
 ## Accès depuis Internet

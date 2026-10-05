@@ -21,17 +21,17 @@ describe('PersonPage', () => {
     return { fixture, el: fixture.nativeElement as HTMLElement, req: http.expectOne('/api/people/95185') };
   }
 
-  it('photo, noms, et les animés de la bibliothèque avec le personnage joué', async () => {
+  it('photo, noms, et les animés de la bibliothèque avec le nom du personnage joué (sans image)', async () => {
     const { fixture, el, req } = await open();
     req.flush({
       id: '95185', name: 'Atsumi Tanezaki', nativeName: '種﨑敦美', imageUrl: '/api/cast-images/p1', sourceUrl: 'https://anilist.co/staff/95185',
       roles: [
         { animeId: 7, animeTitle: 'Frieren', year: 2023, posterUrl: '/api/posters/x', role: 'MAIN',
-          character: { name: 'Frieren', nativeName: null, imageUrl: null } },
+          character: { name: 'Frieren', nativeName: null } },
         { animeId: 7, animeTitle: 'Frieren', year: 2023, posterUrl: '/api/posters/x', role: 'SUPPORTING',
-          character: { name: 'Sein', nativeName: null, imageUrl: null } },
+          character: { name: 'Sein', nativeName: null } },
         { animeId: 9, animeTitle: 'Spy x Family', year: 2022, posterUrl: null, role: 'MAIN',
-          character: { name: 'Anya Forger', nativeName: null, imageUrl: '/api/cast-images/c2' } },
+          character: { name: 'Anya Forger', nativeName: null } },
       ],
     });
     await fixture.whenStable();
@@ -46,6 +46,9 @@ describe('PersonPage', () => {
     expect(cards[1].textContent).toContain('Principal');
     // Deux personnages dans le même animé : une seule carte.
     expect(cards[0].querySelectorAll('.role').length).toBe(2);
+    // Images : affiche de l'animé seulement, jamais de personnage.
+    expect(cards[0].querySelectorAll('img').length).toBe(1);
+    expect(cards[0].querySelector('img')?.getAttribute('src')).toBe('/api/posters/x');
     expect(cards[0].textContent).toContain('Sein');
     expect(el.textContent).toContain('2 animés de la bibliothèque');
     expect(el.querySelector('.source a')?.getAttribute('href')).toBe('https://anilist.co/staff/95185');

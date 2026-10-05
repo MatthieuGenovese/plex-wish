@@ -27,9 +27,9 @@ describe('CastSection', () => {
     const el = await open({
       source: 'AniList', sourceUrl: 'https://anilist.co/anime/154587',
       items: [
-        { character: { name: 'Frieren', nativeName: 'フリーレン', imageUrl: '/api/cast-images/perso' }, role: 'MAIN', language: 'ja',
+        { character: { name: 'Frieren', nativeName: 'フリーレン' }, role: 'MAIN', language: 'ja',
           person: { id: '95185', name: 'Atsumi Tanezaki', nativeName: '種﨑敦美', imageUrl: '/api/cast-images/voix' } },
-        { character: { name: 'Narrateur', nativeName: null, imageUrl: '/api/cast-images/perso2' }, role: 'SUPPORTING', language: 'ja', person: null },
+        { character: { name: 'Narrateur', nativeName: null }, role: 'SUPPORTING', language: 'ja', person: null },
       ],
     });
     const entries = el.querySelectorAll('.entry');
@@ -41,7 +41,7 @@ describe('CastSection', () => {
     expect(first.querySelector('.character')?.textContent).toBe('Frieren');
     expect(first.querySelector('.badge')?.textContent).toBe('Principal');
     expect(first.querySelector('a')?.getAttribute('aria-label')).toBe('Atsumi Tanezaki, voix de Frieren (Principal)');
-    // Sans doubleur : visuel de remplacement, jamais l'image du personnage, pas de lien.
+    // Sans doubleur : visuel de remplacement, pas de lien.
     expect(entries[1].querySelector('img')).toBeNull();
     expect(entries[1].querySelector('a')).toBeNull();
     expect(entries[1].textContent).toContain('Voix non renseignée');

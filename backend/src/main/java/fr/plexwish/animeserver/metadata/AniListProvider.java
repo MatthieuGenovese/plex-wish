@@ -50,7 +50,7 @@ public class AniListProvider implements MetadataProvider {
             query ($id: Int, $perPage: Int) { Media(id: $id, type: ANIME) { id isAdult format
               relations { edges { relationType node { id type format isAdult startDate { year } } } }
               characters(page: 1, perPage: $perPage, sort: [ROLE, RELEVANCE, ID]) { edges { role
-                node { id name { full native } image { large medium } }
+                node { id name { full native } }
                 voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full native } image { large medium } languageV2 } } } } }""";
 
     private final URI endpoint;

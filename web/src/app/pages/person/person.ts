@@ -8,7 +8,7 @@ import { ROLE_LABELS } from '../anime-detail/cast-section';
 
 /**
  * Page d'un comédien : photo, nom romanisé et japonais, et les animés de la bibliothèque où il joue
- * (affiche, personnage joué). Jamais sa filmographie complète.
+ * (affiche, nom du personnage joué, sans image de personnage). Jamais sa filmographie complète.
  */
 @Component({
   selector: 'app-person',
@@ -39,9 +39,8 @@ import { ROLE_LABELS } from '../anime-detail/cast-section';
               <span class="title">{{ g.animeTitle }}@if (g.year) { <span class="muted"> · {{ g.year }}</span> }</span>
               @for (r of g.roles; track $index) {
                 <span class="role">
-                  <app-poster class="face" [title]="r.character.name" [url]="r.character.imageUrl" />
-                  <span><span class="visually-hidden">Rôle : </span>{{ r.character.name }}<br />
-                    <span class="muted">{{ roles[r.role] }}</span></span>
+                  <span><span class="visually-hidden">Rôle : </span>{{ r.character.name }}</span>
+                  <span class="muted">{{ roles[r.role] }}</span>
                 </span>
               }
             </a>
@@ -62,8 +61,7 @@ import { ROLE_LABELS } from '../anime-detail/cast-section';
       color: var(--color-text); text-decoration: none; height: 100%; }
     .card-link:hover, .card-link:focus-visible { background: var(--color-surface-raised); color: var(--color-text); }
     .title { font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); overflow-wrap: anywhere; }
-    .role { display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-sm); }
-    .face { width: 2.25rem; flex: 0 0 auto; }
+    .role { display: flex; flex-wrap: wrap; column-gap: var(--space-2); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
     @media (max-width: 40rem) {
       .hero { grid-template-columns: 7rem 1fr; gap: var(--space-3); }
       .hero h1 { font-size: var(--font-size-xl); }

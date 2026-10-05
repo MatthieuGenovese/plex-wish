@@ -323,8 +323,8 @@ public class CastService {
                 }
                 int position = 0;
                 for (Role r : roles) {
-                    long characterId = upsert(c, "cast_character", r.character(), "medium");
-                    Long personId = r.person() == null ? null : upsert(c, "person", r.person(), "large");
+                    long characterId = upsertCharacter(c, r.character());
+                    Long personId = r.person() == null ? null : upsertPerson(c, r.person());
                     try (PreparedStatement ins = c.prepareStatement("""
                             INSERT INTO anime_cast (anime_id, character_id, language, person_id, role, position, source_id)
                             VALUES (?, ?, ?, ?, ?, ?, ?)""")) {
@@ -347,18 +347,36 @@ public class CastService {
         cleanup();
     }
 
-    /** Personne ou personnage (même forme chez AniList) ; son image est mise en file de téléchargement. */
-    private long upsert(Connection c, String table, JsonNode node, String imageSize) throws SQLException {
-        String image = text(node.path("image").path(imageSize));
+    /** Personnage : nom seulement (pas d'image : seuls les comédiens ont une photo, décision du 2026-10-05). */
+    private long upsertCharacter(Connection c, JsonNode node) throws SQLException {
+        try (PreparedStatement st = c.prepareStatement("""
+                INSERT INTO cast_character (provider, provider_id, name, native_name, fetched_at) VALUES (?, ?, ?, ?, now())
+                ON CONFLICT (provider, provider_id) DO UPDATE SET name = EXCLUDED.name, native_name = EXCLUDED.native_name,
+                    fetched_at = now()
+                RETURNING id""")) {
+            st.setString(1, PROVIDER);
+            st.setString(2, node.path("id").asText());
+            st.setString(3, name(node));
+            st.setString(4, text(node.path("name").path("native")));
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /** Comédien ; sa photo est mise en file de téléchargement. */
+    private long upsertPerson(Connection c, JsonNode node) throws SQLException {
+        String image = text(node.path("image").path("large"));
         if (image == null) {
-            image = text(node.path("image").path("large"));
+            image = text(node.path("image").path("medium"));
         }
         if (image != null && image.contains("/default.")) {
             image = null; // image générique d'AniList : visuel de remplacement de l'application à la place
         }
         long id;
-        try (PreparedStatement st = c.prepareStatement("INSERT INTO " + table + """
-                 (provider, provider_id, name, native_name, image_url, fetched_at) VALUES (?, ?, ?, ?, ?, now())
+        try (PreparedStatement st = c.prepareStatement("""
+                INSERT INTO person (provider, provider_id, name, native_name, image_url, fetched_at) VALUES (?, ?, ?, ?, ?, now())
                 ON CONFLICT (provider, provider_id) DO UPDATE SET name = EXCLUDED.name, native_name = EXCLUDED.native_name,
                     image_url = EXCLUDED.image_url, fetched_at = now()
                 RETURNING id""")) {
@@ -382,7 +400,7 @@ public class CastService {
         return id;
     }
 
-    /** Ménage : personnes, personnages et images que plus aucune distribution n'utilise (fichiers compris). */
+    /** Ménage : personnes, personnages et photos que plus aucune distribution n'utilise (fichiers compris). */
     void cleanup() throws SQLException {
         List<String> paths = new ArrayList<>();
         try (Connection c = dataSource.getConnection()) {
@@ -396,7 +414,6 @@ public class CastService {
             }
             try (PreparedStatement st = c.prepareStatement("""
                     DELETE FROM cast_image i WHERE NOT EXISTS (SELECT 1 FROM person p WHERE p.image_url = i.source_url)
-                      AND NOT EXISTS (SELECT 1 FROM cast_character ch WHERE ch.image_url = i.source_url)
                     RETURNING relative_path""");
                  ResultSet rs = st.executeQuery()) {
                 while (rs.next()) {
@@ -471,15 +488,12 @@ public class CastService {
                 st.setString(2, PROVIDER);
                 st.executeUpdate();
             }
-            // Ses images en échec sont retentées aussi.
+            // Les photos en échec de ses comédiens sont retentées aussi.
             try (PreparedStatement st = c.prepareStatement("""
                     UPDATE cast_image SET status = 'PENDING', attempts = 0, next_attempt_at = NULL, last_error = NULL
                     WHERE status = 'FAILED' AND source_url IN (
-                        SELECT p.image_url FROM anime_cast ac JOIN person p ON p.id = ac.person_id WHERE ac.anime_id = ?
-                        UNION SELECT ch.image_url FROM anime_cast ac JOIN cast_character ch ON ch.id = ac.character_id
-                        WHERE ac.anime_id = ?)""")) {
+                        SELECT p.image_url FROM anime_cast ac JOIN person p ON p.id = ac.person_id WHERE ac.anime_id = ?)""")) {
                 st.setLong(1, animeId);
-                st.setLong(2, animeId);
                 st.executeUpdate();
             }
         }

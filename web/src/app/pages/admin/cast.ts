@@ -31,7 +31,7 @@ const FILTER_LABELS: Record<Filter, string> = { missing: 'Sans distribution', fa
       @if (!s.enabled) {
         <div class="alert alert-warning" role="status"><p>Récupération désactivée (<code>CAST_ENABLED=false</code>) : la distribution déjà là reste affichée.</p></div>
       } @else if (!s.folderUsable) {
-        <div class="alert alert-error" role="alert"><p>Le dossier des images n’est pas accessible en écriture : images chargées depuis AniList (voir « Affiches sur le NAS » dans le README).</p></div>
+        <div class="alert alert-error" role="alert"><p>Le dossier des photos n’est pas accessible en écriture : photos chargées depuis AniList (voir « Affiches sur le NAS » dans le README).</p></div>
       }
       <p class="muted" role="status" data-testid="cast-status">
         {{ num(s.counts.OK) }} animé{{ s.counts.OK > 1 ? 's' : '' }} sur {{ num(s.withAniList) }} appariés à AniList ont leur distribution
@@ -44,12 +44,12 @@ const FILTER_LABELS: Record<Filter, string> = { missing: 'Sans distribution', fa
       <ul class="summary">
         <li class="tile"><span class="value">{{ num(s.people) }}</span><span>comédiens</span></li>
         <li class="tile"><span class="value">{{ num(s.roles) }}</span><span>rôles</span></li>
-        <li class="tile"><span class="value">{{ num(s.images.OK) }}</span><span>images sur le NAS</span></li>
-        <li class="tile" [class.warn]="s.images.FAILED > 0"><span class="value">{{ num(s.images.FAILED) }}</span><span>images refusées</span></li>
+        <li class="tile"><span class="value">{{ num(s.images.OK) }}</span><span>photos sur le NAS</span></li>
+        <li class="tile" [class.warn]="s.images.FAILED > 0"><span class="value">{{ num(s.images.FAILED) }}</span><span>photos refusées</span></li>
       </ul>
       <p class="disk" data-testid="cast-disk">
         {{ bytes(s.diskBytes) }} utilisés · environ {{ bytes(s.estimatedBytes) }} une fois tout récupéré
-        @if (s.images.PENDING > 0) { · {{ num(s.images.PENDING) }} image{{ s.images.PENDING > 1 ? 's' : '' }} à télécharger }
+        @if (s.images.PENDING > 0) { · {{ num(s.images.PENDING) }} photo{{ s.images.PENDING > 1 ? 's' : '' }} à télécharger }
       </p>
     }
 
@@ -116,7 +116,7 @@ const FILTER_LABELS: Record<Filter, string> = { missing: 'Sans distribution', fa
 
     <section class="card purge" aria-labelledby="c-purge">
       <h2 id="c-purge">Effacer toute la distribution</h2>
-      <p class="muted">Efface les personnages, les comédiens et leurs images (garde-fou si les conditions d’AniList l’exigeaient).
+      <p class="muted">Efface les personnages, les comédiens et leurs photos (garde-fou si les conditions d’AniList l’exigeaient).
         La récupération recommence ensuite, sauf avec <code>CAST_ENABLED=false</code>.</p>
       @if (!confirmPurge()) {
         <button type="button" class="btn-danger" (click)="confirmPurge.set(true)">Effacer toute la distribution…</button>

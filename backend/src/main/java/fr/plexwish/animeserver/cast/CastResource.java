@@ -18,7 +18,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +31,8 @@ import java.util.Set;
 @Produces(MediaType.APPLICATION_JSON)
 public class CastResource {
 
-    public record Character(String name, String nativeName, String imageUrl) {
+    /** Personnage : nom seulement, jamais d'image (seuls les comédiens ont une photo). */
+    public record Character(String name, String nativeName) {
     }
 
     public record PersonRef(String id, String name, String nativeName, String imageUrl) {
@@ -78,15 +78,15 @@ public class CastResource {
                 }
             }
             try (PreparedStatement st = c.prepareStatement("""
-                    SELECT ac.role, ac.language, ch.name, ch.native_name, ch.image_url, p.provider_id, p.name, p.native_name, p.image_url
+                    SELECT ac.role, ac.language, ch.name, ch.native_name, p.provider_id, p.name, p.native_name, p.image_url
                     FROM anime_cast ac JOIN cast_character ch ON ch.id = ac.character_id LEFT JOIN person p ON p.id = ac.person_id
                     WHERE ac.anime_id = ? AND ac.language = ? ORDER BY ac.position""")) {
                 st.setLong(1, animeId);
                 st.setString(2, CastService.LANGUAGE);
                 try (ResultSet rs = st.executeQuery()) {
                     while (rs.next()) {
-                        Object[] r = new Object[9];
-                        for (int i = 0; i < 9; i++) {
+                        Object[] r = new Object[8];
+                        for (int i = 0; i < 8; i++) {
                             r[i] = rs.getString(i + 1);
                         }
                         rows.add(r);
@@ -94,15 +94,10 @@ public class CastResource {
                 }
             }
         }
-        Set<String> images = new HashSet<>();
-        rows.forEach(r -> {
-            images.add((String) r[4]);
-            images.add((String) r[8]);
-        });
-        Map<String, String> urls = service.imageUrls(images);
+        Map<String, String> urls = service.imageUrls(rows.stream().map(r -> (String) r[7]).toList());
         List<CastEntry> items = rows.stream().map(r -> new CastEntry(
-                new Character((String) r[2], (String) r[3], urls.get((String) r[4])), (String) r[0], (String) r[1],
-                r[5] == null ? null : new PersonRef((String) r[5], (String) r[6], (String) r[7], urls.get((String) r[8]))))
+                new Character((String) r[2], (String) r[3]), (String) r[0], (String) r[1],
+                r[4] == null ? null : new PersonRef((String) r[4], (String) r[5], (String) r[6], urls.get((String) r[7]))))
                 .toList();
         return new AnimeCast(items.isEmpty() ? null : "AniList", items.isEmpty() ? null : sourceUrl, items);
     }
@@ -134,7 +129,7 @@ public class CastResource {
                 }
             }
             try (PreparedStatement st = c.prepareStatement("""
-                    SELECT a.id, a.title, a.year, ac.role, ch.name, ch.native_name, ch.image_url
+                    SELECT a.id, a.title, a.year, ac.role, ch.name, ch.native_name
                     FROM anime_cast ac JOIN anime a ON a.id = ac.anime_id JOIN cast_character ch ON ch.id = ac.character_id
                     WHERE ac.person_id = ?""" + " AND " + VISIBLE + """
                      ORDER BY lower(a.title), a.id, ac.position""")) {
@@ -142,7 +137,7 @@ public class CastResource {
                 try (ResultSet rs = st.executeQuery()) {
                     while (rs.next()) {
                         rows.add(new Object[]{rs.getLong(1), rs.getString(2), (Integer) rs.getObject(3), rs.getString(4),
-                                rs.getString(5), rs.getString(6), rs.getString(7)});
+                                rs.getString(5), rs.getString(6)});
                     }
                 }
             }
@@ -151,20 +146,17 @@ public class CastResource {
             // Aucun animé disponible de la bibliothèque : la page n'a rien à montrer.
             throw new ApiException(404, "PERSON_NOT_FOUND", "Comédien introuvable");
         }
-        Set<String> images = new HashSet<>();
-        images.add(image);
-        rows.forEach(r -> images.add((String) r[6]));
-        Map<String, String> urls = service.imageUrls(images);
+        Map<String, String> urls = service.imageUrls(image == null ? Set.of() : Set.of(image));
         Map<Long, PosterService.Urls> posterUrls = posters.urls(rows.stream().map(r -> (Long) r[0]).distinct().toList());
         List<PersonRole> roles = rows.stream().map(r -> {
             PosterService.Urls p = posterUrls.get((Long) r[0]);
             return new PersonRole((Long) r[0], (String) r[1], (Integer) r[2], p == null ? null : p.small(),
-                    new Character((String) r[4], (String) r[5], urls.get((String) r[6])), (String) r[3]);
+                    new Character((String) r[4], (String) r[5]), (String) r[3]);
         }).toList();
         return new Person(id, name, nativeName, urls.get(image), "https://anilist.co/staff/" + id, roles);
     }
 
-    /** Image locale d'un personnage ou d'un comédien (sans authentification, identifiant aléatoire : voir §17.3). */
+    /** Photo locale d'un comédien (sans authentification, identifiant aléatoire : voir §17.3). */
     @GET
     @Path("/cast-images/{publicId}")
     @PermitAll

@@ -34,4 +34,19 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
     /** {@code sort} : « title » (bibliothèque) ou « recent » (derniers ajouts) ; {@code page} à partir de 0. */
     suspend fun animes(sort: String, query: String?, page: Int, size: Int): Page<AnimeSummary> =
         get(url("/api/anime", "sort" to sort, "q" to query?.trim(), "page" to page, "size" to size))
+
+    suspend fun anime(id: Long): AnimeDetail = get(url("/api/anime/$id"))
+
+    suspend fun episodes(seasonId: Long): List<EpisodeSummary> = get(url("/api/seasons/$seasonId/episodes"))
+
+    /** Progression de l'utilisateur pour un animé (épisodes vus, en cours). */
+    suspend fun progress(animeId: Long): List<ProgressDto> = get(url("/api/me/progress", "animeId" to animeId))
+
+    suspend fun cast(animeId: Long): AnimeCast = get(url("/api/anime/$animeId/cast"))
+
+    /** {@code id} : identifiant AniList du comédien (chiffres seulement, il vient du serveur). */
+    suspend fun person(id: String): PersonDetail {
+        if (!id.matches(Regex("[0-9]{1,10}"))) throw ApiException(404, "PERSON_NOT_FOUND", "Comédien introuvable.")
+        return get(url("/api/people/$id"))
+    }
 }

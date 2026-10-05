@@ -50,6 +50,15 @@ Au premier lancement : l'adresse publique (celle de `PUBLIC_URL`, ex. `https://a
 - Trop d'essais de mot de passe : le serveur bloque la connexion un moment ; l'app affiche le délai à attendre.
 - Session : l'app reste connectée (30 jours sans ouverture au plus) ; si le serveur révoque la session (mot de passe changé, compte désactivé), elle revient à l'écran de connexion avec un message.
 
+## Ce que fait l'app (à ce stade)
+
+- Connexion, accueil (reprendre, derniers ajouts), bibliothèque (recherche, tri).
+- Fiche d'un animé : synopsis, saisons, épisodes (par tranches de 100 pour les longues séries), épisodes vus ou en cours, distribution (photo et nom des doubleurs japonais, personnage joué, rôle) et page de chaque comédien.
+- *Compte → À propos* : sources des données (AniList, TMDB) et mention TMDB.
+- Lecture des épisodes : au bloc suivant (Media3, URL signée).
+
+Les images ne viennent que du serveur : une affiche ou une photo pas encore stockée sur le NAS s'affiche en initiales colorées.
+
 ## APK de release (sans Play Store)
 
 ### Clé de signature (une fois)

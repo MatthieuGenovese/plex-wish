@@ -42,6 +42,16 @@ class LiveServerContractTest {
         assertTrue(page.total >= page.items.size)
         api.continueWatching()
 
+        // Fiche, épisodes, progression, distribution et page comédien : les DTO de l'app lisent les vraies réponses.
+        page.items.firstOrNull()?.let { a ->
+            val detail = api.anime(a.id)
+            detail.seasons.firstOrNull()?.let { api.episodes(it.id) }
+            api.progress(a.id)
+            val cast = api.cast(a.id)
+            cast.items.firstNotNullOfOrNull { it.person }?.let { p -> assertTrue(api.person(p.id).roles.isNotEmpty()) }
+            println("Fiche OK : ${detail.title}, ${detail.seasons.size} saison(s), ${cast.items.size} rôle(s)")
+        }
+
         // Redémarrage de l'app : access token perdu, le refresh token chiffré suffit (rotation côté serveur).
         val restarted = SessionStore(store, FakeCipher())
         val client2 = base.newBuilder().addInterceptor(AuthInterceptor(restarted))

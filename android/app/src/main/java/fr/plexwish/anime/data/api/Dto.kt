@@ -49,3 +49,69 @@ data class ContinueWatching(
     val durationSeconds: Int,
     val posterUrl: String? = null,
 )
+
+@Serializable
+data class SeasonDto(val id: Long, val seasonNumber: Int, val label: String, val episodeCount: Long = 0)
+
+@Serializable
+data class AnimeDetail(
+    val id: Long,
+    val title: String,
+    val alternativeTitle: String? = null,
+    val synopsis: String? = null,
+    /** Langue du synopsis (« fr » si TMDB, « en » si AniList). */
+    val synopsisLanguage: String? = null,
+    val posterUrl: String? = null,
+    val posterLargeUrl: String? = null,
+    val year: Int? = null,
+    val metadataSource: String? = null,
+    val metadataUrl: String? = null,
+    val seasons: List<SeasonDto> = emptyList(),
+    val synopsisSource: String? = null,
+    val frenchTitle: String? = null,
+    val tmdbUrl: String? = null,
+)
+
+@Serializable
+data class EpisodeSummary(val id: Long, val episodeNumber: Int, val title: String? = null, val durationSeconds: Int? = null)
+
+@Serializable
+data class ProgressDto(
+    val episodeId: Long,
+    val positionSeconds: Int,
+    val durationSeconds: Int,
+    val completed: Boolean,
+)
+
+/** Personnage : nom seulement (pas d'image, seuls les comédiens ont une photo). */
+@Serializable
+data class CastCharacter(val name: String, val nativeName: String? = null)
+
+@Serializable
+data class CastPersonRef(val id: String, val name: String, val nativeName: String? = null, val imageUrl: String? = null)
+
+@Serializable
+data class CastEntry(val character: CastCharacter, val role: String, val language: String = "ja", val person: CastPersonRef? = null)
+
+@Serializable
+data class AnimeCast(val source: String? = null, val sourceUrl: String? = null, val items: List<CastEntry> = emptyList())
+
+@Serializable
+data class PersonRole(
+    val animeId: Long,
+    val animeTitle: String,
+    val year: Int? = null,
+    val posterUrl: String? = null,
+    val character: CastCharacter,
+    val role: String,
+)
+
+@Serializable
+data class PersonDetail(
+    val id: String,
+    val name: String,
+    val nativeName: String? = null,
+    val imageUrl: String? = null,
+    val sourceUrl: String? = null,
+    val roles: List<PersonRole> = emptyList(),
+)

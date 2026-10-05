@@ -35,6 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import fr.plexwish.anime.AppContainer
 import fr.plexwish.anime.feature.ViewModels
+import fr.plexwish.anime.ui.components.AboutDialog
 import kotlinx.coroutines.launch
 
 /** Routes de l'app téléphone. Un jeu d'écrans TV (phase 8) aura son propre NavHost sur les mêmes ViewModels. */
@@ -43,7 +44,9 @@ object Routes {
     const val HOME = "home"
     const val LIBRARY = "library"
     const val ANIME = "anime/{id}"
+    const val PERSON = "person/{id}"
     fun anime(id: Long) = "anime/$id"
+    fun person(id: String) = "person/$id"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,9 +72,16 @@ fun PhoneApp(container: AppContainer) {
         topBar = {
             if (route != null && route != Routes.LOGIN) {
                 TopAppBar(
-                    title = { Text(if (route == Routes.LIBRARY) "Bibliothèque" else "Anime Server") },
+                    title = {
+                        Text(when (route) {
+                            Routes.LIBRARY -> "Bibliothèque"
+                            Routes.HOME -> "Anime Server"
+                            Routes.PERSON -> "Comédien"
+                            else -> ""
+                        })
+                    },
                     navigationIcon = {
-                        if (route == Routes.ANIME) IconButton(onClick = { nav.popBackStack() }) {
+                        if (route == Routes.ANIME || route == Routes.PERSON) IconButton(onClick = { nav.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
                         }
                     },
@@ -94,7 +104,10 @@ fun PhoneApp(container: AppContainer) {
                 LibraryScreen(viewModel(factory = ViewModels.Factory), onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)
             }
             composable(Routes.ANIME, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
-                AnimePlaceholderScreen(it.arguments?.getLong("id") ?: 0, padding)
+                AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) }, padding = padding)
+            }
+            composable(Routes.PERSON, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
+                PersonScreen(viewModel(factory = ViewModels.Factory), onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)
             }
         }
     }
@@ -124,11 +137,14 @@ private fun BottomBar(nav: NavHostController, route: String?) {
 @Composable
 private fun AccountMenu(username: String?, onLogout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
+    var about by remember { mutableStateOf(false) }
+    if (about) AboutDialog { about = false }
     IconButton(onClick = { open = true }) { Icon(Icons.Default.AccountCircle, contentDescription = "Compte") }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         username?.let {
             DropdownMenuItem(text = { Text("Connecté : $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }, onClick = {}, enabled = false)
         }
+        DropdownMenuItem(text = { Text("À propos") }, onClick = { open = false; about = true })
         DropdownMenuItem(text = { Text("Se déconnecter") }, onClick = { open = false; onLogout() })
     }
 }

@@ -7,9 +7,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import fr.plexwish.anime.AnimeApp
 import fr.plexwish.anime.AppContainer
+import fr.plexwish.anime.feature.detail.AnimeDetailViewModel
 import fr.plexwish.anime.feature.home.HomeViewModel
 import fr.plexwish.anime.feature.library.LibraryViewModel
 import fr.plexwish.anime.feature.login.LoginViewModel
+import fr.plexwish.anime.feature.person.PersonViewModel
 
 /**
  * Fabriques des ViewModels. Les ViewModels ne connaissent que le conteneur (dépôts, API) : ils servent tels
@@ -23,5 +25,7 @@ object ViewModels {
         initializer { LoginViewModel(container().auth, container().session) }
         initializer { HomeViewModel(container().api, container().session) }
         initializer { LibraryViewModel(container().api, container().session, createSavedStateHandle()) }
+        initializer { AnimeDetailViewModel(container().api, container().session, createSavedStateHandle()) }
+        initializer { PersonViewModel(container().api, container().session, createSavedStateHandle()) }
     }
 }

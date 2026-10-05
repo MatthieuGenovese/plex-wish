@@ -16,7 +16,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.1 | Synopsis en français (TMDB) | ✅ validée le 2026-10-03 |
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
-| 7 | Application Android (téléphone) | en cours (connexion et bibliothèque livrées) |
+| 7 | Application Android (téléphone) | en cours (connexion et bibliothèque validées ; fiche et distribution livrées) |
 | 8 | Android TV | à faire |
 | 9 | Traitement média (ffprobe, remux, sous-titres) | à faire, avant le lecteur web |
 | 10 | Lecteur web | à faire |
@@ -97,7 +97,7 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 
 ## Phase 7 — Application Android (téléphone)
 - Kotlin, Compose, Media3 dans `android/app`, structure prête pour la TV. ARCHITECTURE §20, `android/README.md`.
-- Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque. Reste : fiche et distribution, page comédien, lecteur (URL signée), progression ; puis suppression de `android/spike` et de `/api/dev/stream`.
+- Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque (validés sur Galaxy S24 le 2026-10-05) ; fiche, distribution (comédiens seuls) et page comédien. Reste : lecteur (URL signée), progression ; puis suppression de `android/spike` et de `/api/dev/stream`.
 
 ## Phase 8 — Android TV
 - Périmètre à préciser au démarrage de la phase. Base prévue : un paquet `ui/tv` (écrans et navigation propres) sur les mêmes ViewModels et la même couche `data` que le téléphone (ARCHITECTURE §20).

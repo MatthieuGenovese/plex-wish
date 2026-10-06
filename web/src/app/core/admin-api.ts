@@ -19,8 +19,7 @@ import {
   TmdbSheet,
   TmdbSummary,
   TmdbType,
-  User,
-} from './api-types';
+  User, MediaEntry, MediaSummary, RemuxTestStatus } from './api-types';
 
 export interface CreateUser {
   username: string;
@@ -211,5 +210,44 @@ export class AdminApi {
   /** Efface toute la distribution (données et images). */
   purgeCast(): Observable<{ purged: number; running: boolean }> {
     return this.http.post<{ purged: number; running: boolean }>('/api/admin/cast/purge', null, { params: { confirm: 'true' } });
+  }
+
+  // --- Médias --------------------------------------------------------------------------------------
+
+  mediaSummary(): Observable<MediaSummary> {
+    return this.http.get<MediaSummary>('/api/admin/media/summary');
+  }
+
+  mediaFiles(query: { filter?: string; q?: string; page?: number; size?: number }): Observable<Page<MediaEntry>> {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null && v !== '') params = params.set(k, String(v));
+    }
+    return this.http.get<Page<MediaEntry>>('/api/admin/media/files', { params });
+  }
+
+  reprobe(mediaFileId: number): Observable<{ queued: boolean; running: boolean }> {
+    return this.http.post<{ queued: boolean; running: boolean }>(`/api/admin/media/files/${mediaFileId}/reprobe`, null);
+  }
+
+  reprobeFailed(): Observable<{ queued: number; running: boolean }> {
+    return this.http.post<{ queued: number; running: boolean }>('/api/admin/media/reprobe-failed', null);
+  }
+
+  remuxTest(): Observable<RemuxTestStatus> {
+    return this.http.get<RemuxTestStatus>('/api/admin/media/remux-test');
+  }
+
+  /** {@code startAt} : ISO-8601, démarrage différé (24 h au plus). */
+  startRemuxTest(startAt?: string): Observable<RemuxTestStatus> {
+    return this.http.post<RemuxTestStatus>('/api/admin/media/remux-test/start', null, startAt ? { params: { startAt } } : {});
+  }
+
+  stopRemuxTest(): Observable<RemuxTestStatus> {
+    return this.http.post<RemuxTestStatus>('/api/admin/media/remux-test/stop', null);
+  }
+
+  resetRemuxTest(): Observable<{ deleted: number }> {
+    return this.http.post<{ deleted: number }>('/api/admin/media/remux-test/reset', null, { params: { confirm: 'true' } });
   }
 }

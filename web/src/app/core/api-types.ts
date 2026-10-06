@@ -438,3 +438,73 @@ export interface CastAdminEntry {
   fetchedAt: string | null;
   lastError: string | null;
 }
+
+// --- Médias (analyse ffprobe, test à blanc du remux) -------------------------------------------
+
+export type AndroidClass = 'DIRECT' | 'REMUX' | 'TRANSCODE';
+
+export interface MediaSummary {
+  enabled: boolean;
+  /** « ffprobe version 7.1.5 », null si ffprobe est absent. */
+  ffprobeVersion: string | null;
+  /** working, idle, scan (en pause pendant un scan), remux-test (en pause pendant le test à blanc), stopped. */
+  workerState: string;
+  files: number;
+  analyzed: number;
+  failed: number;
+  pending: number;
+  android: Record<AndroidClass, number>;
+  browserPlayable: number;
+  browserNotPlayable: number;
+  remuxFiles: number;
+  remuxBytes: number;
+  episodes: number;
+  episodesWithDuration: number;
+}
+
+export interface RemuxTestResult {
+  variant: 'GENPTS' | 'GENPTS_UNPACK';
+  ok: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+  elapsedMs: number;
+  message: string | null;
+}
+
+export interface MediaEntry {
+  mediaFileId: number;
+  /** Chemin relatif à la bibliothèque (admin seulement). */
+  path: string;
+  animeTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  extension: string;
+  fileSize: number;
+  status: 'PENDING' | 'OK' | 'FAILED';
+  error: string | null;
+  durationSeconds: number | null;
+  video: string | null;
+  audio: string | null;
+  subtitles: string | null;
+  android: AndroidClass | null;
+  androidReasons: string | null;
+  browserPlayable: boolean | null;
+  browserReasons: string | null;
+  remuxTest: RemuxTestResult[];
+}
+
+export interface RemuxTestStatus {
+  running: boolean;
+  /** Démarrage programmé (ISO), sinon null. */
+  startAt: string | null;
+  startedAt: string | null;
+  current: string | null;
+  total: number;
+  done: number;
+  bytesDone: number;
+  bytesTotal: number;
+  /** Par commande : [réussites, échecs]. */
+  perVariant: Record<string, [number, number]>;
+  estimatedSecondsLeft: number | null;
+  lastError: string | null;
+}

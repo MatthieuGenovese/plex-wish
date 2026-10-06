@@ -16,9 +16,9 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.1 | Synopsis en français (TMDB) | ✅ validée le 2026-10-03 |
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
-| 7 | Application Android (téléphone) | en cours (connexion, bibliothèque, fiche et distribution validées ; lecteur et progression livrés) |
-| 8 | Android TV | à faire |
-| 9 | Traitement média (ffprobe, remux, sous-titres) | à faire, avant le lecteur web |
+| 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
+| 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : en cours ; 9.2 remux à la demande : après validation de 9.1 |
+| 8 | Android TV | à faire, après la phase 9 |
 | 10 | Lecteur web | à faire |
 
 ---
@@ -71,7 +71,7 @@ Règles détaillées : ARCHITECTURE §7 (issues du relevé réel : 28 254 vidéo
 
 ## Fin de l'étape
 Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), lecteur web, progression, métadonnées, Android complet.
-(Réalisé ensuite : streaming et progression en phase 5, métadonnées en 6, Android en 7, Android TV en 8 ; le lecteur web, oublié, devient la phase 10, après le traitement média en phase 9.)
+(Réalisé ensuite : streaming et progression en phase 5, métadonnées en 6, Android en 7 ; puis traitement média (phase 9, avancée avant la phase 8 le 2026-10-06), Android TV (8), lecteur web (10).)
 
 ## Phase 5 — Streaming définitif et progression (backend, testable avec curl)
 - URL de lecture signée (HMAC, 6 h, liée au fichier et à l'utilisateur) et endpoint Range durci : ARCHITECTURE §6.
@@ -99,9 +99,6 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 - Kotlin, Compose, Media3 dans `android/app`, structure prête pour la TV. ARCHITECTURE §20, `android/README.md`.
 - Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque (validés sur Galaxy S24 le 2026-10-05) ; fiche, distribution (comédiens seuls) et page comédien (validés le 2026-10-05) ; lecteur Media3 et progression. Reste, après validation du lecteur : suppression de `android/spike` et de `/api/dev/stream`.
 
-## Phase 8 — Android TV
-- Périmètre à préciser au démarrage de la phase. Base prévue : un paquet `ui/tv` (écrans et navigation propres) sur les mêmes ViewModels et la même couche `data` que le téléphone (ARCHITECTURE §20).
-
 ## Phase 9 — Traitement média (ffprobe, remux, sous-titres)
 But : savoir ce que contient chaque fichier, et rendre lisibles sans ré-encodage ceux qui ne le sont que par leur conteneur. Prérequis du lecteur web (phase 10), utile aussi à l'app Android. **Le transcodage (ré-encodage vidéo ou audio) reste hors périmètre.**
 
@@ -111,34 +108,36 @@ Règles communes :
 - Sur un NAS de 4 Go : un seul processus ffmpeg à la fois (ffprobe : 1 ou 2), priorité basse (`nice`/`ionice`), **délai maximal** par processus (puis arrêt forcé), **limite de mémoire** par processus (`prlimit --as`, ou un conteneur dédié avec `mem_limit` si c'est plus simple), sortie standard et erreur lues en continu et tronquées dans les logs.
 - ffmpeg/ffprobe ajoutés à l'image du backend (environ +100 Mo) ; version affichée dans l'admin.
 
-### 9.1 Analyse ffprobe du catalogue
-- Tâche de fond séparée du scan (le scan reste sans ffprobe), reprenable, idempotente, relançable par l'admin ; incrémentale ensuite (fichiers nouveaux ou dont la taille ou la date de modification ont changé).
-- `ffprobe -show_format -show_streams -show_chapters -of json`, en-têtes seulement (jamais `-count_frames` ni `-count_packets`, qui lisent tout le fichier).
-- Stocké en base (nouvelle table liée à `media_file`) : durée ; conteneur réel ; vidéo (codec, profil, profondeur 8/10 bits, définition, images/s) ; pistes audio (codec, canaux, langue, titre, défaut) ; pistes de sous-titres (format texte ASS/SRT ou image PGS/VobSub, langue, titre, défaut, forcé) ; chapitres ; polices jointes (MKV) ; erreur de lecture le cas échéant. La durée renseigne `episode.duration`.
-- **Rapport admin** par catégorie, avec liste filtrable comme le rapport de scan : *lisible sur Android* / *lisible dans un navigateur* / *remux nécessaire* (codecs acceptés, conteneur refusé ou mal lu : OGM, AVI dont l'audio est déclaré « octet par octet » — `sampleSize` ≠ 0, `nBlockAlign` = 1, que Media3 horodate de travers —, MKV pour le navigateur) / *transcodage nécessaire* (codec refusé : ex. audio AC3/DTS dans Chrome, HEVC selon le navigateur, sous-titres image dans un navigateur) / *illisible ou corrompu*. Règles de classement écrites au démarrage de la phase, prudentes (« navigateur » = Chrome et Firefox récents).
+### 9.1 Analyse du catalogue (ffprobe) — étape 1, puis validation
+1. ffmpeg et ffprobe dans l'image du backend, **version figée** (source officielle vérifiée par empreinte, compilation réduite aux conteneurs et codecs utiles) ; taille ajoutée documentée. Aucun shell : arguments fixes, chemin lu en base, délai maximal par fichier.
+2. Tâche de fond séparée du scan : idempotente, reprenable, un fichier à la fois, priorité basse (`nice`/`ionice`), en pause pendant un scan ; seulement les fichiers nouveaux ou modifiés (taille, date).
+3. Par fichier : durée, conteneur, vidéo (codec, profil, 10 bits, définition), pistes audio (langue, codec, canaux), sous-titres (langue, format, par défaut, forcé), résultat (échec avec raison).
+4. Durée des épisodes renseignée (web et Android) ; la progression s'appuie sur elle quand le lecteur annonce une durée incohérente.
+5. Classification documentée, règles explicites et modifiables, testées : Android « lisible directement » / « remux nécessaire » (AVI, OGM) / « transcodage nécessaire » (codec non décodable) ; navigateur « lisible » ou « non lisible » avec les raisons (MKV, HEVC 10 bits, MPEG-4 ASP, ASS/VobSub…).
+6. Admin, onglet « Médias » : avancement, répartition, liste filtrable (sans analyse, par catégorie, échecs), espace estimé pour remuxer tous les AVI/OGM.
+7. **Test à blanc du remux**, lancé à la main : chaque AVI/OGM remuxé vers une sortie nulle (rien n'est écrit), commandes « genpts » et « genpts + mpeg4_unpack_bframes », un fichier à la fois, arrêt et reprise, résultat par commande et raison des échecs ; démarrage différé possible (la nuit).
+8. Estimations : durée du premier passage (~28 000 fichiers) et charge disque ; durée du test à blanc.
+9. Tests : faux ffprobe (logique), vrai ffprobe sur petits fichiers générés, classification, reprise, fichiers modifiés, échec d'analyse, aucun chemin de fichier hors de l'API admin.
 
-### 9.2 Remux sans ré-encodage, à la demande (AVI et OGM pour Android)
-Constat (2026-10-06, ARCHITECTURE §20.3 et §21) : des AVI et OGM réels ne se lisent pas sur Android (AVI Air Gear : son horodaté de travers par Media3, lecture bloquée ; OGM : conteneur non lu), mais le même contenu **remuxé en MKV, sans ré-encodage**, se lit avec le son sur le S24. Environ **920 fichiers** (AVI + OGM, ~3 % du catalogue), **plus de 150 Go** au total. Ce remux sert **Android uniquement** : le lecteur web ne lira pas du MPEG-4 ASP (Xvid/DivX), même remuxé.
+### 9.2 Remux à la demande (AVI et OGM, pour Android) — étape 2, après validation de 9.1
+Constat (2026-10-06, ARCHITECTURE §20.3 et §21) : AVI et OGM réels non lisibles sur Android, mais lisibles avec le son une fois remuxés en MKV sans ré-encodage (validé à la main sur le S24 : `-fflags +genpts -i entrée -c copy sortie.mkv` pour l'AVI Air Gear et l'OGM de test ; pour l'AVI, la variante avec `-bsf:v mpeg4_unpack_bframes` marche aussi). Environ 920 fichiers (~3 % du catalogue, plus de 150 Go). **Android uniquement** : le navigateur ne lira pas du MPEG-4 ASP, même remuxé.
+1. API : `stream-url` d'un fichier à remuxer répond « préparation en cours » (statut distinct d'une erreur, délai avant nouvelle demande, progression si possible) ; une fois prêt, URL signée vers la copie en cache ; jamais d'URL vers l'original illisible.
+2. Cache : `REMUX_CACHE_PATH` (volume en écriture, hors `/media` qui reste en lecture seule ; création et droits PUID/PGID comme pour les affiches), taille maximale `REMUX_CACHE_MAX_GB`, purge des copies les moins récemment lues (jamais une copie en cours de lecture), espace libre vérifié avant de commencer, nom par empreinte, fichier temporaire puis renommage atomique, nettoyage des restes au démarrage.
+3. Exécution : commandes validées (AVI : genpts, et `mpeg4_unpack_bframes` en repli ou d'après le test à blanc ; OGM : genpts), `-c copy`, toutes les pistes, arguments fixes sans shell, délai maximal, un seul remux à la fois, deux demandes du même épisode partagent le travail. **Seul un code de sortie non nul est un échec** ; avertissements au journal.
+4. Échecs : « remux impossible » avec la raison, nouvelles tentatives espacées (pas de boucle), rapport admin, « relancer ».
+5. Admin : état du cache, remux en cours et file d'attente, échecs, « préparer à l'avance » pour un animé (plafonné), « vider le cache ».
+6. Android : écran « Préparation de l'épisode… », nouvelles demandes espacées, annulation, message clair en cas d'échec ; scénario de test dans `android/README.md`.
+7. Web : message « format non lisible dans un navigateur » (pas de lecteur web dans cette phase).
+8. Tests : faux ffmpeg (succès, échec, délai, avertissement), concurrence, purge, atomicité, cache plein, signature sur la copie, path traversal, vrai ffmpeg sur petits fichiers.
+9. README, ARCHITECTURE (volume, droits, taille conseillée), FUTURE (transcodage, remux préventif planifié).
 
-- **À la demande, au premier lancement** d'un épisode classé « remux nécessaire » (rapport 9.1) : `stream-url` répond « préparation en cours » (réponse distincte d'une erreur : statut, progression si connue, délai avant de redemander) ; l'app affiche « Préparation de l'épisode… » et redemande ; une fois prêt, la même URL signée (Range) sert le MKV du cache. Lancement suivant : immédiat tant que le fichier est en cache. Action admin « préparer » pour anticiper un épisode ou une saison.
-- **Jamais d'écriture dans `/media`** : résultat dans le dossier de cache à part, fichier temporaire puis renommage (jamais de fichier à moitié écrit servi), nommé par identifiant en base.
-- **Cache borné** : taille maximale configurable (`MEDIA_CACHE_MAX_GB`) ; avant chaque remux, vérification de l'espace libre et **purge des fichiers les moins récemment lus** jusqu'à faire la place ; action admin « vider le cache ». Le cache se régénère : rien à sauvegarder.
-- **Commandes** (arguments fixes, sans shell, entrée et sortie en `file:`, `-nostdin`, `-map 0`) :
-  - AVI : `ffmpeg -fflags +genpts -i entrée.avi -c copy -bsf:v mpeg4_unpack_bframes sortie.mkv`. `-fflags +genpts` est indispensable (premier paquet vidéo sans horodatage : sinon « Timestamps are unset in a packet ») ; `mpeg4_unpack_bframes` défait les B-frames « empaquetées » des Xvid/DivX. Les deux variantes (avec et sans ce filtre) marchent sur Air Gear : **à valider sur un échantillon d'AVI réels** (Xvid et DivX, MP3 et AC3, avec et sans B-frames) avant de fixer la commande par défaut ; **repli** sur l'autre variante si la première échoue.
-  - OGM : `ffmpeg -fflags +genpts -i entrée.ogm -c copy sortie.mkv` (fichier de test MPEG-4 DX50 + Vorbis, 24 min : 0,4 s, lisible avec le son).
-- **Succès ou échec = code de sortie de ffmpeg seulement** : un avertissement (ex. « Headers mismatch for stream 0: expected 2 received 1 » sur l'OGM, sans conséquence) n'est jamais un échec ; il est gardé, tronqué, dans le journal du remux.
-- **Un seul remux à la fois** (file d'attente ; les demandes du même épisode sont regroupées), priorité basse, **délai maximal** (puis arrêt et fichier temporaire supprimé), limite de mémoire.
-- **Rapport admin des remux impossibles** : fichier, variantes essayées, code de sortie, dernières lignes de ffmpeg (sans chemin hôte) ; « Réessayer » par fichier.
-- Pas de ré-encodage : si un codec ne convient pas au téléphone, le fichier reste « transcodage nécessaire ». Pour le navigateur (phase 10), remux MKV → MP4 seulement quand les codecs s'y prêtent (H.264 + AAC), jamais pour du MPEG-4 ASP.
-- Sous-titres incrustés dans l'image (cas de l'AVI Air Gear) : ils font partie de la vidéo, rien à extraire.
-
-### 9.3 Extraction des sous-titres (pour le lecteur web)
+### 9.3 Extraction des sous-titres (pour le lecteur web, avec la phase 10)
 - Sous-titres texte muxés (ASS/SSA/SRT) extraits dans le cache : WebVTT (lu nativement par le navigateur, sans les styles ASS) et ASS d'origine conservé pour un éventuel moteur de rendu ASS côté navigateur (décision en phase 10, avec les polices jointes).
 - Sous-titres image (PGS, VobSub) : non extractibles en texte ; les afficher dans un navigateur demanderait de les incruster, donc du transcodage → hors périmètre, signalés dans le rapport.
 - À la demande, mêmes limites (délai, mémoire, cache borné) : l'extraction lit tout le fichier, son coût disque est proche de celui d'un remux.
 
-### Tests prévus
-Analyse d'un JSON ffprobe enregistré (sans ffmpeg), classement par catégorie, arguments ffmpeg figés (aucune entrée client), avertissement ffmpeg avec code de sortie 0 = succès, repli sur la seconde variante, délai dépassé → processus tué et fichier temporaire supprimé, un seul remux à la fois, réponse « préparation en cours » distincte d'une erreur, purge des moins récemment lus, aucune écriture hors du cache, permissions admin. Avec ffmpeg réel (test d'intégration) : petits AVI et OGM générés, remux puis lecture des en-têtes du MKV.
+## Phase 8 — Android TV (après la phase 9)
+- Périmètre à préciser au démarrage de la phase. Base prévue : un paquet `ui/tv` (écrans et navigation propres) sur les mêmes ViewModels et la même couche `data` que le téléphone (ARCHITECTURE §20).
 
 ## Phase 10 — Lecteur web
 Lecteur `<video>` dans l'interface web, sur l'URL signée existante, avec reprise et progression comme sur Android. Après la phase 9, dont il dépend. Périmètre réel :

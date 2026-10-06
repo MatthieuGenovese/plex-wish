@@ -136,3 +136,14 @@ data class EpisodeDetail(
 data class StreamUrlDto(val url: String, val expiresAt: String? = null, val mimeType: String? = null, val fileSize: Long = 0) {
     override fun toString() = "StreamUrlDto(url=***, expiresAt=$expiresAt)"
 }
+
+/** Réponse 202 de stream-url : épisode en cours de conversion pour Android sur le serveur. */
+@Serializable
+data class PreparingDto(
+    val state: String = "PREPARING",
+    val position: Int = 0,
+    val progress: Double? = null,
+    val estimatedSeconds: Long = 0,
+    val retryAfterSeconds: Int = 5,
+    val message: String? = null,
+)

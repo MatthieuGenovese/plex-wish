@@ -65,17 +65,40 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
 
     suspend fun episode(id: Long): EpisodeDetail = get(url("/api/episodes/$id"))
 
-    /** URL signée de lecture, déjà rendue absolue (même serveur). Secrète : ne jamais la journaliser. */
-    suspend fun streamUrl(episodeId: Long): SignedStream {
-        val dto = get<StreamUrlDto>(url("/api/episodes/$episodeId/stream-url"))
+    /**
+     * Lien de lecture : URL signée prête (déjà rendue absolue, même serveur), ou « préparation en cours » (HTTP 202 :
+     * fichier converti pour Android sur le serveur, à redemander après {@code retryAfterSeconds}). Secret : jamais
+     * journalisé. Les erreurs (conversion impossible, cache plein…) arrivent en {@link ApiException}.
+     */
+    suspend fun stream(episodeId: Long): StreamAnswer {
+        val response = try {
+            call(Request.Builder().url(url("/api/episodes/$episodeId/stream-url")).get().build())
+        } catch (e: IOException) {
+            throw ApiException.fromNetwork(e)
+        }
+        if (response.code == 202) {
+            val p = response.decode<PreparingDto>()
+            return StreamAnswer.Preparing(p.position, p.progress, p.estimatedSeconds, p.retryAfterSeconds.coerceIn(2, 30))
+        }
+        val dto = response.decode<StreamUrlDto>()
         val server = session.serverUrl ?: throw ApiException(401, "NO_SERVER", "Session expirée, reconnectez-vous.")
         val absolute = server.resolve(dto.url) ?: throw ApiException(0, null, "Réponse inattendue du serveur.")
         if (absolute.host != server.host || absolute.port != server.port) {
             throw ApiException(0, null, "Réponse inattendue du serveur.") // jamais une URL vers un autre hôte
         }
         val expires = dto.expiresAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
-        return SignedStream(absolute.toString(), expires)
+        return StreamAnswer.Ready(SignedStream(absolute.toString(), expires))
     }
+}
+
+/** Réponse à « je veux lire cet épisode ». */
+sealed interface StreamAnswer {
+    class Ready(val stream: SignedStream) : StreamAnswer {
+        override fun toString() = "Ready(***)"
+    }
+
+    /** {@code position} : 0 = en préparation (ou la prochaine), n = n épisodes à préparer avant ; {@code progress} 0..1. */
+    data class Preparing(val position: Int, val progress: Double?, val estimatedSeconds: Long, val retryAfterSeconds: Int) : StreamAnswer
 }
 
 /** URL signée absolue et son expiration (ms epoch, null si inconnue). {@code toString} masqué. */

@@ -52,7 +52,7 @@ class LiveServerContractTest {
             // URL signée : lisible par Range sans jeton (client de base), refusée (403) si la signature est altérée.
             detail.seasons.firstOrNull()?.let { season ->
                 api.episodes(season.id).firstOrNull()?.let { ep ->
-                    val signed = api.streamUrl(ep.id)
+                    val signed = readyStream(api, ep.id)
                     val ok = base.newCall(okhttp3.Request.Builder().url(signed.url).header("Range", "bytes=0-1").build()).execute()
                     ok.use { assertEquals(206, it.code) }
                     val bad = base.newCall(okhttp3.Request.Builder().url(signed.url.replace(Regex("sig=[^&]+"), "sig=0000")).build()).execute()
@@ -62,6 +62,17 @@ class LiveServerContractTest {
                     assertEquals(30, api.progress(a.id).first { it.episodeId == ep.id }.positionSeconds)
                     api.saveProgress(ep.id, 1300, 1440)
                     assertTrue(api.progress(a.id).first { it.episodeId == ep.id }.completed)
+                }
+            }
+            // Tous les animés de la page : lien prêt, au besoin après « préparation en cours » (AVI, OGM convertis).
+            page.items.forEach { other ->
+                api.anime(other.id).seasons.firstOrNull()?.let { season ->
+                    api.episodes(season.id).firstOrNull()?.let { ep ->
+                        val s = readyStream(api, ep.id)
+                        base.newCall(okhttp3.Request.Builder().url(s.url).header("Range", "bytes=0-1").build()).execute()
+                            .use { assertEquals(206, it.code) }
+                        println("Lecture OK : ${other.title}${if (s.url.contains("/remux?")) " (copie convertie)" else ""}")
+                    }
                 }
             }
             println("Fiche OK : ${detail.title}, ${detail.seasons.size} saison(s), ${cast.items.size} rôle(s)")
@@ -77,5 +88,20 @@ class LiveServerContractTest {
         AuthRepository(restarted, base, true, "Test JVM").logout()
         assertTrue(!restarted.loggedIn.value)
         println("Contrat OK : ${page.total} animés")
+    }
+
+    /** Lien prêt : redemande tant que le serveur répond « préparation en cours » (2 min au plus). */
+    private suspend fun readyStream(api: AnimeApi, episodeId: Long): fr.plexwish.anime.data.api.SignedStream {
+        val end = System.currentTimeMillis() + 120_000
+        while (true) {
+            when (val a = api.stream(episodeId)) {
+                is fr.plexwish.anime.data.api.StreamAnswer.Ready -> return a.stream
+                is fr.plexwish.anime.data.api.StreamAnswer.Preparing -> {
+                    assertTrue("préparation trop longue", System.currentTimeMillis() < end)
+                    println("Préparation : position ${a.position}, ~${a.estimatedSeconds} s")
+                    kotlinx.coroutines.delay(a.retryAfterSeconds * 1000L)
+                }
+            }
+        }
     }
 }

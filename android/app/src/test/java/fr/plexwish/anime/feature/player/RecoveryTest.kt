@@ -15,7 +15,10 @@ class RecoveryTest {
         assertEquals(Recovery.Retry(1_000, false), p.decide(FailureKind.NETWORK, 0, 0, false))
         assertEquals(Recovery.Retry(2_000, true), p.decide(FailureKind.NETWORK, 1, 0, true))
         assertEquals(Recovery.Fail, p.decide(FailureKind.NETWORK, 2, 0, false))
-        for (k in listOf(FailureKind.CONTAINER, FailureKind.VIDEO_CODEC, FailureKind.NOT_FOUND)) {
+        // Copie de conversion effacée : un seul nouveau lien.
+        assertEquals(Recovery.RefreshUrl, p.decide(FailureKind.NOT_FOUND, 0, 0, false))
+        assertEquals(Recovery.Fail, p.decide(FailureKind.NOT_FOUND, 0, 1, false))
+        for (k in listOf(FailureKind.CONTAINER, FailureKind.VIDEO_CODEC, FailureKind.STALLED)) {
             assertEquals(Recovery.Fail, p.decide(k, 0, 0, false))
         }
     }

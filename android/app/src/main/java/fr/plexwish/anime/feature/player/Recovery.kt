@@ -25,6 +25,9 @@ class RecoveryPolicy(
 ) {
     fun decide(kind: FailureKind, networkAttempts: Int, urlRefreshes: Int, urlExpiresSoon: Boolean): Recovery = when (kind) {
         FailureKind.FORBIDDEN -> if (urlRefreshes < maxUrlRefreshes) Recovery.RefreshUrl else Recovery.Fail
+        // Copie de conversion effacée du cache entre-temps : un nouveau lien la fait refaire (le fichier d'origine
+        // absent, lui, donne une erreur au moment de redemander le lien).
+        FailureKind.NOT_FOUND -> if (urlRefreshes < 1) Recovery.RefreshUrl else Recovery.Fail
         FailureKind.NETWORK, FailureKind.SERVER ->
             if (networkAttempts < networkDelaysMs.size) Recovery.Retry(networkDelaysMs[networkAttempts], urlExpiresSoon) else Recovery.Fail
         else -> Recovery.Fail

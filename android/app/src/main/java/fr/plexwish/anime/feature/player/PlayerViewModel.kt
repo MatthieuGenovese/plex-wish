@@ -7,6 +7,7 @@ import fr.plexwish.anime.data.api.AnimeApi
 import fr.plexwish.anime.data.api.ApiException
 import fr.plexwish.anime.data.api.EpisodeDetail
 import fr.plexwish.anime.data.api.SignedStream
+import fr.plexwish.anime.data.api.StreamAnswer
 import fr.plexwish.anime.data.log.SafeLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -17,7 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class PlayerPhase { LOADING, PLAYING, RECONNECTING, ERROR, ENDED }
+enum class PlayerPhase { LOADING, PREPARING, PLAYING, RECONNECTING, ERROR, ENDED }
+
+/** Préparation sur le serveur (conversion pour Android) : place dans la file, avancement, attente estimée. */
+data class PreparingInfo(val position: Int, val progress: Double?, val estimatedSeconds: Long)
 
 data class PlayerState(
     val phase: PlayerPhase = PlayerPhase.LOADING,
@@ -33,6 +37,8 @@ data class PlayerState(
     val canPlayWithoutSound: Boolean = false,
     /** Son coupé à la demande (« Lire sans le son »). */
     val soundOff: Boolean = false,
+    /** Phase PREPARING : l'épisode est converti pour Android sur le serveur. */
+    val preparing: PreparingInfo? = null,
 )
 
 /**
@@ -49,6 +55,8 @@ class PlayerViewModel(
     private val policy: RecoveryPolicy = RecoveryPolicy(),
     private val clock: () -> Long = System::currentTimeMillis,
     progressIntervalMs: Long = 10_000,
+    /** Unité du délai entre deux demandes pendant la préparation (1 s ; raccourcie dans les tests). */
+    private val preparingDelayUnitMs: Long = 1_000,
 ) : ViewModel(), PlaybackEngine.Listener {
 
     val episodeId: Long = checkNotNull(saved.get<Long>("id")) { "identifiant d'épisode manquant" }
@@ -145,8 +153,26 @@ class PlayerViewModel(
     }
 
     private suspend fun load(fresh: Boolean, positionMs: Long, play: Boolean) {
-        if (fresh || stream == null) stream = api.streamUrl(episodeId)
+        if (fresh || stream == null) stream = obtainStream()
+        _state.update { it.copy(preparing = null) }
         engine.load(stream!!.url, positionMs.coerceAtLeast(0), play)
+    }
+
+    /**
+     * Lien de lecture ; si le serveur prépare l'épisode (AVI, OGM convertis pour Android), écran « Préparation de
+     * l'épisode… » et nouvelle demande après le délai indiqué, jusqu'à ce que la copie soit prête. Annulé en quittant
+     * le lecteur (le ViewModel disparaît avec ses coroutines).
+     */
+    private suspend fun obtainStream(): SignedStream {
+        while (true) {
+            when (val a = api.stream(episodeId)) {
+                is StreamAnswer.Ready -> return a.stream
+                is StreamAnswer.Preparing -> {
+                    _state.update { it.copy(phase = PlayerPhase.PREPARING, preparing = PreparingInfo(a.position, a.progress, a.estimatedSeconds)) }
+                    delay(a.retryAfterSeconds * preparingDelayUnitMs)
+                }
+            }
+        }
     }
 
     private fun urlExpiresSoon(): Boolean {
@@ -160,7 +186,8 @@ class PlayerViewModel(
     // --- Événements du moteur ----------------------------------------------------------------------------------
 
     override fun onReady() {
-        if (_state.value.phase == PlayerPhase.RECONNECTING || _state.value.phase == PlayerPhase.LOADING) {
+        if (_state.value.phase == PlayerPhase.RECONNECTING || _state.value.phase == PlayerPhase.LOADING ||
+            _state.value.phase == PlayerPhase.PREPARING) {
             _state.update { it.copy(phase = PlayerPhase.PLAYING) }
         }
     }

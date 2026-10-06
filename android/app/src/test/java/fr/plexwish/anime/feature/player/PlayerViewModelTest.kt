@@ -37,6 +37,9 @@ open class PlayerTestBase {
     var urlLifetimeSeconds = 6 * 3600L
     var progressBody = """[{"episodeId":5,"positionSeconds":600,"durationSeconds":1440,"completed":false,"updatedAt":"2026-10-05T10:00:00Z"}]"""
     var streamUrlStatus = 200
+    /** Nombre de réponses « préparation en cours » (202) avant le lien. */
+    val preparing = AtomicInteger(0)
+    var streamErrorBody = ""
     val progressPuts = java.util.concurrent.CopyOnWriteArrayList<String>()
     var progressStatus = 200
 
@@ -49,7 +52,11 @@ open class PlayerTestBase {
                     """{"id":5,"animeId":7,"animeTitle":"Frieren","seasonId":10,"seasonNumber":1,"episodeNumber":3,
                        "title":"Tuer des magiciens","durationSeconds":null,"container":"mkv","fileSize":1000}""")
                 "/api/me/progress" -> MockResponse().setBody(progressBody)
-                "/api/episodes/5/stream-url" -> if (streamUrlStatus != 200) MockResponse().setResponseCode(streamUrlStatus) else {
+                "/api/episodes/5/stream-url" -> if (preparing.getAndUpdate { if (it > 0) it - 1 else 0 } > 0) {
+                    val left = preparing.get()
+                    MockResponse().setResponseCode(202).setBody(
+                        """{"state":"PREPARING","position":$left,"progress":${if (left == 0) "0.5" else "null"},"estimatedSeconds":${40 + left * 60},"retryAfterSeconds":3,"message":"Préparation de l'épisode…"}""")
+                } else if (streamUrlStatus != 200) MockResponse().setResponseCode(streamUrlStatus).setBody(streamErrorBody) else {
                     val n = urls.incrementAndGet()
                     val exp = Instant.now().plusSeconds(urlLifetimeSeconds)
                     MockResponse().setBody("""{"url":"/api/stream/12?u=1&exp=${exp.epochSecond}&sig=SECRETSIG$n","expiresAt":"$exp","mimeType":"video/x-matroska","fileSize":1000}""")
@@ -87,7 +94,8 @@ open class PlayerTestBase {
     val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     fun player(engine: FakeEngine, saved: SavedStateHandle = SavedStateHandle(mapOf("id" to 5L)), intervalMs: Long = 10_000) =
-        PlayerViewModel(api, { engine }, saved, appScope, RecoveryPolicy(networkDelaysMs = listOf(0, 0, 0)), progressIntervalMs = intervalMs)
+        PlayerViewModel(api, { engine }, saved, appScope, RecoveryPolicy(networkDelaysMs = listOf(0, 0, 0)), progressIntervalMs = intervalMs,
+            preparingDelayUnitMs = 20)
 }
 
 class PlayerViewModelTest : PlayerTestBase() {

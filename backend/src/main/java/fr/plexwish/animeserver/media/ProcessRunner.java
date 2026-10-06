@@ -54,13 +54,19 @@ public final class ProcessRunner {
      */
     public static Result run(List<String> command, Duration timeout, int maxStdout, AtomicReference<Process> current)
             throws IOException, InterruptedException {
+        return run(command, timeout, maxStdout, current, null);
+    }
+
+    /** {@code stdoutLines} (facultatif) reçoit chaque ligne de la sortie standard au fil de l'eau (ex. ffmpeg -progress). */
+    public static Result run(List<String> command, Duration timeout, int maxStdout, AtomicReference<Process> current,
+                             java.util.function.Consumer<String> stdoutLines) throws IOException, InterruptedException {
         long start = System.nanoTime();
         Process p = new ProcessBuilder(command).redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null"))).start();
         if (current != null) {
             current.set(p);
         }
-        Capture out = new Capture(p.getInputStream(), maxStdout, false);
-        Capture err = new Capture(p.getErrorStream(), 4096, true);
+        Capture out = new Capture(p.getInputStream(), maxStdout, false, stdoutLines);
+        Capture err = new Capture(p.getErrorStream(), 4096, true, null);
         Thread to = Thread.ofVirtual().start(out);
         Thread te = Thread.ofVirtual().start(err);
         boolean finished;
@@ -92,11 +98,30 @@ public final class ProcessRunner {
         private final boolean tail;
         private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
         private volatile boolean truncated;
+        private final java.util.function.Consumer<String> lines;
+        private final StringBuilder line = new StringBuilder();
 
-        Capture(InputStream in, int max, boolean tail) {
+        Capture(InputStream in, int max, boolean tail, java.util.function.Consumer<String> lines) {
             this.in = in;
             this.max = max;
             this.tail = tail;
+            this.lines = lines;
+        }
+
+        private void feed(byte[] b, int n) {
+            for (int i = 0; i < n; i++) {
+                char c = (char) (b[i] & 0xff);
+                if (c == '\n') {
+                    try {
+                        lines.accept(line.toString().trim());
+                    } catch (RuntimeException e) {
+                        LOG.debugf("ligne ignorée (%s)", e.getClass().getSimpleName());
+                    }
+                    line.setLength(0);
+                } else if (line.length() < 1000) {
+                    line.append(c);
+                }
+            }
         }
 
         @Override
@@ -105,6 +130,9 @@ public final class ProcessRunner {
             try (in) {
                 int n;
                 while ((n = in.read(b)) > 0) {
+                    if (lines != null) {
+                        feed(b, n);
+                    }
                     synchronized (buf) {
                         buf.write(b, 0, n);
                         if (buf.size() > max * 2) {

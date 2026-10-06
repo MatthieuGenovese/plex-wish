@@ -35,4 +35,33 @@ public interface MediaConfig {
     /** Attente quand il n'y a rien à analyser (réveil anticipé à la fin d'un scan). */
     @WithDefault("10m")
     Duration pollInterval();
+
+    // --- Remux à la demande (phase 9.2, ARCHITECTURE §23) ---------------------------------------------------------
+
+    /** Fil d'exécution des remux (désactivé dans les tests, qui appellent le service directement). */
+    @WithDefault("true")
+    boolean remuxWorkerEnabled();
+
+    /** Dossier du cache des copies remuxées (volume en écriture, hors /media). */
+    @WithDefault("/data/remux-cache")
+    String remuxCachePath();
+
+    /** Taille maximale du cache (Go décimaux) ; au-delà, les copies les moins récemment lues sont effacées. */
+    @WithDefault("50")
+    double remuxCacheMaxGb();
+
+    /** Espace disque à toujours laisser libre sur le volume du cache. */
+    @WithDefault("2")
+    double remuxCacheReserveGb();
+
+    /** Délai maximal d'un remux (un épisode de 200 Mo prend quelques secondes à une minute). */
+    @WithDefault("30m")
+    java.time.Duration remuxTimeout();
+
+    /**
+     * Une copie lue depuis moins longtemps que ce délai est « en cours de lecture » : jamais effacée par la purge
+     * (pause longue comprise).
+     */
+    @WithDefault("3h")
+    java.time.Duration remuxInUse();
 }

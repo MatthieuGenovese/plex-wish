@@ -50,6 +50,8 @@ class RealFfmpegTest {
     MediaProbeService service;
     @Inject
     RemuxTestService remuxTest;
+    @Inject
+    RemuxService remux;
 
     private static boolean has(String tool, String what, String name) {
         try {
@@ -150,5 +152,25 @@ class RealFfmpegTest {
         try (var s = Files.walk(ROOT)) {
             assertEquals(filesBefore, s.count());
         }
+
+        // Remux réel de l'AVI : copie MKV vérifiée par ffprobe (durée, vidéo, son), servie depuis le cache.
+        remux.checkTools();
+        long fileId = count(ds, "SELECT id FROM media_file WHERE file_name = 'Gen - S01E03.avi'");
+        long size = count(ds, "SELECT file_size FROM media_file WHERE id = " + fileId);
+        java.time.OffsetDateTime modified;
+        try (var c = ds.getConnection(); var st = c.createStatement();
+             var rs = st.executeQuery("SELECT last_modified FROM media_file WHERE id = " + fileId)) {
+            rs.next();
+            modified = rs.getObject(1, java.time.OffsetDateTime.class);
+        }
+        assertTrue(remux.request(fileId, size, modified) instanceof RemuxService.Preparing);
+        assertTrue(remux.processNext());
+        RemuxService.Decision d = remux.request(fileId, size, modified);
+        assertTrue(d instanceof RemuxService.Ready, String.valueOf(d));
+        Path copy = remux.served(fileId, size, modified).orElseThrow();
+        assertTrue(Files.size(copy) > 10_000);
+        Process p = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=format_name", "-of", "csv=p=0", copy.toString())
+                .redirectErrorStream(true).start();
+        assertEquals("matroska,webm", new String(p.getInputStream().readAllBytes()).trim().replace("\"", ""));
     }
 }

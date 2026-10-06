@@ -5,6 +5,11 @@ echo "$*" >> "$dir/fake-ffprobe.log"
 if [ "$1" = "-version" ]; then echo "ffprobe version fake-1.0 Copyright (c) test"; exit 0; fi
 for a in "$@"; do last="$a"; done
 file="${last#file:}"
+# Copie écrite par le faux ffmpeg : elle dit quelle réponse donner.
+if [ -f "$file" ] && head -c 8 "$file" | grep -q '^FIXTURE='; then
+  name=$(head -c 200 "$file" | sed -n 's/^FIXTURE=\([a-z0-9-]*\).*/\1/p')
+  cat "$dir/ffprobe-fixtures/$name.json"; exit 0
+fi
 case "$file" in
   *broken*) echo "$file: Invalid data found when processing input" >&2; exit 1 ;;
   *slowprobe*) sleep 5 ;;

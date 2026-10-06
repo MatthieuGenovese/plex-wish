@@ -154,11 +154,18 @@ class StreamTest {
 
     @Test
     void mimeTypeByExtension() throws Exception {
-        Map<Integer, String> expected = Map.of(2, "video/mp4", 3, "video/ogg", 4, "video/mp2t", 5, "video/x-msvideo");
+        Map<Integer, String> expected = Map.of(2, "video/mp4", 4, "video/mp2t");
         for (var e : expected.entrySet()) {
             JsonPath r = streamUrl(alice, e.getKey());
             assertEquals(e.getValue(), r.getString("mimeType"));
             given().get(r.getString("url")).then().statusCode(200).contentType(e.getValue());
+        }
+        // OGM et AVI : jamais l'URL de l'original (illisible sur Android) ; préparation de la copie (202), ou
+        // conversion indisponible si ffmpeg manque (503). Détail : RemuxTest.
+        for (int ep : new int[]{3, 5}) {
+            io.restassured.response.Response r = given().auth().oauth2(alice).get("/api/episodes/" + episodeId(ep) + "/stream-url");
+            assertTrue(r.statusCode() == 202 || r.statusCode() == 503, r.statusCode() + " " + r.asString());
+            assertTrue(r.asString().indexOf("\"url\"") < 0, r.asString());
         }
     }
 

@@ -64,6 +64,8 @@ public class RemuxTestService {
     MediaConfig config;
     @Inject
     MediaProbeService probe;
+    @Inject
+    RemuxService remux;
 
     private final AtomicReference<Process> process = new AtomicReference<>();
     private volatile Thread thread;
@@ -74,6 +76,8 @@ public class RemuxTestService {
     private volatile long bytesThisRun;
     private volatile long msThisRun;
     private volatile String lastError;
+    /** Un remux demandé par un utilisateur arrive : la commande en cours est arrêtée (sans résultat) et refaite après. */
+    private volatile boolean yielded;
 
     public boolean running() {
         Thread t = thread;
@@ -93,6 +97,19 @@ public class RemuxTestService {
         lastError = null;
         thread = Thread.ofPlatform().daemon().name("remux-test").start(this::run);
         return true;
+    }
+
+    /** Priorité aux remux des utilisateurs : arrête la commande en cours, le test attend que la file soit vide. */
+    public void yieldTo() {
+        if (!running()) {
+            return;
+        }
+        yielded = true;
+        Process p = process.get();
+        if (p != null) {
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
+            p.destroyForcibly();
+        }
     }
 
     public synchronized void stop() {
@@ -131,6 +148,11 @@ public class RemuxTestService {
             startedAt = Instant.now();
             LOG.info("Test à blanc du remux : démarré");
             while (!stopRequested) {
+                while (remux.busy() && !stopRequested) {
+                    current = "en pause : remux demandé par un utilisateur";
+                    Thread.sleep(2_000);
+                }
+                yielded = false;
                 Optional<Item> next = next();
                 if (next.isEmpty()) {
                     break;
@@ -204,8 +226,8 @@ public class RemuxTestService {
                 save(item, v, false, null, false, 0, "ffmpeg introuvable ou non exécutable");
                 continue;
             }
-            if (stopRequested) {
-                return; // processus arrêté par l'admin : pas de résultat pour ce fichier
+            if (stopRequested || yielded) {
+                return; // arrêté par l'admin ou cédé à un remux : pas de résultat, le fichier sera refait
             }
             bytesThisRun += item.size();
             msThisRun += r.elapsedMs();

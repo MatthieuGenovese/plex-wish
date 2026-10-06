@@ -42,7 +42,14 @@ public class LibraryResource {
                               String tmdbUrl) {
     }
 
-    public record EpisodeSummary(Long id, int episodeNumber, String title, Integer durationSeconds) {
+    /**
+     * {@code browserPlayable} : résultat de l'analyse (§22) — false si un navigateur ne peut pas lire le fichier
+     * (format), null si le fichier n'est pas encore analysé. Aucun chemin.
+     */
+    public record EpisodeSummary(Long id, int episodeNumber, String title, Integer durationSeconds, Boolean browserPlayable) {
+        public EpisodeSummary(Long id, int episodeNumber, String title, Integer durationSeconds) {
+            this(id, episodeNumber, title, durationSeconds, null);
+        }
     }
 
     public record EpisodeDetail(Long id, Long animeId, String animeTitle, Long seasonId, int seasonNumber,
@@ -158,7 +165,15 @@ public class LibraryResource {
         if (list.isEmpty()) {
             throw notFound("SEASON_NOT_FOUND", "Saison introuvable");
         }
-        return list;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT e.id, p.browser_playable FROM episode e JOIN media_probe p ON p.media_file_id = e.media_file_id
+                        WHERE e.season_id = ?1 AND p.status = 'OK'""")
+                .setParameter(1, seasonId).getResultList();
+        java.util.Map<Long, Boolean> playable = new java.util.HashMap<>();
+        rows.forEach(r -> playable.put(((Number) r[0]).longValue(), (Boolean) r[1]));
+        return list.stream().map(e -> new EpisodeSummary(e.id(), e.episodeNumber(), e.title(), e.durationSeconds(),
+                playable.get(e.id()))).toList();
     }
 
     @GET

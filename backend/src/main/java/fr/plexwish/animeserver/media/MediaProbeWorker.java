@@ -26,6 +26,8 @@ public class MediaProbeWorker extends BackgroundLoop {
     MediaConfig config;
     @Inject
     RemuxTestService remuxTest;
+    @Inject
+    RemuxService remux;
 
     private volatile boolean syncNeeded = true;
     private volatile String state = "idle";
@@ -57,7 +59,7 @@ public class MediaProbeWorker extends BackgroundLoop {
         wake();
     }
 
-    /** « scan » / « remux-test » (en pause), « working », « idle ». */
+    /** « scan » / « remux » / « remux-test » (en pause), « working », « idle ». */
     public String state() {
         return running() ? state : "stopped";
     }
@@ -67,6 +69,10 @@ public class MediaProbeWorker extends BackgroundLoop {
         if (service.scanRunning()) {
             state = "scan";
             return new Idle(Duration.ofMinutes(1));
+        }
+        if (remux.busy()) {
+            state = "remux";
+            return new Idle(Duration.ofSeconds(30));
         }
         if (remuxTest.running()) {
             state = "remux-test";

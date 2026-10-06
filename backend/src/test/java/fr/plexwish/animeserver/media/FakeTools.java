@@ -22,7 +22,7 @@ final class FakeTools {
         assumeTrue(!System.getProperty("os.name").toLowerCase().contains("win"), "scripts sh : Linux / macOS seulement");
         Files.createDirectories(TARGET.resolve("ffprobe-fixtures"));
         for (String f : List.of("avi-xvid-mp3.json", "ogm-mpeg4-vorbis.json", "mp4-real.json", "mkv-h264-aac-srt-pgs.json",
-                "mkv-hevc10-aac-ass.json")) {
+                "mkv-hevc10-aac-ass.json", "copy-short.json", "copy-noaudio.json")) {
             copy("/ffprobe/" + f, TARGET.resolve("ffprobe-fixtures").resolve(f));
         }
         for (String s : List.of("fake-ffprobe.sh", "fake-ffmpeg.sh")) {

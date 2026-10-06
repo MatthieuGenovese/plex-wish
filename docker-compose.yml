@@ -49,6 +49,8 @@ services:
       CAST_ENABLED: ${CAST_ENABLED:-true}
       CAST_MAX_ROLES: ${CAST_MAX_ROLES:-20}
       MEDIA_PROBE_ENABLED: ${MEDIA_PROBE_ENABLED:-true}
+      # Remux à la demande (AVI, OGM → MKV pour Android) : cache monté ci-dessous sur /data/remux-cache.
+      REMUX_CACHE_MAX_GB: ${REMUX_CACHE_MAX_GB:-50}
       # Le backend ne lit X-Forwarded-For que s'il vient du réseau interne (nginx).
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
@@ -57,6 +59,8 @@ services:
       - ${MEDIA_PATH:?MEDIA_PATH manquant dans .env}:/media:ro
       # Affiches : seul dossier où le backend écrit. Distinct de /media. Doit appartenir à PUID:PGID (voir README).
       - ${POSTERS_HOST_PATH:-./posters}:/data/posters
+      # Copies remuxées (cache régénérable) : en écriture pour PUID:PGID, distinct de /media.
+      - ${REMUX_CACHE_PATH:-./remux-cache}:/data/remux-cache
     depends_on:
       postgres:
         condition: service_healthy

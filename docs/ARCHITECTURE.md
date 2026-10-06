@@ -767,3 +767,24 @@ Fichier réel : Air Gear S1E5 (AVI, Xvid ASP 640×480 avec B-frames « empaquet�
 - **Mémoire tampon plus grande (`DefaultLoadControl`) : non retenue.** Une cible de 256 Mo laisserait démarrer la lecture, mais après avoir téléchargé et gardé en mémoire ~155 Mo (plusieurs minutes en 4G, mémoire du téléphone), et avec un son toujours faux (24 min d'audio horodatées sur 2,7 s : son coupé ou incohérent). Pour les MKV et MP4, rien ne change : la cible n'est jamais atteinte (50 s de média ≈ 5 à 20 Mo). Aucun gain réel, donc réglages par défaut conservés.
 - **« Lire sans le son »** : sans la piste audio, seule la vidéo (bien horodatée) compte : la lecture démarre normalement (raisonnement, à confirmer sur le téléphone).
 - **Vraie solution : remux sur le serveur** (phase 9) : `ffmpeg -fflags +genpts … -c copy` réécrit les horodatages ; le MKV obtenu se lit avec le son sur le S24 (testé par le propriétaire). Ce défaut touche probablement une bonne partie des AVI (MP3 « octet par octet » écrit par les outils de l'époque) : le rapport ffprobe de la phase 9 le repérera (`sampleSize` ≠ 0 et `nBlockAlign` = 1 sur une piste MP3 d'un AVI).
+
+## 21. Remux à la demande (phase 9, conception — non implémenté)
+Pourquoi : §20.3 (AVI) et test de l'OGM (2026-10-06). Environ 920 fichiers AVI et OGM (~3 % du catalogue, plus de 150 Go) ; le remux en MKV sans ré-encodage les rend lisibles sur Android. Inutile pour le navigateur (MPEG-4 ASP non lu, même remuxé).
+
+### 21.1 Parcours
+1. L'app demande `GET /api/episodes/{id}/stream-url`. Fichier lisible tel quel : réponse actuelle.
+2. Fichier « remux nécessaire » sans copie en cache : le serveur met le remux en file et répond **« préparation en cours »** (code et corps distincts d'une erreur, par ex. `202 {state: "PREPARING", position, retryAfterSeconds}` : forme exacte fixée à l'implémentation). L'app affiche « Préparation de l'épisode… » et redemande après le délai indiqué ; rien n'est compté comme erreur ni nouvel essai réseau.
+3. Copie prête : `stream-url` renvoie une URL signée vers la copie (même mécanisme Range, même contrôle d'utilisateur actif) ; la progression reste attachée à l'épisode.
+4. Remux impossible : erreur explicite (« Ce fichier n'a pas pu être converti ») et entrée dans le rapport admin.
+
+### 21.2 Exécution
+- `ProcessBuilder` avec une liste d'arguments **fixe** : `ffmpeg -nostdin -hide_banner -fflags +genpts -i file:<entrée> -map 0 -c copy [-bsf:v mpeg4_unpack_bframes] -f matroska file:<cache>/<id>.tmp`, puis renommage atomique. Aucun shell, aucune donnée venue du client ; l'entrée est le chemin résolu depuis la base, sous `/media` (monté en lecture seule).
+- Variante par défaut fixée après un échantillon d'AVI réels ; repli sur l'autre variante si la première échoue (OGM : sans le filtre vidéo).
+- **Échec = code de sortie non nul**, délai dépassé ou fichier de sortie vide ; les avertissements (ex. « Headers mismatch… ») sont conservés pour le diagnostic, jamais traités comme un échec.
+- **Un seul remux à la fois**, priorité basse (`nice`/`ionice`), délai maximal (proportionnel à la taille, plafonné), limite de mémoire ; sortie de ffmpeg lue en continu et tronquée (dernières lignes gardées, sans chemin hôte).
+- Ordres de grandeur : OGM de 24 min en 0,4 s (PC). Sur le NAS, le remux est limité par le disque (lecture + écriture de ~200 Mo pour un épisode) : quelques secondes à une minute, à mesurer.
+
+### 21.3 Cache
+- Volume dédié (`MEDIA_CACHE_PATH`), séparé de `/media` et des affiches ; taille maximale `MEDIA_CACHE_MAX_GB`. Table en base : fichier source, taille et date de modification de la source (une source changée invalide la copie), chemin de la copie, taille, date de création, **date de dernière lecture**, état (`PENDING`, `RUNNING`, `READY`, `FAILED`), variante utilisée, dernière erreur.
+- Place : avant un remux, purge des copies **les moins récemment lues** jusqu'à avoir la taille estimée (taille de la source + marge) ; si c'est impossible (cache trop petit), refus explicite. Vider le cache est sans risque (tout se régénère).
+- Admin : occupation, copies prêtes, file d'attente, **remux impossibles** (variantes essayées, code de sortie, extrait du journal), « Réessayer », « Vider le cache ».

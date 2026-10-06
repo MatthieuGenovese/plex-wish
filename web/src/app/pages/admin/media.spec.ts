@@ -13,8 +13,19 @@ const test = {
   running: false, startAt: null, startedAt: null, current: null, total: 880, done: 120, bytesDone: 20_000_000_000,
   bytesTotal: 152_000_000_000, perVariant: { GENPTS: [118, 2], GENPTS_UNPACK: [117, 3] }, estimatedSecondsLeft: null, lastError: null,
 };
+const cache = {
+  usable: true, ffmpegVersion: 'ffmpeg version 7.1.5', cachePath: '/data/remux-cache', maxBytes: 50_000_000_000,
+  usedBytes: 2_100_000_000, freeBytes: 900_000_000_000, ready: 11, queued: 2, failed: 1,
+  queue: [
+    { mediaFileId: 7, path: 'Air Gear/Saison 1/Air Gear - 1x05.avi', status: 'RUNNING', priority: 0, blocked: null, progress: 0.42, requestedAt: '2026-10-06T20:00:00Z' },
+    { mediaFileId: 8, path: 'Da Capo/Saison 1/Da Capo - 1x09.ogm', status: 'QUEUED', priority: 1, blocked: 'CACHE_FULL', progress: null, requestedAt: '2026-10-06T20:01:00Z' },
+  ],
+};
+const failed = [{ mediaFileId: 9, path: 'X/X - 01.avi', status: 'FAILED', variant: null, bytes: null, requestedAt: '2026-10-06T19:00:00Z',
+  finishedAt: '2026-10-06T19:00:10Z', lastReadAt: null, attempts: 2, nextAttemptAt: '2026-10-06T19:40:00Z',
+  error: 'genpts : code 234 : Timestamps are unset' }];
 const entry = {
-  mediaFileId: 7, path: 'Air Gear/Saison 1/Air Gear - 1x05.avi', animeTitle: 'Air Gear', seasonNumber: 1, episodeNumber: 5,
+  mediaFileId: 7, path: 'Air Gear/Saison 1/Air Gear - 1x05.avi', animeId: 3, animeTitle: 'Air Gear', seasonNumber: 1, episodeNumber: 5,
   extension: 'avi', fileSize: 192_337_788, status: 'OK', error: null, durationSeconds: 1454.97,
   video: 'MPEG-4 ASP Advanced Simple Profile 640×480', audio: 'MP3 2 ch', subtitles: 'aucune', android: 'REMUX',
   androidReasons: 'conteneur AVI mal lu par Android (horodatage du son)', browserPlayable: false,
@@ -23,6 +34,7 @@ const entry = {
     { variant: 'GENPTS', ok: true, exitCode: 0, timedOut: false, elapsedMs: 1300, message: null },
     { variant: 'GENPTS_UNPACK', ok: false, exitCode: 1, timedOut: false, elapsedMs: 900, message: 'Error applying bitstream filters' },
   ],
+  remuxStatus: 'READY', remuxError: null,
 };
 
 describe('MediaPage (admin)', () => {
@@ -41,6 +53,8 @@ describe('MediaPage (admin)', () => {
     await fixture.whenStable();
     http.expectOne('/api/admin/media/summary').flush(summary);
     http.expectOne('/api/admin/media/remux-test').flush(test);
+    http.expectOne('/api/admin/media/remux').flush(cache);
+    http.expectOne((r) => r.url === '/api/admin/media/remux/jobs').flush(failed);
     const list = http.expectOne((r) => r.url === '/api/admin/media/files');
     return { fixture, list, el: fixture.nativeElement as HTMLElement };
   }
@@ -76,6 +90,8 @@ describe('MediaPage (admin)', () => {
     await fixture.whenStable();
     http.expectOne('/api/admin/media/summary').flush(summary);
     http.expectOne('/api/admin/media/remux-test').flush({ ...test, running: true, startAt: at.toISOString() });
+    http.expectOne('/api/admin/media/remux').flush(cache);
+    http.expectOne((r) => r.url === '/api/admin/media/remux/jobs').flush([]);
     http.expectOne((r) => r.url === '/api/admin/media/files').flush({ total: 0, page: 0, size: 50, items: [] });
     await fixture.whenStable();
     expect(el.textContent).toContain('Test à blanc programmé');
@@ -84,7 +100,50 @@ describe('MediaPage (admin)', () => {
     await fixture.whenStable();
     http.expectOne('/api/admin/media/summary').flush(summary);
     http.expectOne('/api/admin/media/remux-test').flush(test);
+    http.expectOne('/api/admin/media/remux').flush(cache);
+    http.expectOne((r) => r.url === '/api/admin/media/remux/jobs').flush([]);
     http.expectOne((r) => r.url === '/api/admin/media/files').flush({ total: 0, page: 0, size: 50, items: [] });
+  });
+
+  it('remux à la demande : cache, file, échecs avec « Relancer », préparer un animé, vider le cache', async () => {
+    const { fixture, list, el } = await open('REMUX');
+    list.flush({ total: 1, page: 0, size: 50, items: [entry] });
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid=remux-cache]')?.textContent).toContain('2,1 Go sur 50 Go');
+    expect(el.textContent).toContain('en cours (42 %)');
+    expect(el.textContent).toContain('cache plein : copies en cours de lecture');
+    expect(el.textContent).toContain('Timestamps are unset');
+    expect(el.querySelector('tbody tr')?.textContent).toContain('Copie prête');
+
+    el.querySelector<HTMLButtonElement>('.failures button')!.click();
+    http.expectOne('/api/admin/media/remux/jobs/9/retry').flush({ queued: true });
+    await fixture.whenStable();
+    reload();
+    await fixture.whenStable();
+    expect(el.textContent).toContain('Remux remis en file');
+
+    [...el.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) => b.textContent?.includes('Préparer'))!.click();
+    http.expectOne('/api/admin/media/remux/anime/3/prepare').flush({ queued: 12, bytes: 2_000_000_000 });
+    await fixture.whenStable();
+    reload();
+    await fixture.whenStable();
+
+    [...el.querySelectorAll<HTMLButtonElement>('.remux button')].find((b) => b.textContent?.includes('Vider le cache'))!.click();
+    await fixture.whenStable();
+    [...el.querySelectorAll<HTMLButtonElement>('.remux .btn-danger')].find((b) => b.textContent?.includes('Vider le cache'))!.click();
+    const clear = http.expectOne((r) => r.url === '/api/admin/media/remux/clear');
+    expect(clear.request.params.get('confirm')).toBe('true');
+    clear.flush({ removed: 9, keptInUse: 2 });
+    await fixture.whenStable();
+    reload();
+
+    function reload() {
+      http.expectOne('/api/admin/media/summary').flush(summary);
+      http.expectOne('/api/admin/media/remux-test').flush(test);
+      http.expectOne('/api/admin/media/remux').flush(cache);
+      http.expectOne((r) => r.url === '/api/admin/media/remux/jobs').flush(failed);
+      http.expectOne((r) => r.url === '/api/admin/media/files').flush({ total: 1, page: 0, size: 50, items: [entry] });
+    }
   });
 
   it('heure de démarrage : aujourd’hui si elle est à venir, sinon demain', () => {

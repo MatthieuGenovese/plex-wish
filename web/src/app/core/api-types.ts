@@ -74,6 +74,8 @@ export interface EpisodeSummary {
   episodeNumber: number;
   title: string | null;
   durationSeconds: number | null;
+  /** false : format qu'un navigateur ne lit pas (analyse du fichier) ; null : pas encore analysé. */
+  browserPlayable?: boolean | null;
 }
 
 export type ScanStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
@@ -475,6 +477,7 @@ export interface MediaEntry {
   mediaFileId: number;
   /** Chemin relatif à la bibliothèque (admin seulement). */
   path: string;
+  animeId: number | null;
   animeTitle: string | null;
   seasonNumber: number | null;
   episodeNumber: number | null;
@@ -491,6 +494,47 @@ export interface MediaEntry {
   browserPlayable: boolean | null;
   browserReasons: string | null;
   remuxTest: RemuxTestResult[];
+  /** Remux à la demande : QUEUED, RUNNING, READY, FAILED, ou null. */
+  remuxStatus: string | null;
+  remuxError: string | null;
+}
+
+export interface RemuxQueueEntry {
+  mediaFileId: number;
+  path: string;
+  status: 'QUEUED' | 'RUNNING';
+  /** 0 : demandé par un utilisateur ; 1 : préparé à l'avance. */
+  priority: number;
+  blocked: string | null;
+  progress: number | null;
+  requestedAt: string;
+}
+
+export interface RemuxSummary {
+  usable: boolean;
+  ffmpegVersion: string | null;
+  cachePath: string;
+  maxBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  ready: number;
+  queued: number;
+  failed: number;
+  queue: RemuxQueueEntry[];
+}
+
+export interface RemuxJobEntry {
+  mediaFileId: number;
+  path: string;
+  status: string;
+  variant: string | null;
+  bytes: number | null;
+  requestedAt: string;
+  finishedAt: string | null;
+  lastReadAt: string | null;
+  attempts: number;
+  nextAttemptAt: string | null;
+  error: string | null;
 }
 
 export interface RemuxTestStatus {

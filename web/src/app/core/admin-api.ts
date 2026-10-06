@@ -19,7 +19,7 @@ import {
   TmdbSheet,
   TmdbSummary,
   TmdbType,
-  User, MediaEntry, MediaSummary, RemuxTestStatus } from './api-types';
+  User, MediaEntry, MediaSummary, RemuxJobEntry, RemuxSummary, RemuxTestStatus } from './api-types';
 
 export interface CreateUser {
   username: string;
@@ -249,5 +249,27 @@ export class AdminApi {
 
   resetRemuxTest(): Observable<{ deleted: number }> {
     return this.http.post<{ deleted: number }>('/api/admin/media/remux-test/reset', null, { params: { confirm: 'true' } });
+  }
+
+  // --- Remux à la demande ---------------------------------------------------------------------------
+
+  remuxSummary(): Observable<RemuxSummary> {
+    return this.http.get<RemuxSummary>('/api/admin/media/remux');
+  }
+
+  remuxJobs(status: string): Observable<RemuxJobEntry[]> {
+    return this.http.get<RemuxJobEntry[]>('/api/admin/media/remux/jobs', { params: { status } });
+  }
+
+  retryRemux(mediaFileId: number): Observable<{ queued: boolean }> {
+    return this.http.post<{ queued: boolean }>(`/api/admin/media/remux/jobs/${mediaFileId}/retry`, null);
+  }
+
+  prepareAnime(animeId: number): Observable<{ queued: number; bytes: number }> {
+    return this.http.post<{ queued: number; bytes: number }>(`/api/admin/media/remux/anime/${animeId}/prepare`, null);
+  }
+
+  clearRemuxCache(): Observable<{ removed: number; keptInUse: number }> {
+    return this.http.post<{ removed: number; keptInUse: number }>('/api/admin/media/remux/clear', null, { params: { confirm: 'true' } });
   }
 }

@@ -28,6 +28,7 @@ const FILTER_LABELS: Record<Filter, string> = {
 
 const WORKER_LABELS: Record<string, string> = {
   working: 'analyse en cours',
+  remux: 'en pause pendant un remux demandé par un utilisateur',
   idle: 'à jour, en attente de nouveaux fichiers',
   scan: 'en pause pendant le scan',
   'remux-test': 'en pause pendant le test à blanc du remux',
@@ -69,6 +70,59 @@ const VARIANT_LABELS: Record<string, string> = {
         (même taille que les originaux, sans ré-encodage).
       </p>
     }
+
+    <section class="card remux" aria-labelledby="cache-title">
+      <h2 id="cache-title">Remux à la demande</h2>
+      <p class="muted">Les AVI et OGM sont convertis en MKV sans ré-encodage au premier lancement sur Android (« Préparation de
+        l’épisode… »), un à la fois ; les demandes des utilisateurs passent avant tout le reste. Copies gardées dans le cache,
+        les moins récemment lues effacées quand il est plein (jamais une copie en cours de lecture).</p>
+      @if (cache().data; as c) {
+        @if (!c.usable) {
+          <div class="alert alert-error" role="alert"><p>Remux indisponible : {{ c.ffmpegVersion ? 'dossier du cache non accessible en écriture (' + c.cachePath + ', droits PUID/PGID)' : 'ffmpeg absent du conteneur' }}.</p></div>
+        }
+        <p role="status" data-testid="remux-cache">
+          Cache : {{ bytes(c.usedBytes) }} sur {{ bytes(c.maxBytes) }} ({{ num(c.ready) }} copie{{ c.ready > 1 ? 's' : '' }})
+          · {{ bytes(c.freeBytes) }} libres sur le volume · {{ num(c.queued) }} en file · {{ num(c.failed) }} en échec.
+        </p>
+        @if (c.queue.length > 0) {
+          <ol class="queue">
+            @for (q of c.queue; track q.mediaFileId) {
+              <li>
+                <span class="path">{{ q.path }}</span>
+                <span class="muted small">
+                  {{ q.status === 'RUNNING' ? 'en cours' + (q.progress !== null ? ' (' + pct(q.progress) + ')' : '') : 'en attente' }}
+                  · {{ q.priority === 0 ? 'demandé par un utilisateur' : 'préparé à l’avance' }}
+                  @if (q.blocked === 'CACHE_FULL') { · <span class="danger">cache plein : copies en cours de lecture</span> }
+                </span>
+              </li>
+            }
+          </ol>
+        }
+        @if (failures().length > 0) {
+          <h3 class="sub">Remux impossibles</h3>
+          <ul class="failures">
+            @for (f of failures(); track f.mediaFileId) {
+              <li>
+                <span class="path">{{ f.path }}</span>
+                <div class="small danger">{{ f.error }}</div>
+                <div class="small muted">{{ f.attempts }} essai{{ f.attempts > 1 ? 's' : '' }}@if (f.nextAttemptAt) { · nouvel essai automatique après {{ time(f.nextAttemptAt) }} }</div>
+                <button type="button" class="btn-small" (click)="retryRemux(f.mediaFileId)" [disabled]="busy()"
+                        [attr.aria-label]="'Relancer le remux de ' + f.path">Relancer</button>
+              </li>
+            }
+          </ul>
+        }
+        <div class="actions">
+          @if (!confirmClear()) {
+            <button type="button" class="btn-small" (click)="confirmClear.set(true)" [disabled]="c.ready === 0">Vider le cache…</button>
+          } @else {
+            <span role="alert">Effacer les copies prêtes (sauf celles en cours de lecture) ? Elles seront refaites à la demande.</span>
+            <button type="button" (click)="confirmClear.set(false)">Annuler</button>
+            <button type="button" class="btn-danger" (click)="clearCache()" [disabled]="busy()">Vider le cache</button>
+          }
+        </div>
+      }
+    </section>
 
     <section class="card remux" aria-labelledby="remux-title">
       <h2 id="remux-title">Test à blanc du remux</h2>
@@ -179,8 +233,18 @@ const VARIANT_LABELS: Record<string, string> = {
                     }
                   </td>
                   <td>
-                    <button type="button" class="btn-small" (click)="reprobe(e)" [disabled]="busy()"
-                            [attr.aria-label]="'Réanalyser ' + e.path">Réanalyser</button>
+                    @if (e.remuxStatus) {
+                      <div class="small"><span class="badge" [class.badge-success]="e.remuxStatus === 'READY'"
+                        [class.badge-danger]="e.remuxStatus === 'FAILED'">{{ remuxLabels[e.remuxStatus] ?? e.remuxStatus }}</span></div>
+                    }
+                    <div class="row-actions">
+                      <button type="button" class="btn-small" (click)="reprobe(e)" [disabled]="busy()"
+                              [attr.aria-label]="'Réanalyser ' + e.path">Réanalyser</button>
+                      @if (e.android === 'REMUX' && e.animeId !== null) {
+                        <button type="button" class="btn-small" (click)="prepare(e)" [disabled]="busy()"
+                                [attr.aria-label]="'Préparer à l’avance les épisodes à remuxer de ' + (e.animeTitle ?? e.path)">Préparer l’animé</button>
+                      }
+                    </div>
                   </td>
                 </tr>
               }
@@ -204,6 +268,10 @@ const VARIANT_LABELS: Record<string, string> = {
     .variants { margin: 0 0 var(--space-3); padding-left: var(--space-5); }
     .actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
     .inline { margin: 0; }
+    .queue, .failures { margin: 0 0 var(--space-3); padding-left: var(--space-5); }
+    .failures li { margin-bottom: var(--space-2); }
+    .sub { font-size: var(--font-size-md); }
+    .row-actions { display: flex; flex-direction: column; gap: var(--space-1); }
     .actions input { width: auto; }
     .tracks { min-width: 15rem; }
     .tests { min-width: 12rem; }
@@ -243,6 +311,13 @@ export class MediaPage {
   private readonly reloads = signal(0);
   protected readonly summary = loadOn(this.reloads, () => this.api.mediaSummary());
   protected readonly test = loadOn(this.reloads, () => this.api.remuxTest());
+  protected readonly cache = loadOn(this.reloads, () => this.api.remuxSummary());
+  private readonly failedJobs = loadOn(this.reloads, () => this.api.remuxJobs('FAILED'));
+  protected readonly failures = computed(() => this.failedJobs().data ?? []);
+  protected readonly confirmClear = signal(false);
+  protected readonly remuxLabels: Record<string, string> = {
+    QUEUED: 'Remux en attente', RUNNING: 'Remux en cours', READY: 'Copie prête', FAILED: 'Remux impossible',
+  };
   private readonly query = computed(() => ({
     filter: this.filtre(),
     q: this.q()?.trim(),
@@ -256,7 +331,9 @@ export class MediaPage {
     // Avancement rafraîchi toutes les 15 s pendant l'analyse ou le test à blanc.
     const timer = setInterval(() => {
       const s = this.summary().data;
-      if (this.test().data?.running || (s && s.pending > 0 && s.workerState === 'working')) this.reloads.update((n) => n + 1);
+      if (this.test().data?.running || (this.cache().data?.queued ?? 0) > 0 || (s && s.pending > 0 && s.workerState === 'working')) {
+        this.reloads.update((n) => n + 1);
+      }
     }, 15_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
   }
@@ -313,6 +390,23 @@ export class MediaPage {
 
   reprobe(e: MediaEntry): void {
     this.run(this.api.reprobe(e.mediaFileId), `« ${e.path} » sera réanalysé au prochain passage.`);
+  }
+
+  pct(p: number): string {
+    return `${Math.round(p * 100)} %`;
+  }
+
+  retryRemux(id: number): void {
+    this.run(this.api.retryRemux(id), 'Remux remis en file.');
+  }
+
+  prepare(e: MediaEntry): void {
+    this.run(this.api.prepareAnime(e.animeId!), `« ${e.animeTitle ?? e.path} » : épisodes à remuxer mis en file (après les demandes des utilisateurs).`);
+  }
+
+  clearCache(): void {
+    this.confirmClear.set(false);
+    this.run(this.api.clearRemuxCache(), 'Cache vidé (les copies en cours de lecture sont gardées).');
   }
 
   reprobeFailed(): void {

@@ -62,6 +62,20 @@ describe('AnimeDetailPage', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('.chunks')).toBeNull();
   });
 
+  it('format non lisible dans un navigateur : signalé par épisode et pour la saison', async () => {
+    const fixture = await open(0);
+    const list = episodes(2);
+    list[0] = { ...list[0], browserPlayable: false };
+    list[1] = { ...list[1], browserPlayable: true };
+    http.expectOne('/api/seasons/71/episodes').flush(list);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('1 épisode est dans un format non lisible dans un navigateur');
+    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('application Android');
+    expect(el.querySelectorAll('.episode')[0].textContent).toContain('format non lisible dans un navigateur');
+    expect(el.querySelectorAll('.episode')[1].textContent).not.toContain('format non lisible');
+  });
+
   it('affiche, année, synopsis et source de la fiche', async () => {
     const fixture = TestBed.createComponent(AnimeDetailPage);
     fixture.componentRef.setInput('id', '8');

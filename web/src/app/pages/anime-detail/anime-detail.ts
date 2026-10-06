@@ -82,6 +82,12 @@ export const CHUNK = 100;
                 }
               </div>
             }
+            @if (notInBrowser(list) > 0) {
+              <p class="browser-note" data-testid="browser-note">
+                {{ notInBrowser(list) === list.length ? 'Les épisodes de cette saison sont' : notInBrowser(list) + ' épisode' + (notInBrowser(list) > 1 ? 's sont' : ' est') }}
+                dans un format non lisible dans un navigateur : regardez-les avec l’application Android.
+              </p>
+            }
             <ol class="episodes" [attr.aria-busy]="e.loading">
               @for (ep of visible(); track ep.id) {
                 <li class="episode">
@@ -90,6 +96,7 @@ export const CHUNK = 100;
                     <span class="visually-hidden">Épisode {{ ep.episodeNumber }}</span>
                     @if (ep.title) { {{ ep.title }} } @else { <span class="muted" aria-hidden="true">Épisode {{ ep.episodeNumber }}</span> }
                     @if (ep.durationSeconds) { <span class="muted"> · {{ minutes(ep.durationSeconds) }} min</span> }
+                    @if (ep.browserPlayable === false) { <span class="muted small-note"> · format non lisible dans un navigateur</span> }
                   </span>
                 </li>
               }
@@ -143,6 +150,8 @@ export const CHUNK = 100;
       font-weight: var(--font-weight-bold); font-variant-numeric: tabular-nums; color: var(--color-accent);
     }
     .ep-title { overflow-wrap: anywhere; }
+    .browser-note { color: var(--color-text-muted); font-size: var(--font-size-sm); margin: 0 0 var(--space-3); }
+    .small-note { font-size: var(--font-size-xs); }
     @media (max-width: 40rem) {
       .episodes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .episode { gap: var(--space-2); padding: var(--space-2); }
@@ -200,6 +209,11 @@ export class AnimeDetailPage {
         document.title = `${title} · Anime Server`;
       }
     });
+  }
+
+  /** Épisodes dont le format n'est pas lisible dans un navigateur (analyse du fichier). */
+  notInBrowser(list: EpisodeSummary[]): number {
+    return list.filter((e) => e.browserPlayable === false).length;
   }
 
   minutes(seconds: number): number {

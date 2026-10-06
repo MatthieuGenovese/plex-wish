@@ -70,17 +70,23 @@ public class ProgressResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Progress save(@PathParam("id") long episodeId, @Valid @NotNull ProgressRequest request) throws SQLException {
         int duration = request.durationSeconds();
-        int position = Math.min(request.positionSeconds(), duration);
-        boolean completed = position > COMPLETED_RATIO * duration; // « au-delà de 90 % »
         try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("SELECT 1 " + VISIBLE + " WHERE e.id = ?")) {
+            try (PreparedStatement st = c.prepareStatement("SELECT e.duration_seconds " + VISIBLE + " WHERE e.id = ?")) {
                 st.setLong(1, episodeId);
                 try (ResultSet rs = st.executeQuery()) {
                     if (!rs.next()) {
                         throw new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable");
                     }
+                    // Durée analysée (ffprobe, §22) : elle fait foi quand le lecteur annonce une durée incohérente
+                    // (plus de 5 % et de 10 s d'écart, ex. AVI mal lu), pour la barre et le seuil de 90 %.
+                    int known = rs.getInt(1);
+                    if (!rs.wasNull() && known > 0 && Math.abs(known - duration) > Math.max(10, known * 0.05)) {
+                        duration = known;
+                    }
                 }
             }
+            int position = Math.min(request.positionSeconds(), duration);
+            boolean completed = position > COMPLETED_RATIO * duration; // « au-delà de 90 % »
             try (PreparedStatement st = c.prepareStatement("""
                     INSERT INTO playback_progress (user_id, episode_id, position_seconds, duration_seconds, completed, updated_at)
                     VALUES (?, ?, ?, ?, ?, now())

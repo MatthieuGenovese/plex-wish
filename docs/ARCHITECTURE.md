@@ -768,7 +768,9 @@ Fichier réel : Air Gear S1E5 (AVI, Xvid ASP 640×480 avec B-frames « empaquet�
 - **« Lire sans le son »** : sans la piste audio, seule la vidéo (bien horodatée) compte : la lecture démarre normalement (raisonnement, à confirmer sur le téléphone).
 - **Vraie solution : remux sur le serveur** (phase 9) : `ffmpeg -fflags +genpts … -c copy` réécrit les horodatages ; le MKV obtenu se lit avec le son sur le S24 (testé par le propriétaire). Ce défaut touche probablement une bonne partie des AVI (MP3 « octet par octet » écrit par les outils de l'époque) : le rapport ffprobe de la phase 9 le repérera (`sampleSize` ≠ 0 et `nBlockAlign` = 1 sur une piste MP3 d'un AVI).
 
-## 21. Remux à la demande (phase 9, conception — non implémenté)
+## 21. Remux à la demande (phase 9, conception)
+> Implémenté en 9.2 : voir §23, qui fait foi là où les deux diffèrent (noms des variables `REMUX_CACHE_*`, réponses exactes, nom par empreinte).
+
 Pourquoi : §20.3 (AVI) et test de l'OGM (2026-10-06). Environ 920 fichiers AVI et OGM (~3 % du catalogue, plus de 150 Go) ; le remux en MKV sans ré-encodage les rend lisibles sur Android. Inutile pour le navigateur (MPEG-4 ASP non lu, même remuxé).
 
 ### 21.1 Parcours
@@ -816,3 +818,36 @@ Avancement et état de la tâche, version de ffprobe, répartition Android / nav
 - Pour chaque fichier « remux nécessaire » : `ffmpeg -nostdin -hide_banner -v warning -fflags +genpts -i file:<fichier> -map 0 -c copy [-bsf:v mpeg4_unpack_bframes] -f matroska -y /dev/null`. Le MKV est réellement fabriqué (le multiplexeur MKV vérifie les horodatages, c'est ce qui échoue sans `+genpts`) puis jeté : **rien n'est écrit sur le disque**. La seconde commande n'est essayée que pour le MPEG-4 ASP.
 - **Succès = code de sortie 0** ; les avertissements (« Headers mismatch… ») sont gardés dans le message. Vérifié avec le vrai ffmpeg 7.1.5 de l'image sur l'AVI Air Gear et l'OGM Da Capo : les deux commandes réussissent (~1,3 s chacune sur un PC, données en cache) ; sans `+genpts`, code 234 (« Timestamps are unset »).
 - Lancé par l'admin (tout de suite, ou **programmé** à une heure dans les 24 h : programmation perdue si le conteneur redémarre), un fichier à la fois, priorité basse, arrêt immédiat (le fichier interrompu n'a pas de résultat), reprise sans refaire ce qui est fait, « Effacer les résultats » pour tout refaire.
+
+## 23. Remux à la demande (phase 9.2, implémenté)
+Conception : §21. Pour Android seulement (le navigateur ne lit pas le MPEG-4 ASP, même remuxé : la fiche web l'indique).
+
+### 23.1 Parcours et réponses de `GET /api/episodes/{id}/stream-url`
+- Fichier qui n'a pas besoin de remux (analyse ffprobe ≠ « remux nécessaire » ; sans analyse : extension autre que `avi`/`ogm`/`ogv`) : **200**, URL signée vers l'original (inchangé).
+- Copie prête : **200**, URL signée vers `/api/stream/{fileId}/remux?…` (`video/x-matroska`, taille de la copie). Jamais d'URL vers l'original illisible.
+- Copie à préparer : **202** `{state: "PREPARING", position, progress, estimatedSeconds, retryAfterSeconds, message}` + en-tête `Retry-After`. `position` = travaux avant celui-ci (0 = en cours) ; `estimatedSeconds` = octets restants (file comprise) / débit mesuré (moyenne glissante, 40 Mo/s au départ) + 3 s par travail ; `retryAfterSeconds` entre 2 et 15 s. Ce n'est **pas une erreur** : l'app affiche « Préparation de l'épisode… » et redemande.
+- **409 `REMUX_FAILED`** : remux impossible (raison côté admin), nouvelle tentative automatique plus tard.
+- **503 `REMUX_CACHE_FULL`** : le cache est plein et toutes les copies sont en cours de lecture → « Le serveur n'a plus de place… Réessayez dans quelques minutes. » ; **503 `REMUX_UNAVAILABLE`** : ffmpeg absent ou cache non inscriptible.
+- Signature : même mécanisme que §6 avec une cible distincte (`StreamSigner.Target.REMUX`, préfixe `v1-remux`) : une signature de l'original ne vaut pas pour la copie, et inversement. Même contrôle d'utilisateur actif, même service Range. Copie disparue entre-temps : 404 `REMUX_NOT_READY` (l'app redemande un lien).
+- Aucun chemin de cache dans les réponses hors admin (test).
+
+### 23.2 File et exécution (`RemuxService`, table `remux_job`, V14)
+- Un travail par fichier : `QUEUED` → `RUNNING` → `READY` / `FAILED` ; deux demandes du même épisode partagent le travail. **Un seul remux à la fois** (thread dédié, `FOR UPDATE SKIP LOCKED`).
+- **Priorité** : demandes d'utilisateurs (0) avant « préparer à l'avance » de l'admin (1), puis ordre d'arrivée. Une demande d'utilisateur **met en pause les tâches de fond** : l'analyse ffprobe attend, le test à blanc s'interrompt (fichier en cours sans résultat, repris ensuite).
+- **Variante** : celle qui a réussi au test à blanc d'abord ; sinon `GENPTS` puis `GENPTS_UNPACK` (seulement pour le MPEG-4 ASP). Variante utilisée enregistrée.
+- Commande (arguments fixes, sans shell, `nice`/`ionice`) : `ffmpeg -nostdin -hide_banner -v warning -progress pipe:1 -nostats -fflags +genpts -i file:<source> -map 0 -c copy [-bsf:v mpeg4_unpack_bframes] -f matroska -y file:<cache>/<xx>/<empreinte>.mkv.part`. Progression lue sur `-progress`. Délai maximal 30 min (`REMUX_TIMEOUT`).
+- **Échec** = code de sortie non nul, délai dépassé, ou **copie refusée par la vérification** : ffprobe sur la copie, au moins une piste vidéo et une piste audio, durée à moins de max(2 s, 1 %) de l'original. Avertissements gardés (« avertissement : … »), jamais un échec.
+- Succès : renommage **atomique** `.part` → `.mkv`, puis `READY` (variante, taille, durée).
+- Échecs répétés : nouvelle tentative espacée (10 min × 2^essais, au plus 24 h ; source absente ou trop grosse pour le cache : 24 h). « Relancer » (admin) remet à zéro.
+- Démarrage : `RUNNING` → `QUEUED`, lignes `READY` dont la copie a disparu supprimées, restes `.part` et fichiers inconnus effacés.
+- Source modifiée (taille ou date) : ancienne copie supprimée, nouveau remux.
+
+### 23.3 Cache
+- `REMUX_CACHE_PATH` (hôte) monté en écriture sur `/data/remux-cache`, hors de `/media` (toujours en lecture seule). Nom = **empreinte seulement** : `xx/<sha256("remux-v1:id:taille:date")>.mkv` (ni titre ni nom de fichier).
+- Taille maximale `REMUX_CACHE_MAX_GB` (50 par défaut), et 2 Go laissés libres sur le disque. Avant un remux : place nécessaire = taille de la source + 5 % + marge ; purge **LRU** (dernière lecture, sinon date de création) des copies, sauf celles lues dans les **3 dernières heures** (considérées en cours de lecture) et celle demandée. Pas assez de place → travail mis de côté (`CACHE_FULL`), réessayé chaque minute ; source plus grosse que le cache → échec.
+- Lecture d'une copie : date de dernière lecture mise à jour (au plus une fois par minute).
+- Ordre de grandeur : ~200 Mo par épisode AVI/OGM (remux sans ré-encodage = même taille) ; 50 Go ≈ 250 épisodes ; tout le catalogue AVI/OGM > 150 Go.
+
+### 23.4 Admin (`/api/admin/media/remux*`, onglet « Médias »)
+État (ffmpeg, chemin, occupation, prêtes / en file / en échec), file avec progression et priorité, échecs avec raison et « Relancer », « Préparer l'animé » (au plus 60 fichiers et la moitié du cache, sinon 400 `PREPARE_TOO_LARGE`), « Vider le cache » (avec confirmation ; les copies en cours de lecture sont gardées). Statut de remux par fichier dans la liste.
+

@@ -236,6 +236,18 @@ Avant d'activer le remux (phase 9.2), l'onglet « Médias » propose un **test �
 - **Durée** (~920 fichiers, ~150 Go) : chaque fichier est lu une fois sur le disque (la seconde commande le relit depuis la mémoire, ~200 Mo par fichier). À 100-150 Mo/s, compter **30 min à 1 h 30**, davantage si la lecture est ralentie (priorité « idle »). Charge : lecture séquentielle soutenue des disques, processeur peu sollicité (copie sans ré-encodage).
 - **Hors des heures d'usage** : *Médias → Test à blanc → « Ou à » 02:00 → Programmer* (dans les 24 h ; perdu si le conteneur redémarre avant). « Arrêter » à tout moment ; relancé, il reprend où il s'était arrêté. Pendant le test, l'analyse ffprobe est en pause.
 
+### Remux à la demande (AVI, OGM)
+
+Les AVI et OGM ne se lisent pas tels quels sur Android. À la première lecture d'un tel épisode, le serveur en fabrique une copie MKV **sans ré-encodage** (quelques secondes, l'app affiche « Préparation de l'épisode… »), gardée dans un cache et resservie ensuite immédiatement (ARCHITECTURE §23). Le navigateur ne les lit pas, même convertis : la fiche web l'indique.
+
+1. **Créer le dossier** sur le NAS, hors du dossier média : `mkdir -p /volume1/docker/anime-server/remux-cache`.
+2. **Droits** : `sudo chown -R <PUID>:<PGID> /volume1/docker/anime-server/remux-cache` (comme pour les affiches).
+3. Dans `.env` : `REMUX_CACHE_PATH=/volume1/docker/anime-server/remux-cache` et `REMUX_CACHE_MAX_GB=50`, puis `docker compose up -d`.
+4. **Taille** : ~200 Mo par épisode ; 50 Go ≈ 250 épisodes (tout le catalogue AVI/OGM dépasse 150 Go : inutile de tout garder). Plein, le cache efface les copies les moins récemment regardées (jamais une copie regardée dans les 3 dernières heures). Le vider est sans risque : tout se régénère.
+5. *Administration → Médias → Remux à la demande* : occupation, file d'attente, échecs (« Relancer »), « Préparer l'animé » (avant une soirée, par exemple), « Vider le cache ». Si le dossier n'est pas inscriptible, un avertissement l'indique et les AVI/OGM répondent « indisponible » ; le reste fonctionne.
+
+Une demande de lecture passe avant les tâches de fond (analyse, test à blanc), qui se mettent en pause le temps du remux.
+
 ## Accès depuis Internet
 
 L'application doit être servie en **HTTPS** (cookie de session `Secure`) sous **une seule adresse**, celle de `PUBLIC_URL`. Trois façons de faire, vérifiées le 2026-10-03 :
@@ -283,8 +295,9 @@ Limites :
    ```sh
    docker compose exec backend sh -c 'id; ls /media | head -3'                       # lecture du dossier média
    docker compose exec backend sh -c 'touch /data/posters/.t && rm /data/posters/.t && echo écriture OK'
+   docker compose exec backend sh -c 'touch /data/remux-cache/.t && rm /data/remux-cache/.t && echo écriture OK'
    ```
-   Le dossier média doit être **lisible** (jamais besoin d'écriture : il est monté en lecture seule) ; le dossier des affiches doit être **inscriptible** (*Administration → Affiches* ne doit pas afficher d'avertissement).
+   Le dossier média doit être **lisible** (jamais besoin d'écriture : il est monté en lecture seule) ; les dossiers des affiches et du cache de remux doivent être **inscriptibles** (*Administration → Affiches* ne doit pas afficher d'avertissement).
 2. **Démarrage.** `docker compose ps` : trois conteneurs `healthy`. Sinon `docker compose logs backend` dit quoi corriger (secrets, `PUBLIC_URL`).
 3. **Reverse proxy.** Destination `http://127.0.0.1:<WEB_PORT>` : écrire `127.0.0.1`, **pas** `localhost` (qui peut désigner l'adresse IPv6 `::1`, sur laquelle le port n'écoute pas).
 4. **IP des clients.** `ADMIN_USER=admin ADMIN_PASSWORD='…' scripts/check-client-ip.sh` → trois lignes `OK`.
@@ -305,7 +318,7 @@ Toutes les données de l'application sont dans PostgreSQL (volume Docker `pgdata
 |---|---|
 | Comptes, rôles, mots de passe (empreintes) | Bibliothèque (animés, saisons, épisodes) : nouveau scan de `/media` |
 | Progressions de lecture (« Continuer à regarder ») | Métadonnées AniList et TMDB : retéléchargées par les tâches de fond (~1 h pour AniList) |
-| **Corrections manuelles** : fichiers rattachés à la main, appariements AniList / TMDB verrouillés | Affiches du dossier `POSTERS_HOST_PATH` : retéléchargées |
+| **Corrections manuelles** : fichiers rattachés à la main, appariements AniList / TMDB verrouillés | Affiches du dossier `POSTERS_HOST_PATH` : retéléchargées ; copies du cache de remux : refaites à la demande |
 | Historique des scans (rapports) | Sessions : il suffit de se reconnecter |
 
 Attention : les progressions et les corrections pointent vers les fichiers de la base. Après une perte de la base, un nouveau scan recrée la bibliothèque, mais **pas** les progressions ni les corrections. D'où la sauvegarde.

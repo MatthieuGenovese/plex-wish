@@ -17,7 +17,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
 | 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
-| 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée, en attente de validation ; 9.2 remux à la demande : après validation de 9.1 |
+| 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée ; 9.2 remux à la demande : livrée le 2026-10-06, en attente de validation (S24, NAS) |
 | 8 | Android TV | à faire, après la phase 9 |
 | 10 | Lecteur web | à faire |
 
@@ -119,7 +119,7 @@ Règles communes :
 8. Estimations : durée du premier passage (~28 000 fichiers) et charge disque ; durée du test à blanc.
 9. Tests : faux ffprobe (logique), vrai ffprobe sur petits fichiers générés, classification, reprise, fichiers modifiés, échec d'analyse, aucun chemin de fichier hors de l'API admin.
 
-### 9.2 Remux à la demande (AVI et OGM, pour Android) — étape 2, après validation de 9.1
+### 9.2 Remux à la demande (AVI et OGM, pour Android) — étape 2 (livrée, en attente de validation ; ARCHITECTURE §23)
 Constat (2026-10-06, ARCHITECTURE §20.3 et §21) : AVI et OGM réels non lisibles sur Android, mais lisibles avec le son une fois remuxés en MKV sans ré-encodage (validé à la main sur le S24 : `-fflags +genpts -i entrée -c copy sortie.mkv` pour l'AVI Air Gear et l'OGM de test ; pour l'AVI, la variante avec `-bsf:v mpeg4_unpack_bframes` marche aussi). Environ 920 fichiers (~3 % du catalogue, plus de 150 Go). **Android uniquement** : le navigateur ne lira pas du MPEG-4 ASP, même remuxé.
 1. API : `stream-url` d'un fichier à remuxer répond « préparation en cours » (statut distinct d'une erreur, délai avant nouvelle demande, progression si possible) ; une fois prêt, URL signée vers la copie en cache ; jamais d'URL vers l'original illisible.
 2. Cache : `REMUX_CACHE_PATH` (volume en écriture, hors `/media` qui reste en lecture seule ; création et droits PUID/PGID comme pour les affiches), taille maximale `REMUX_CACHE_MAX_GB`, purge des copies les moins récemment lues (jamais une copie en cours de lecture), espace libre vérifié avant de commencer, nom par empreinte, fichier temporaire puis renommage atomique, nettoyage des restes au démarrage.

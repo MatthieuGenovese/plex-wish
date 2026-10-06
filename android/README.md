@@ -87,15 +87,26 @@ Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, r�
 
 | Fichier | Ce que l'app dit |
 |---|---|
-| OGM | Format non lu par Android, à convertir sur le serveur (remux, phase 9). |
 | Lecture bloquée au chargement (tout fichier) | Détectée par Media3 (« stuck buffering ») ou par l'app (20 s de mise en tampon sans que les données chargées n'avancent de 2 s) : même message ; **Détails** indique la durée de mise en tampon, la position chargée et les pistes actives. Une connexion lente, qui fait avancer le chargement, n'est pas prise pour un blocage. |
-| AVI (MPEG-4 Part 2 + MP3) | Lu, bandeau « pas de sous-titres » ; **sauf** les AVI dont le MP3 est déclaré « octet par octet » (cas d'Air Gear) : la lecture reste bloquée au chargement → message « fichier à convertir sur le serveur (remux, phase 9) », avec **Réessayer** et **Lire sans le son** (l'image se lit, sans le son). |
+| AVI, OGM | Convertis par le serveur (voir « Préparation de l'épisode »). Si une copie posait encore problème, le filet de sécurité reste : lecture bloquée → message avec **Réessayer** et **Lire sans le son**. |
 | AVI (H.264 + HE-AAC + VobSub) | Lu si Android reconnaît l'audio ; sinon bandeau « Pas de son : aucune piste audio reconnue… (HE-AAC dans un AVI) », et « pas de sous-titres ». |
 | MKV HEVC 10 bits + ASS | Lu si le téléphone a le décodeur (le S24 l'a) ; sinon « Ce téléphone ne sait pas décoder la vidéo (HEVC (H.265) 10 bits) ». |
 | MP4 H.264 + ASS | Lu ; bandeau « ASS mis dans un MP4 : ignorés par Android ». |
 | Réseau coupé | « Connexion au serveur perdue », après les nouveaux essais automatiques. |
 | 403 qui persiste | « Le serveur refuse la lecture (lien expiré, ou compte désactivé) ». |
 | Fichier retiré du NAS | « Ce fichier n'est plus disponible sur le serveur ». |
+
+### Préparation de l'épisode (AVI, OGM)
+
+Pour un AVI ou un OGM, le serveur prépare d'abord une copie lisible (remux sans ré-encodage, ARCHITECTURE §23) : l'app affiche **« Préparation de l'épisode… »** avec une barre de progression, la place dans la file (« Un autre épisode est préparé avant celui-ci. ») et l'**attente estimée**, redemande toute seule au rythme indiqué par le serveur, puis lance la lecture. **Annuler** revient à la fiche. Ensuite, la copie est gardée : les lectures suivantes démarrent tout de suite. Cas d'erreur (message du serveur) : « Ce fichier n'a pas pu être converti pour Android… » (remux impossible, l'admin le voit et peut relancer) ; « Le serveur n'a plus de place… Réessayez dans quelques minutes. » (cache plein de copies en cours de lecture).
+
+#### Scénario de test (Air Gear AVI)
+1. Serveur à jour, dossier `REMUX_CACHE_PATH` inscriptible (README racine, « Remux à la demande ») ; *Médias → Remux à la demande* vide.
+2. Lancer l'épisode AVI : écran « Préparation de l'épisode… » quelques secondes, puis lecture **avec le son** (sous-titres incrustés dans l'image pour Air Gear : rien à activer), seek à 80 % puis retour.
+3. Regarder 1 minute, quitter : la position est enregistrée (barre « en cours » sur la fiche), relancer : reprise immédiate (copie déjà prête, pas d'écran de préparation).
+4. Admin : copie « prête », variante utilisée, taille.
+5. Un OGM : même chose (avec ses sous-titres s'il en a).
+6. Deux épisodes AVI non préparés lancés depuis deux téléphones : le second voit « Un autre épisode est préparé avant celui-ci. » et une attente plus longue.
 
 ### Reprise de connexion
 

@@ -29,6 +29,10 @@ data class PlayerState(
     val warnings: List<Diagnosis> = emptyList(),
     /** Écran « Détails » ouvert sur ce diagnostic. */
     val details: Diagnosis? = null,
+    /** Lecture bloquée en mise en tampon, son actif : proposer « Lire sans le son ». */
+    val canPlayWithoutSound: Boolean = false,
+    /** Son coupé à la demande (« Lire sans le son »). */
+    val soundOff: Boolean = false,
 )
 
 /**
@@ -60,6 +64,7 @@ class PlayerViewModel(
     private var networkAttempts = 0
     private var urlRefreshes = 0
     private var recovery: Job? = null
+    private val stall = StallDetector()
     private val progress = ProgressReporter(
         send = { pos, dur -> api.saveProgress(episodeId, pos, dur) },
         scope = progressScope, clock = clock, intervalMs = progressIntervalMs,
@@ -83,7 +88,23 @@ class PlayerViewModel(
                     lastPositionMs = engine.positionMs
                     progress.tick(engine.positionMs, durationMs())
                 }
+                checkStall()
             }
+        }
+    }
+
+    /** Mise en tampon sans progrès (au démarrage ou en cours de lecture) : on arrête et on explique. */
+    private fun checkStall() {
+        val phase = _state.value.phase
+        val watching = (phase == PlayerPhase.LOADING || phase == PlayerPhase.PLAYING) && engine.playWhenReady
+        val stalled = stall.update(clock(), watching && engine.isBuffering, engine.bufferedPositionMs)
+        if (stalled) {
+            val d = Diagnostics.stalled(tracks, episode?.container, stall.bufferingMs, engine.bufferedPositionMs, currentPosition())
+            SafeLog.w(TAG, "Lecture bloquée en mise en tampon : ${d.details.joinToString { "${it.first}=${it.second}" }}")
+            lastPositionMs = currentPosition()
+            stall.reset()
+            engine.pause()
+            fail(d, stalled = true)
         }
     }
 
@@ -183,9 +204,15 @@ class PlayerViewModel(
         val kind = Diagnostics.kind(failure)
         SafeLog.w(TAG, "Erreur de lecture ${failure.errorCodeName} (HTTP ${failure.httpStatus}), $kind : ${failure.cause}")
         val decision = policy.decide(kind, networkAttempts, urlRefreshes, urlExpiresSoon())
-        val diagnosis = Diagnostics.failure(failure, tracks, episode?.container)
+        val diagnosis = if (kind == FailureKind.STALLED) {
+            val d = Diagnostics.failure(failure, tracks, episode?.container)
+            d.copy(details = d.details + ("Mise en tampon" to "${stall.bufferingMs / 1000} s sans démarrer") +
+                ("Position" to "${position / 1000} s, chargé jusqu'à ${engine.bufferedPositionMs / 1000} s"))
+        } else {
+            Diagnostics.failure(failure, tracks, episode?.container)
+        }
         when (decision) {
-            Recovery.Fail -> fail(diagnosis)
+            Recovery.Fail -> fail(diagnosis, stalled = kind == FailureKind.STALLED)
             Recovery.RefreshUrl -> {
                 urlRefreshes++
                 recover(0, fresh = true, position)
@@ -197,9 +224,9 @@ class PlayerViewModel(
         }
     }
 
-    private fun recover(delayMs: Long, fresh: Boolean, positionMs: Long) {
-        val play = engine.playWhenReady
-        _state.update { it.copy(phase = PlayerPhase.RECONNECTING) }
+    private fun recover(delayMs: Long, fresh: Boolean, positionMs: Long, play: Boolean = engine.playWhenReady) {
+        _state.update { it.copy(phase = PlayerPhase.RECONNECTING, canPlayWithoutSound = false) }
+        stall.reset()
         recovery?.cancel()
         recovery = viewModelScope.launch {
             if (delayMs > 0) delay(delayMs)
@@ -209,7 +236,7 @@ class PlayerViewModel(
                 // Pas de nouvelle URL (réseau toujours coupé…) : même règle que pour une erreur du lecteur.
                 if (ex.isNetwork && networkAttempts < MAX_URL_ATTEMPTS) {
                     networkAttempts++
-                    recover(delayMs.coerceAtLeast(1_000) * 2, fresh, positionMs)
+                    recover(delayMs.coerceAtLeast(1_000) * 2, fresh, positionMs, play)
                 } else {
                     fail(Diagnosis(ex.message, listOf("Étape" to "nouveau lien de lecture", "Erreur" to (ex.code ?: "HTTP ${ex.status}"))))
                 }
@@ -217,8 +244,8 @@ class PlayerViewModel(
         }
     }
 
-    private fun fail(d: Diagnosis) {
-        _state.update { it.copy(phase = PlayerPhase.ERROR, error = d) }
+    private fun fail(d: Diagnosis, stalled: Boolean = false) {
+        _state.update { it.copy(phase = PlayerPhase.ERROR, error = d, canPlayWithoutSound = stalled && !it.soundOff) }
     }
 
     // --- Actions de l'écran ------------------------------------------------------------------------------------------
@@ -231,7 +258,7 @@ class PlayerViewModel(
             start()
             return
         }
-        recover(0, fresh = true, lastPositionMs.coerceAtLeast(0))
+        recover(0, fresh = true, lastPositionMs.coerceAtLeast(0), play = true)
     }
 
     /**
@@ -240,6 +267,18 @@ class PlayerViewModel(
      */
     override fun onResumeRequested() {
         if (urlExpiresSoon()) recover(0, fresh = true, currentPosition())
+    }
+
+    /**
+     * « Lire sans le son » : la piste audio est coupée pour cet épisode (pas mémorisé), puis rechargement à la même
+     * position. Débloque les AVI dont Media3 horodate mal le son.
+     */
+    fun playWithoutSound() {
+        engine.setAudioEnabled(false)
+        _state.update { it.copy(soundOff = true) }
+        networkAttempts = 0
+        urlRefreshes = 0
+        recover(0, fresh = urlExpiresSoon(), lastPositionMs.coerceAtLeast(0), play = true)
     }
 
     fun showDetails(d: Diagnosis?) = _state.update { it.copy(details = d) }

@@ -88,7 +88,8 @@ Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, r�
 | Fichier | Ce que l'app dit |
 |---|---|
 | OGM | Format non lu par Android, à convertir sur le serveur (remux, phase 9). |
-| AVI (MPEG-4 Part 2 + MP3) | Lu ; bandeau « pas de sous-titres » (normal pour un AVI). |
+| Lecture bloquée au chargement (tout fichier) | Détectée par Media3 (« stuck buffering ») ou par l'app (20 s de mise en tampon sans que les données chargées n'avancent de 2 s) : même message ; **Détails** indique la durée de mise en tampon, la position chargée et les pistes actives. Une connexion lente, qui fait avancer le chargement, n'est pas prise pour un blocage. |
+| AVI (MPEG-4 Part 2 + MP3) | Lu, bandeau « pas de sous-titres » ; **sauf** les AVI dont le MP3 est déclaré « octet par octet » (cas d'Air Gear) : la lecture reste bloquée au chargement → message « fichier à convertir sur le serveur (remux, phase 9) », avec **Réessayer** et **Lire sans le son** (l'image se lit, sans le son). |
 | AVI (H.264 + HE-AAC + VobSub) | Lu si Android reconnaît l'audio ; sinon bandeau « Pas de son : aucune piste audio reconnue… (HE-AAC dans un AVI) », et « pas de sous-titres ». |
 | MKV HEVC 10 bits + ASS | Lu si le téléphone a le décodeur (le S24 l'a) ; sinon « Ce téléphone ne sait pas décoder la vidéo (HEVC (H.265) 10 bits) ». |
 | MP4 H.264 + ASS | Lu ; bandeau « ASS mis dans un MP4 : ignorés par Android ». |

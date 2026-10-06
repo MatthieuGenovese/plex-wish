@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -123,6 +125,8 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(s.title, color = Color.White, fontWeight = FontWeight.Medium, maxLines = 1)
                     s.subtitle?.let { Text(it, color = Color(0xFFCCCCCC), style = MaterialTheme.typography.bodySmall, maxLines = 1) }
+                    if (s.soundOff) Text("Lecture sans le son (fichier à convertir sur le serveur)", color = Color(0xFFFFC66D),
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
             }
         }
@@ -135,7 +139,10 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
                 CircularProgressIndicator()
                 if (s.phase == PlayerPhase.RECONNECTING) Text("Reconnexion…", color = Color.White, modifier = Modifier.padding(top = 8.dp))
             }
-            PlayerPhase.ERROR -> s.error?.let { ErrorPanel(it, vm::retry, { vm.showDetails(it) }, onBack, Modifier.align(Alignment.Center)) }
+            PlayerPhase.ERROR -> s.error?.let {
+                ErrorPanel(it, vm::retry, { vm.showDetails(it) }, onBack, Modifier.align(Alignment.Center),
+                    onWithoutSound = if (s.canPlayWithoutSound) vm::playWithoutSound else null)
+            }
             else -> {}
         }
 
@@ -159,14 +166,19 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
     }
 }
 
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ErrorPanel(d: Diagnosis, onRetry: () -> Unit, onDetails: () -> Unit, onBack: () -> Unit, modifier: Modifier) {
+private fun ErrorPanel(
+    d: Diagnosis, onRetry: () -> Unit, onDetails: () -> Unit, onBack: () -> Unit, modifier: Modifier,
+    onWithoutSound: (() -> Unit)? = null,
+) {
     Surface(color = Color(0xF0171A22), shape = MaterialTheme.shapes.large, modifier = modifier.padding(24.dp).widthIn(max = 520.dp)) {
         Column(Modifier.padding(20.dp).semantics { liveRegion = LiveRegionMode.Assertive }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Lecture impossible", style = MaterialTheme.typography.titleMedium, color = Color.White)
             Text(d.message, color = Color.White)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onRetry) { Text("Réessayer") }
+                onWithoutSound?.let { OutlinedButton(onClick = it) { Text("Lire sans le son") } }
                 OutlinedButton(onClick = onDetails) { Text("Détails") }
                 TextButton(onClick = onBack) { Text("Retour") }
             }

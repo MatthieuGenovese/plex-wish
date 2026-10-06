@@ -13,7 +13,14 @@ class FakeEngine : PlaybackEngine {
     override var durationMs: Long = -1
     override var isPlaying: Boolean = false
     override var playWhenReady: Boolean = false
+    override var isBuffering: Boolean = false
+    override var bufferedPositionMs: Long = 0
+    var audioOn = true
     var released = false
+
+    override fun setAudioEnabled(enabled: Boolean) {
+        audioOn = enabled
+    }
     var pauses = 0
 
     override fun setListener(listener: PlaybackEngine.Listener?) {

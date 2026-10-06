@@ -3,7 +3,7 @@ package fr.plexwish.anime.feature.player
 import androidx.media3.common.PlaybackException
 
 /** Familles d'erreur, pour le message à l'utilisateur et la reprise automatique. */
-enum class FailureKind { FORBIDDEN, NOT_FOUND, NETWORK, SERVER, CONTAINER, MALFORMED, VIDEO_CODEC, AUDIO_CODEC, UNKNOWN }
+enum class FailureKind { FORBIDDEN, NOT_FOUND, NETWORK, SERVER, CONTAINER, MALFORMED, VIDEO_CODEC, AUDIO_CODEC, STALLED, UNKNOWN }
 
 /** Avertissement (la lecture continue) : son ou sous-titres absents ou illisibles. */
 enum class WarningKind { NO_AUDIO, AUDIO_UNSUPPORTED, NO_SUBTITLES, SUBTITLES_UNSUPPORTED, IMAGE_SUBTITLES }
@@ -19,6 +19,9 @@ data class Diagnosis(val message: String, val details: List<Pair<String, String>
 object Diagnostics {
 
     fun kind(f: PlaybackFailure): FailureKind = when {
+        // « Playback stuck buffering and not loading » : chargement arrêté sans que la lecture puisse démarrer.
+        f.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK && f.cause.contains("stuck buffering", ignoreCase = true) ->
+            FailureKind.STALLED
         f.httpStatus == 401 || f.httpStatus == 403 -> FailureKind.FORBIDDEN
         f.httpStatus == 404 || f.httpStatus == 410 || f.httpStatus == 416 -> FailureKind.NOT_FOUND
         f.httpStatus != null && f.httpStatus >= 500 -> FailureKind.SERVER
@@ -58,6 +61,7 @@ object Diagnostics {
             FailureKind.AUDIO_CODEC -> "Ce téléphone ne sait pas lire le son de ce fichier" +
                 ((f.formatMime ?: tracks.firstOrNull { it.type == TrackType.AUDIO }?.mimeType)
                     ?.let { " (${codecName(it, f.formatCodecs)})" } ?: "") + "."
+            FailureKind.STALLED -> stalledMessage(container)
             FailureKind.UNKNOWN -> "La lecture a échoué (${f.errorCodeName})."
         }
         val details = buildList {
@@ -66,10 +70,37 @@ object Diagnostics {
             f.httpStatus?.let { add("Réponse du serveur" to "HTTP $it") }
             f.formatMime?.let { add("Piste en cause" to codecName(it, f.formatCodecs)) }
             if (f.cause.isNotBlank()) add("Cause" to f.cause)
+            add("Pistes actives" to activeTracks(tracks))
             addAll(trackDetails(tracks))
         }
         return Diagnosis(message, details)
     }
+
+    /** Blocage détecté par l'app (mise en tampon sans progrès) : même message, avec les mesures. */
+    fun stalled(tracks: List<TrackInfo>, container: String?, bufferingMs: Long, bufferedPositionMs: Long, positionMs: Long): Diagnosis =
+        Diagnosis(
+            stalledMessage(container),
+            listOf(
+                "Fichier" to containerName(container),
+                "Erreur" to "lecture bloquée en mise en tampon",
+                "Mise en tampon" to "${bufferingMs / 1000} s sans démarrer",
+                "Position" to "${positionMs / 1000} s, chargé jusqu'à ${bufferedPositionMs / 1000} s",
+                "Pistes actives" to activeTracks(tracks),
+            ) + trackDetails(tracks),
+        )
+
+    private fun stalledMessage(container: String?) = when (container?.lowercase()) {
+        "avi" -> "La lecture reste bloquée au chargement : Android lit mal ce fichier AVI (horodatage du son). " +
+            "Il faudra le convertir sur le serveur sans perte (remux, prévu en phase 9). " +
+            "En attendant, « Lire sans le son » permet de voir l'image."
+        else -> "La lecture reste bloquée au chargement : connexion trop lente, ou fichier mal construit " +
+            "qu'il faudra convertir sur le serveur (remux, prévu en phase 9). Vous pouvez réessayer ou lire sans le son."
+    }
+
+    fun activeTracks(tracks: List<TrackInfo>): String = tracks.filter { it.selected }
+        .joinToString { "${when (it.type) { TrackType.VIDEO -> "vidéo"; TrackType.AUDIO -> "audio"; TrackType.TEXT -> "sous-titres"; else -> "autre" }} " +
+            codecName(it.mimeType, it.codecs) + (it.language?.let { l -> " ($l)" } ?: "") }
+        .ifEmpty { "aucune (pistes pas encore connues)" }
 
     /** Vidéo présente mais non décodable : ExoPlayer jouerait le son sur un écran noir, on le traite comme une erreur. */
     fun undecodableVideo(tracks: List<TrackInfo>, container: String?): Diagnosis? {

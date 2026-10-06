@@ -159,6 +159,15 @@ class ExoPlaybackEngine(
     override val positionMs: Long get() = player.currentPosition
     override val durationMs: Long get() = player.duration.takeIf { it != C.TIME_UNSET } ?: -1
     override val isPlaying: Boolean get() = player.isPlaying
+    override val isBuffering: Boolean get() = player.playbackState == Player.STATE_BUFFERING
+    override val bufferedPositionMs: Long get() = player.bufferedPosition
+
+    override fun setAudioEnabled(enabled: Boolean) {
+        applying = true // pas un choix de piste à mémoriser
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !enabled).build()
+        applying = false
+    }
     override val playWhenReady: Boolean get() = player.playWhenReady
     override fun pause() = player.pause()
     override fun release() = player.release()

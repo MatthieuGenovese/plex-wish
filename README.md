@@ -88,6 +88,8 @@ docker compose build backend && docker compose build web && docker compose up -d
 docker image prune -f        # enlève les anciennes images remplacées
 ```
 
+**ffmpeg / ffprobe (phase 9)** : l'image du backend compile en plus FFmpeg 7.1.5 réduit au nécessaire (étape `ffmpeg` du Dockerfile, ARCHITECTURE §22.1) : **+18 Mo** dans l'image (582 Mo au lieu de 555), environ **11 Mo de source** et ~250 Mo d'outils de compilation à télécharger, **~2 min 30 sur un PC, 10 à 15 min estimées sur le DS923+**, une seule fois (en cache ensuite tant que la version ne change pas). Raison de plus pour le repli ci-dessous si le NAS peine.
+
 **Repli si le NAS peine** (non outillé, à faire à la main) : construire sur le PC, exporter, importer sur le NAS.
 
 ```powershell
@@ -219,6 +221,20 @@ Sur la fiche d'un animé, la **distribution** : les **doubleurs japonais** (phot
 - Tâche de fond, **après** les métadonnées (elle attend que celles-ci n'aient plus rien à faire) : ~1 h 20 de requêtes AniList pour ~1 300 animés au premier passage, puis ~35 min à 1 h de photos de comédiens. Les suites (saisons 2, 3…) sont suivies jusqu'au nombre de saisons du dossier.
 - `CAST_MAX_ROLES` (20 par défaut) : rôles gardés par animé. Photos des comédiens dans `POSTERS_HOST_PATH/cast`, **≈ 0,35 à 0,6 Go** au total (les anciennes images de personnages sont supprimées au démarrage de cette version).
 - *Administration → Distribution* : avancement, place, animés sans distribution, « Relancer », « Effacer toute la distribution ». `CAST_ENABLED=false` arrête la récupération.
+
+## Analyse des fichiers (ffprobe) et onglet « Médias »
+
+Après chaque scan, une tâche de fond analyse les épisodes avec ffprobe (en-têtes seulement), un fichier à la fois, en priorité basse, en pause pendant un scan ; ensuite, seulement les fichiers nouveaux ou modifiés. Elle renseigne la **durée des épisodes** (web et app) et classe chaque fichier : *lisible sur Android*, *remux nécessaire* (AVI, OGM), *transcodage nécessaire*, et *lisible ou non dans un navigateur* avec les raisons (ARCHITECTURE §22). `MEDIA_PROBE_ENABLED=false` l'arrête.
+
+- **Premier passage** (~28 000 fichiers) : estimé à **45 min à 2 h 30** sur le DS923+ (0,1 à 0,3 s par fichier : démarrage de ffprobe et quelques lectures dispersées sur les disques ; mesuré : 0,35 à 1,8 Mo lus par fichier, soit **15 à 30 Go au total, en petits morceaux**). En priorité « idle », elle cède le disque à la lecture des vidéos : plus longue si quelqu'un regarde en même temps. Rien à planifier.
+- *Administration → Médias* : avancement, répartition, liste filtrable (pistes, raisons), « Réanalyser », espace à prévoir pour remuxer tous les AVI/OGM.
+
+### Test à blanc du remux
+
+Avant d'activer le remux (phase 9.2), l'onglet « Médias » propose un **test à blanc** : chaque AVI/OGM passe dans ffmpeg avec les deux commandes candidates (`-fflags +genpts`, et `+ -bsf:v mpeg4_unpack_bframes` pour le Xvid/DivX), vers une sortie nulle : **rien n'est écrit**, mais tout le fichier est lu. Résultat par commande et raison des échecs.
+
+- **Durée** (~920 fichiers, ~150 Go) : chaque fichier est lu une fois sur le disque (la seconde commande le relit depuis la mémoire, ~200 Mo par fichier). À 100-150 Mo/s, compter **30 min à 1 h 30**, davantage si la lecture est ralentie (priorité « idle »). Charge : lecture séquentielle soutenue des disques, processeur peu sollicité (copie sans ré-encodage).
+- **Hors des heures d'usage** : *Médias → Test à blanc → « Ou à » 02:00 → Programmer* (dans les 24 h ; perdu si le conteneur redémarre avant). « Arrêter » à tout moment ; relancé, il reprend où il s'était arrêté. Pendant le test, l'analyse ffprobe est en pause.
 
 ## Accès depuis Internet
 

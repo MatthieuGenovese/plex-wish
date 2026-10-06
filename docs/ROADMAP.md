@@ -17,7 +17,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
 | 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
-| 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : en cours ; 9.2 remux à la demande : après validation de 9.1 |
+| 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée, en attente de validation ; 9.2 remux à la demande : après validation de 9.1 |
 | 8 | Android TV | à faire, après la phase 9 |
 | 10 | Lecteur web | à faire |
 

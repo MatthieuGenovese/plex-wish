@@ -1,4 +1,7 @@
 import { Component, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map } from 'rxjs';
+import { NavigationEnd } from '@angular/router';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
 import { APP_NAME } from './core/app-name';
@@ -25,7 +28,9 @@ import { SearchBox } from './shared/search-box';
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Accueil</a>
           <a routerLink="/anime" routerLinkActive="active" ariaCurrentWhenActive="page">Bibliothèque</a>
         </nav>
-        <app-search-box class="topbar-search" />
+        @if (!onLibrary()) {
+          <app-search-box class="topbar-search" />
+        }
         <app-account-menu (logout)="logout()" />
       </header>
     } @else {
@@ -58,6 +63,14 @@ export class App {
   protected readonly appName = APP_NAME;
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  /** Sur la bibliothèque, son propre champ de recherche suffit (pas deux champs à l'écran). */
+  protected readonly onLibrary = toSignal(
+    this.router.events.pipe(
+      filter((e) => e instanceof NavigationEnd),
+      map(() => /^\/(anime|recherche)(\?|$)/.test(this.router.url)),
+    ),
+    { initialValue: false },
+  );
 
   logout(): void {
     this.auth.logout().subscribe(() => this.router.navigateByUrl('/login'));

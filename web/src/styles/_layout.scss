@@ -59,7 +59,8 @@ main:focus { outline: none; }
 .topbar-search { margin-left: auto; width: min(24rem, 32vw); }
 
 // Menu Compte
-.account-menu { position: relative; }
+.account-menu { position: relative; margin-left: auto; }
+.topbar-search + .account-menu { margin-left: 0; }
 .avatar-btn {
   width: 42px;
   min-height: 42px;

@@ -24,6 +24,8 @@ ANIMES = 1300
 ID_BASE = 1_000_000          # identifiants loin de ceux de l'application (pas de collision avec de vraies lignes)
 # Identifiants « AniList » des comédiens inventés : numériques (format attendu par /api/people/{id}), bien au-delà des vrais.
 DEMO_PROVIDER_ID = 9_900_000_000
+# Animé « tout juste ajouté » (rang dans le catalogue).
+JUST_ADDED = 11
 NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
 
 R = random.Random(SEED)
@@ -361,6 +363,15 @@ END $$;""")
               CASE WHEN m.container = 'avi' THEN 'REMUX' ELSE 'DIRECT' END, m.container = 'mp4',
               CASE WHEN m.container = 'mp4' THEN NULL ELSE 'conteneur ' || upper(m.container) END, e.duration_seconds
        FROM media_file m JOIN episode e ON e.media_file_id = m.id WHERE m.relative_path LIKE 'demo/%';""")
+    # Dates relatives au chargement : le catalogue paraît toujours « vivant » (ajouts récents, progression récente),
+    # quel que soit le jour où il est chargé. Un animé est ajouté « à l'instant » (2 h) : le plus récent de l'accueil.
+    shift = "(now() - TIMESTAMPTZ '%s')" % NOW.isoformat()
+    w(f"UPDATE media_file SET first_seen_at = first_seen_at + {shift}, last_seen_at = now(), last_modified = last_modified + {shift}"
+      " WHERE relative_path LIKE 'demo/%';")
+    w(f"UPDATE anime SET created_at = created_at + {shift} WHERE id >= {ID_BASE};")
+    w(f"UPDATE playback_progress SET updated_at = updated_at + {shift} WHERE episode_id >= {ID_BASE};")
+    w(f"""UPDATE media_file m SET first_seen_at = now() - interval '2 hours' FROM episode e JOIN season s ON s.id = e.season_id
+       WHERE e.media_file_id = m.id AND s.anime_id = {ID_BASE + JUST_ADDED};""")
     w("COMMIT;")
     with open(os.path.join(out, "demo.sql"), "w", encoding="utf-8") as f:
         f.write("\n".join(sql) + "\n")

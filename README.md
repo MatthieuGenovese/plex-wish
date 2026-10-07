@@ -377,6 +377,18 @@ docker run --rm -v anime-fake-media:/media alpine:3 mv "/media/Genshiken/Saison 
 
 Repartir de zéro : relancer le script (il vide le volume) ; supprimer : `docker volume rm anime-fake-media`. Sous Linux, le script accepte aussi un dossier : `scripts/generate-fake-library.sh "$PWD/fake-media"` (`fake-media/` est ignoré par git).
 
+## Catalogue de démonstration (interface, développement seulement)
+
+Pour juger l'interface avec un vrai volume sans toucher à la bibliothèque : 1 300 animés inventés, ~33 000 épisodes, affiches générées, titres longs, synopsis absents ou très longs, progression (docs/DESIGN.md §6).
+
+```sh
+scripts/demo-catalog.sh        # ou scripts\demo-catalog.ps1 sous Windows
+# → http://localhost:8090 (compte admin du .env)
+scripts/demo-catalog.sh down   # arrête et efface la stack de démonstration
+```
+
+Stack Docker séparée (`plexwish-demo` : sa base, son réseau, port `DEMO_WEB_PORT`, 8090 par défaut), sans aucune tâche qui irait sur Internet. Jamais sur le NAS ; ne pas y lancer de scan ; les épisodes n'ont pas de fichier (lecture impossible).
+
 ## Swagger / OpenAPI
 
 - En dev : <http://localhost:8080/q/swagger-ui>, toujours actif.

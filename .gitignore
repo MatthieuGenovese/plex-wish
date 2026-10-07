@@ -38,3 +38,6 @@ remux-cache/
 
 # Bibliothèque factice (scripts/generate-fake-library.sh)
 fake-media/
+
+# Catalogue de démonstration (scripts/demo-catalog.sh)
+/demo-catalog/

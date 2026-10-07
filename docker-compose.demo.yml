@@ -1,0 +1,25 @@
+# Catalogue de démonstration (phase Polish) : outil de développement, JAMAIS sur le NAS.
+# Lancé par scripts/demo-catalog.sh (ou .ps1), dans un projet Docker séparé (« plexwish-demo ») :
+# base, conteneurs et volumes distincts de la stack normale ; port web DEMO_WEB_PORT (8090 par défaut).
+#
+# - Aucune tâche de fond qui irait sur Internet (AniList, TMDB, affiches, distribution) ni ffprobe.
+# - /media : volume vide (les épisodes de démonstration n'ont pas de fichier : la lecture répond 404 ;
+#   ne pas lancer de scan, il marquerait tout le catalogue comme disparu).
+# - Affiches : celles générées par scripts/demo-catalog/generate.py.
+services:
+  backend:
+    environment:
+      # Adresse de la stack de démonstration (cookies et contrôle d'origine), port DEMO_WEB_PORT.
+      PUBLIC_URL: "http://localhost:${WEB_PORT:-8090}"
+      METADATA_ENABLED: "false"
+      POSTERS_ENABLED: "false"
+      CAST_ENABLED: "false"
+      MEDIA_PROBE_ENABLED: "false"
+      TMDB_READ_TOKEN: ""
+      TMDB_API_KEY: ""
+    volumes:
+      - demo-media:/media:ro
+      - ./demo-catalog/posters:/data/posters
+
+volumes:
+  demo-media:

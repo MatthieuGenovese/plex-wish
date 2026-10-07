@@ -229,7 +229,7 @@
 .hero-progress { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); font-size: var(--fs-small); color: rgb(255 255 255 / 0.85); }
 .hero-progress .progress { width: 10rem; max-width: 50%; background: rgb(255 255 255 / 0.3); }
 .hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.hero-actions .btn { max-width: 100%; }
+.hero-actions .btn, .hero-actions button { max-width: 100%; }
 .hero .btn-ghost { color: #fff; border-color: rgb(255 255 255 / 0.6); }
 .hero .btn-ghost:hover { background: rgb(255 255 255 / 0.12); color: #fff; }
 .hero-hint { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 0; font-size: var(--fs-small); color: rgb(255 255 255 / 0.8); }
@@ -248,7 +248,7 @@
   }
   .hero { grid-template-areas: 'poster text' 'actions actions'; row-gap: var(--space-4); }
   .hero-poster { width: 6.5rem; }
-  .hero-actions .btn { width: 100%; }
+  .hero-actions .btn, .hero-actions button { width: 100%; }
 }
 // Texte très agrandi (le contenu fait moins de 18 rem de large, ex. téléphone à 200 %) : affiche, texte et actions les uns sous les autres.
 main { container: page / inline-size; }

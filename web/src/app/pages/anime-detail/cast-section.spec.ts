@@ -36,6 +36,7 @@ describe('CastSection', () => {
     expect(entries.length).toBe(2);
     const first = entries[0];
     expect(first.querySelector('a')?.getAttribute('href')).toBe('/personne/95185');
+    expect(first.querySelector('.poster-round')).not.toBeNull();
     expect([...first.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual(['/api/cast-images/voix']);
     expect(first.querySelector('.name')?.textContent).toBe('Atsumi Tanezaki');
     expect(first.querySelector('.character')?.textContent).toBe('Frieren');
@@ -52,5 +53,6 @@ describe('CastSection', () => {
   it('sans distribution : rien n’est affiché', async () => {
     const el = await open({ source: null, sourceUrl: null, items: [] });
     expect(el.querySelector('section')).toBeNull();
+    expect(el.textContent?.trim()).toBe('');
   });
 });

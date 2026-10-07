@@ -30,6 +30,17 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/library/library').then((m) => m.LibraryPage),
       },
       {
+        path: 'recherche',
+        title: 'Rechercher',
+        data: { searchMode: true },
+        loadComponent: () => import('./pages/library/library').then((m) => m.LibraryPage),
+      },
+      {
+        path: 'compte',
+        title: 'Mon compte',
+        loadComponent: () => import('./pages/account/account').then((m) => m.AccountPage),
+      },
+      {
         path: 'anime/:id',
         title: 'Anime',
         loadComponent: () => import('./pages/anime-detail/anime-detail').then((m) => m.AnimeDetailPage),

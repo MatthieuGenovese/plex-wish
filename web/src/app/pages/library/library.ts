@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, inject, input, numberAttribute, viewChild } from '@angular/core';
+import { Component, ElementRef, afterNextRender, computed, inject, input, numberAttribute, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { LibraryApi } from '../../core/library-api';
 import { AnimeGrid } from '../../shared/anime-grid';
@@ -77,6 +77,14 @@ export class LibraryPage {
   readonly q = input<string>();
   readonly tri = input<string>();
   readonly page = input(1, { transform: (v: unknown) => Math.max(1, numberAttribute(v, 1)) });
+  /** Onglet « Rechercher » (téléphone) : le champ prend le focus, le clavier s'ouvre. */
+  readonly searchMode = input(false);
+
+  constructor() {
+    afterNextRender(() => {
+      if (this.searchMode()) document.getElementById('q')?.focus();
+    });
+  }
 
   protected readonly sort = computed<'recent' | 'title'>(() => (this.tri() === 'recent' ? 'recent' : 'title'));
   private readonly query = computed(() => ({

@@ -1,91 +1,55 @@
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
-import { TMDB_NOTICE } from './pages/about/about';
 import { APP_NAME } from './core/app-name';
+import { TMDB_NOTICE } from './pages/about/about';
+import { AccountMenu } from './shared/account-menu';
+import { Icon } from './shared/icon';
+import { SearchBox } from './shared/search-box';
 
+/**
+ * Coquille : barre du haut (bureau : marque, Accueil, Bibliothèque, recherche, menu Compte ; téléphone : marque
+ * seule), barre du bas sur téléphone (Accueil, Rechercher, Bibliothèque, Compte), pied de page (sources, TMDB).
+ */
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AccountMenu, Icon, SearchBox],
   template: `
     <a class="skip-link" href="#contenu">Aller au contenu</a>
-    <header class="app-header">
-      <a class="brand" routerLink="/">{{ appName }}</a>
-      @if (auth.user(); as user) {
-        <nav aria-label="Navigation principale">
-          <ul>
-            <li><a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Accueil</a></li>
-            <li><a routerLink="/anime" routerLinkActive="active">Bibliothèque</a></li>
-            @if (auth.isAdmin()) {
-              <li><a routerLink="/admin" routerLinkActive="active">Administration</a></li>
-            }
-          </ul>
+    @if (auth.user()) {
+      <header class="topbar">
+        <a class="brand" routerLink="/" [attr.aria-label]="appName + ', accueil'">
+          <span class="logo"><app-icon name="play_arrow_fill" /></span><span class="brand-name">{{ appName }}</span>
+        </a>
+        <nav class="topnav" aria-label="Navigation principale">
+          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Accueil</a>
+          <a routerLink="/anime" routerLinkActive="active" ariaCurrentWhenActive="page">Bibliothèque</a>
         </nav>
-        <div class="account">
-          <span class="muted" data-testid="username">{{ user.username }}</span>
-          <button type="button" class="btn-small" (click)="logout()">Se déconnecter</button>
-        </div>
-      }
-    </header>
-    <main id="contenu" tabindex="-1">
+        <app-search-box class="topbar-search" />
+        <app-account-menu (logout)="logout()" />
+      </header>
+    } @else {
+      <header class="topbar topbar-guest">
+        <a class="brand" routerLink="/"><span class="logo"><app-icon name="play_arrow_fill" /></span><span class="brand-name">{{ appName }}</span></a>
+      </header>
+    }
+    <main id="contenu" tabindex="-1" [class.with-bottombar]="auth.user()">
       <router-outlet />
     </main>
-    <footer class="app-footer">
+    <footer class="app-footer" [class.with-bottombar]="auth.user()">
       Informations des animés : AniList et TMDB. <span lang="en">{{ tmdbNotice }}</span> · <a routerLink="/a-propos">À propos</a>
     </footer>
-  `,
-  styles: `
-    .app-header {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--space-2) var(--space-5);
-      padding: var(--space-2) var(--space-5);
-      background: var(--color-surface);
-      border-bottom: 1px solid var(--color-border);
-    }
-    .brand {
-      font-size: var(--font-size-lg);
-      font-weight: var(--font-weight-bold);
-      color: var(--color-text);
-      text-decoration: none;
-      min-height: var(--target-size);
-      display: inline-flex;
-      align-items: center;
-    }
-    nav { flex: 1; }
-    ul {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-1);
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-    nav a {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--target-size);
-      padding: 0 var(--space-3);
-      border-radius: var(--radius);
-      color: var(--color-text-muted);
-      text-decoration: none;
-    }
-    nav a:hover { color: var(--color-text); background: var(--color-surface-raised); }
-    nav a.active { color: var(--color-text); background: var(--color-surface-raised); box-shadow: inset 0 -3px 0 var(--color-accent); }
-    .account { display: flex; align-items: center; gap: var(--space-3); margin-left: auto; }
-    main { padding: var(--space-5); max-width: var(--content-width); margin: 0 auto; }
-    main:focus { outline: none; }
-    .app-footer {
-      max-width: var(--content-width); margin: 0 auto; padding: var(--space-4) var(--space-5) var(--space-6);
-      color: var(--color-text-muted); font-size: var(--font-size-xs);
-    }
-    @media (max-width: 40rem) {
-      .app-header, main { padding-left: var(--space-3); padding-right: var(--space-3); }
-      /* Téléphone : marque + compte sur la première ligne, navigation en dessous sur toute la largeur. */
-      nav { order: 3; flex-basis: 100%; }
-      ul { flex-wrap: nowrap; overflow-x: auto; }
-      nav a { white-space: nowrap; }
+    @if (auth.user()) {
+      <nav class="bottombar" aria-label="Navigation principale (téléphone)">
+        <a routerLink="/" routerLinkActive #home="routerLinkActive" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">
+          <span class="pill"><app-icon [name]="home.isActive ? 'home_fill' : 'home'" /></span><span class="lbl">Accueil</span></a>
+        <a routerLink="/recherche" routerLinkActive ariaCurrentWhenActive="page">
+          <span class="pill"><app-icon name="search" /></span><span class="lbl">Rechercher</span></a>
+        <a routerLink="/anime" routerLinkActive #lib="routerLinkActive" ariaCurrentWhenActive="page">
+          <span class="pill"><app-icon [name]="lib.isActive ? 'video_library_fill' : 'video_library'" /></span><span class="lbl">Bibliothèque</span></a>
+        <a routerLink="/compte" routerLinkActive #acc="routerLinkActive" ariaCurrentWhenActive="page">
+          <span class="pill"><app-icon [name]="acc.isActive ? 'account_circle_fill' : 'account_circle'" /></span><span class="lbl">Compte</span></a>
+      </nav>
     }
   `,
 })

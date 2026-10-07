@@ -5,13 +5,13 @@ import { adminGuard, authGuard, guestGuard } from './core/guards';
 export const routes: Routes = [
   {
     path: 'login',
-    title: 'Connexion · Anime Server',
+    title: 'Connexion',
     canActivate: [guestGuard],
     loadComponent: () => import('./pages/login/login').then((m) => m.LoginPage),
   },
   {
     path: 'a-propos',
-    title: 'À propos · Anime Server',
+    title: 'À propos',
     loadComponent: () => import('./pages/about/about').then((m) => m.AboutPage),
   },
   {
@@ -21,22 +21,22 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        title: 'Accueil · Anime Server',
+        title: 'Accueil',
         loadComponent: () => import('./pages/home/home').then((m) => m.HomePage),
       },
       {
         path: 'anime',
-        title: 'Bibliothèque · Anime Server',
+        title: 'Bibliothèque',
         loadComponent: () => import('./pages/library/library').then((m) => m.LibraryPage),
       },
       {
         path: 'anime/:id',
-        title: 'Anime · Anime Server',
+        title: 'Anime',
         loadComponent: () => import('./pages/anime-detail/anime-detail').then((m) => m.AnimeDetailPage),
       },
       {
         path: 'personne/:id',
-        title: 'Comédien · Anime Server',
+        title: 'Comédien',
         loadComponent: () => import('./pages/person/person').then((m) => m.PersonPage),
       },
       {
@@ -47,7 +47,7 @@ export const routes: Routes = [
       },
       {
         path: '**',
-        title: 'Page introuvable · Anime Server',
+        title: 'Page introuvable',
         loadComponent: () => import('./pages/not-found/not-found').then((m) => m.NotFoundPage),
       },
     ],

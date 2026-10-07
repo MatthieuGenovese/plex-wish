@@ -1,63 +1,53 @@
-import { Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
 /**
- * Affiche d'un animé (ratio 2:3). Sans affiche, ou si elle ne charge pas (lien mort, CDN injoignable) :
- * visuel de remplacement, couleur tirée du titre + initiales. Décoratif (alt vide) : le titre est affiché à côté.
+ * Affiche d'un animé (2:3). Sans affiche, ou si elle ne charge pas : couverture composée (dégradé tiré du titre et
+ * titre écrit dessus), jamais un carré vide. Décorative (alt vide) : le titre est toujours écrit à côté.
+ * {@code variant="round"} : portrait rond (comédiens), initiales sans photo.
  */
 @Component({
   selector: 'app-poster',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (url() && !broken()) {
-      <img class="poster" [src]="url()" alt="" [attr.loading]="eager() ? null : 'lazy'" decoding="async"
-           referrerpolicy="no-referrer" (error)="broken.set(true)" />
+      <img [src]="url()" alt="" [attr.loading]="eager() ? null : 'lazy'" [attr.fetchpriority]="eager() ? 'high' : null"
+           decoding="async" referrerpolicy="no-referrer" (error)="broken.set(true)" />
+    } @else if (variant() === 'round') {
+      <span class="ph ph-round" [style.--h]="hue()" aria-hidden="true" data-testid="poster-placeholder">{{ initials() }}</span>
     } @else {
-      <span class="poster placeholder" [style.--hue]="hue()" aria-hidden="true" data-testid="poster-placeholder">{{ initials() }}</span>
+      <span class="ph" [style.--h]="hue()" aria-hidden="true" data-testid="poster-placeholder"><span>{{ title() }}</span></span>
     }
   `,
-  styles: `
-    /* Conteneur : les initiales suivent la largeur de l'affiche (grille, fiche, vignette d'admin). */
-    :host { display: block; container-type: inline-size; }
-    .poster {
-      display: block;
-      width: 100%;
-      aspect-ratio: 2 / 3;
-      border-radius: var(--radius);
-      object-fit: cover;
-      background: var(--color-surface-raised);
-    }
-    .placeholder {
-      display: grid;
-      place-items: center;
-      background: hsl(var(--hue) var(--poster-saturation) var(--poster-lightness));
-      color: var(--color-text);
-      font-size: clamp(var(--font-size-xs), 22cqi, var(--font-size-xxl));
-      font-weight: var(--font-weight-bold);
-      letter-spacing: 0.05em;
-    }
-  `,
+  host: { class: 'poster', '[class.poster-round]': 'variant() === "round"' },
 })
 export class Poster {
   readonly title = input.required<string>();
   readonly url = input<string | null>(null);
-  /** Image visible dès l'affichage (fiche anime) : pas de chargement différé. */
+  /** Image visible dès l'affichage (héros, fiche) : pas de chargement différé, priorité haute. */
   readonly eager = input(false);
+  readonly variant = input<'cover' | 'round'>('cover');
 
   protected readonly broken = signal(false);
 
-  protected readonly initials = computed(() =>
-    this.title()
-      .split(/[\s_\-:]+/)
-      .filter((w) => /^[\p{L}\p{N}]/u.test(w))
-      .slice(0, 2)
-      .map((w) => w[0].toUpperCase())
-      .join(''),
-  );
+  protected readonly initials = computed(() => initials(this.title()));
+  protected readonly hue = computed(() => hue(this.title()));
+}
 
-  protected readonly hue = computed(() => {
-    let h = 0;
-    for (const ch of this.title()) {
-      h = (h * 31 + ch.charCodeAt(0)) % 360;
-    }
-    return h;
-  });
+/** Initiales des deux premiers mots (« Haruka Satō » → « HS »). */
+export function initials(title: string): string {
+  return title
+    .split(/[\s_\-:]+/)
+    .filter((w) => /^[\p{L}\p{N}]/u.test(w))
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
+
+/** Teinte stable tirée du titre (0–359). */
+export function hue(title: string): number {
+  let h = 0;
+  for (const ch of title) {
+    h = (h * 31 + ch.charCodeAt(0)) % 360;
+  }
+  return h;
 }

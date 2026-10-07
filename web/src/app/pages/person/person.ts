@@ -5,6 +5,7 @@ import { LibraryApi } from '../../core/library-api';
 import { loadOn } from '../../shared/load-state';
 import { Poster } from '../../shared/poster';
 import { ROLE_LABELS } from '../anime-detail/cast-section';
+import { pageTitle } from '../../core/title-strategy';
 
 /**
  * Page d'un comédien : photo, nom romanisé et japonais, et les animés de la bibliothèque où il joue
@@ -88,7 +89,7 @@ export class PersonPage {
   constructor() {
     effect(() => {
       const name = this.person().data?.name;
-      if (name) document.title = `${name} · Anime Server`;
+      if (name) document.title = pageTitle(name);
     });
   }
 }

@@ -1,4 +1,5 @@
 import { Component, signal } from '@angular/core';
+import { APP_NAME } from '../../core/app-name';
 
 /** Texte imposé par les conditions de l'API TMDB (§3.A), à afficher tel quel. */
 export const TMDB_NOTICE =
@@ -13,7 +14,7 @@ export const TMDB_NOTICE =
   selector: 'app-about',
   template: `
     <h1>À propos</h1>
-    <p>Anime Server : serveur privé de streaming d’animés, pour un petit groupe d’amis.</p>
+    <p>{{ appName }} : serveur privé de streaming d’animés, pour un petit groupe d’amis.</p>
 
     <h2>Sources des informations</h2>
     <section class="card" aria-labelledby="about-anilist">
@@ -41,5 +42,6 @@ export const TMDB_NOTICE =
 })
 export class AboutPage {
   protected readonly notice = TMDB_NOTICE;
+  protected readonly appName = APP_NAME;
   protected readonly logoBroken = signal(false);
 }

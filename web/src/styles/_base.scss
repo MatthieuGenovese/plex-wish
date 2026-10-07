@@ -1,0 +1,90 @@
+// Base : typographie, liens, focus, accessibilité.
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: var(--lh-tight);
+  margin: 0 0 var(--space-4);
+  letter-spacing: -0.01em;
+  font-weight: var(--fw-bold);
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); font-weight: var(--fw-semibold); }
+h3 { font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+p { margin: 0 0 var(--space-4); }
+
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+a:hover { color: color-mix(in srgb, var(--accent) 80%, var(--text)); }
+
+code,
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+// Focus très visible (clavier, télécommande plus tard), identique partout.
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+// Lien d'évitement : invisible tant qu'il n'a pas le focus clavier.
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: -100px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  color: var(--text);
+  z-index: 100;
+}
+.skip-link:focus { top: var(--space-3); }
+
+.muted { color: var(--text-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

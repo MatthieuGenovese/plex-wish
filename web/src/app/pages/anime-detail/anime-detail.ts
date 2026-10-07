@@ -6,6 +6,7 @@ import { LibraryApi } from '../../core/library-api';
 import { loadOn } from '../../shared/load-state';
 import { Poster } from '../../shared/poster';
 import { CastSection } from './cast-section';
+import { pageTitle } from '../../core/title-strategy';
 
 /** Au-delà, les épisodes d'une saison sont présentés par tranches (One Piece : 1 000+ épisodes). */
 export const CHUNK = 100;
@@ -206,7 +207,7 @@ export class AnimeDetailPage {
     effect(() => {
       const title = this.anime().data?.title;
       if (title) {
-        document.title = `${title} · Anime Server`;
+        document.title = pageTitle(title);
       }
     });
   }

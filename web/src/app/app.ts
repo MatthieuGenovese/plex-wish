@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
 import { TMDB_NOTICE } from './pages/about/about';
+import { APP_NAME } from './core/app-name';
 
 @Component({
   selector: 'app-root',
@@ -9,7 +10,7 @@ import { TMDB_NOTICE } from './pages/about/about';
   template: `
     <a class="skip-link" href="#contenu">Aller au contenu</a>
     <header class="app-header">
-      <a class="brand" routerLink="/">Anime Server</a>
+      <a class="brand" routerLink="/">{{ appName }}</a>
       @if (auth.user(); as user) {
         <nav aria-label="Navigation principale">
           <ul>
@@ -90,6 +91,7 @@ import { TMDB_NOTICE } from './pages/about/about';
 })
 export class App {
   protected readonly tmdbNotice = TMDB_NOTICE;
+  protected readonly appName = APP_NAME;
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 

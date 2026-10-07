@@ -1,0 +1,173 @@
+// =============================================================================================
+// Jetons de design (docs/DESIGN.md §5, guide docs/design/guide-de-style.html). TOUTES les couleurs,
+// tailles, espacements et formes passent par ici. Un changement de style = modifier ce fichier.
+// Thème : <html data-theme="dark|light">, posé avant le premier rendu par public/theme-init.js.
+// Points de rupture (les media queries ne lisent pas les variables) : 48rem (téléphone → bureau), 64rem.
+// =============================================================================================
+
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('/fonts/figtree-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('/fonts/figtree-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  // --- Typographie (rem : suit la taille de texte du navigateur) -----------------------------
+  --font: 'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans JP', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --fs-display: 2.5rem;
+  --fs-h1: 2rem;
+  --fs-h2: 1.375rem;
+  --fs-title: 1.0625rem;
+  --fs-body: 1rem;
+  --fs-small: 0.875rem;
+  --fs-caption: 0.8125rem;
+  --fw-regular: 400;
+  --fw-medium: 550;
+  --fw-semibold: 650;
+  --fw-bold: 750;
+  --lh: 1.5;
+  --lh-tight: 1.2;
+
+  // --- Espacements (base 4 px) -----------------------------------------------------------------
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --gutter: clamp(1rem, 4vw, 3rem);
+
+  // --- Formes, tailles -------------------------------------------------------------------------
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --target: 48px;
+  --content-width: 1440px;
+  --poster-w: 9.5rem;
+  --dur: 160ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --topbar-h: 4rem;
+  --bottombar-h: 4.25rem;
+}
+
+// Sombre (par défaut)
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d0f14;
+  --surface-1: #151821;
+  --surface-2: #1c202b;
+  --surface-3: #262b38;
+  --outline: #2b303d;
+  --outline-strong: #646d82;
+  --text: #eef0f5;
+  --text-2: #b3b9c7;
+  --text-3: #8e95a6;
+  --focus: #ffd54a;
+  --ok: #5ad48f;
+  --warn: #f2c464;
+  --err: #ff7d7d;
+  --err-bg: #3a1a20;
+  --warn-bg: #352b16;
+  --ok-bg: #15301f;
+  --info-bg: #182233;
+  --scrim: rgb(0 0 0 / 0.62);
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+  --poster-l: 30%;
+  --poster-s: 38%;
+  // Accent « Lagune » (décision du 2026-10-07)
+  --accent: #3ed6c2;
+  --on-accent: #06221f;
+  --accent-soft: rgb(62 214 194 / 0.16);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface-1: #ffffff;
+  --surface-2: #eceef3;
+  --surface-3: #e1e4eb;
+  --outline: #d9dde5;
+  --outline-strong: #7d8596;
+  --text: #12151c;
+  --text-2: #4a5162;
+  --text-3: #636b7c;
+  --focus: #0a58ca;
+  --ok: #1b7a43;
+  --warn: #8a5a00;
+  --err: #c62828;
+  --err-bg: #fdecec;
+  --warn-bg: #fdf3dc;
+  --ok-bg: #e5f5ea;
+  --info-bg: #e8f0fe;
+  --scrim: rgb(10 12 18 / 0.5);
+  --shadow: 0 10px 30px rgb(20 25 40 / 0.14);
+  --poster-l: 46%;
+  --poster-s: 42%;
+  --accent: #0a7468;
+  --on-accent: #ffffff;
+  --accent-soft: rgb(10 116 104 / 0.11);
+}
+
+// Anciens noms (pages d'administration) : alias des nouveaux jetons, pour que tout suive le thème.
+:root {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface-1);
+  --color-surface-raised: var(--surface-2);
+  --color-surface-hover: var(--surface-3);
+  --color-border: var(--outline);
+  --color-border-strong: var(--outline-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-2);
+  --color-accent: var(--accent);
+  --color-accent-strong: color-mix(in srgb, var(--accent) 80%, var(--text));
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--ok);
+  --color-warning: var(--warn);
+  --color-danger: var(--err);
+  --color-danger-bg: var(--err-bg);
+  --color-warning-bg: var(--warn-bg);
+  --color-success-bg: var(--ok-bg);
+  --color-info-bg: var(--info-bg);
+  --color-focus: var(--focus);
+  --color-backdrop: var(--scrim);
+  --poster-saturation: var(--poster-s);
+  --poster-lightness: var(--poster-l);
+  --font-family: var(--font);
+  --font-family-mono: var(--font-mono);
+  --font-size-xs: var(--fs-caption);
+  --font-size-sm: var(--fs-small);
+  --font-size-md: var(--fs-body);
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --font-size-xxl: var(--fs-h1);
+  --font-weight-normal: var(--fw-regular);
+  --font-weight-medium: var(--fw-semibold);
+  --font-weight-bold: var(--fw-bold);
+  --line-height: var(--lh);
+  --line-height-tight: var(--lh-tight);
+  --radius-sm: var(--r-sm);
+  --radius: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --target-size: var(--target);
+  --card-min-width: 10.5rem;
+  --transition: var(--dur) var(--ease);
+  --focus-ring: 3px solid var(--focus);
+}

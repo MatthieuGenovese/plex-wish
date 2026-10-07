@@ -124,7 +124,7 @@ describe('AnimeDetailPage', () => {
     http.expectOne('/api/seasons/70/episodes').flush(episodes(1));
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('.hero [data-testid=poster-placeholder]')?.textContent).toBe('OP');
+    expect(el.querySelector('.hero [data-testid=poster-placeholder]')?.textContent).toBe('One Piece');
     expect(el.querySelector('.synopsis')).toBeNull();
     expect(el.querySelector('.source')).toBeNull();
   });

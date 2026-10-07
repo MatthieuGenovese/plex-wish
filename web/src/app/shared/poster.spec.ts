@@ -19,12 +19,21 @@ describe('Poster', () => {
 
   it('visuel de remplacement sans affiche, ou si l’image ne charge pas', async () => {
     const none = await render(null);
-    expect((none.nativeElement as HTMLElement).querySelector('[data-testid=poster-placeholder]')?.textContent).toBe('SN');
+    expect((none.nativeElement as HTMLElement).querySelector('[data-testid=poster-placeholder]')?.textContent).toBe('Sousou no Frieren');
 
     const broken = await render('https://s4.anilist.co/mort.jpg');
     (broken.nativeElement as HTMLElement).querySelector('img')!.dispatchEvent(new Event('error'));
     await broken.whenStable();
     expect((broken.nativeElement as HTMLElement).querySelector('img')).toBeNull();
     expect((broken.nativeElement as HTMLElement).querySelector('[data-testid=poster-placeholder]')).not.toBeNull();
+  });
+
+  it('portrait rond sans photo : initiales', async () => {
+    const fixture = TestBed.createComponent(Poster);
+    fixture.componentRef.setInput('title', 'Haruka Satō');
+    fixture.componentRef.setInput('variant', 'round');
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid=poster-placeholder]')?.textContent).toBe('HS');
+    expect((fixture.nativeElement as HTMLElement).classList).toContain('poster-round');
   });
 });

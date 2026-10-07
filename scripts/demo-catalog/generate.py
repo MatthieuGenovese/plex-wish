@@ -346,6 +346,14 @@ END $$;""")
     w(",\n".join("(" + ", ".join(q(x) for x in p) + "::timestamptz)" for p in uniq.values()))
     w(") AS v(episode_id, position_seconds, duration_seconds, completed, updated_at)")
     w("ON CONFLICT (user_id, episode_id) DO NOTHING;")
+    # Analyse ffprobe simulée (la vraie tâche est coupée dans la stack de démonstration) : MP4 lisible dans un
+    # navigateur, MKV et AVI non ; AVI à remuxer pour Android. Sert au filtre « lisible dans le navigateur ».
+    w("""INSERT INTO media_probe (media_file_id, probed_size, probed_modified, status, container, android_class,
+         browser_playable, browser_reasons, duration_seconds)
+       SELECT m.id, m.file_size, m.last_modified, 'OK', m.container,
+              CASE WHEN m.container = 'avi' THEN 'REMUX' ELSE 'DIRECT' END, m.container = 'mp4',
+              CASE WHEN m.container = 'mp4' THEN NULL ELSE 'conteneur ' || upper(m.container) END, e.duration_seconds
+       FROM media_file m JOIN episode e ON e.media_file_id = m.id WHERE m.relative_path LIKE 'demo/%';""")
     w("COMMIT;")
     with open(os.path.join(out, "demo.sql"), "w", encoding="utf-8") as f:
         f.write("\n".join(sql) + "\n")

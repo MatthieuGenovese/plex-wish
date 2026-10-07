@@ -417,7 +417,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | POST | `/api/auth/refresh` | cookie refresh |
 | POST | `/api/auth/logout` | cookie refresh |
 | GET | `/api/me` | authentifié (utile au front pour le rôle) |
-| GET | `/api/anime?sort=recent\|title&q=&page=&size=` | authentifié (paginé : `{total, page, size, items}`) |
+| GET | `/api/anime?sort=recent\|title&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
 | GET | `/api/anime/{id}` | authentifié |
 | GET | `/api/anime/{id}/seasons` | authentifié |
 | GET | `/api/seasons/{id}/episodes` | authentifié |
@@ -860,5 +860,12 @@ Changements serveur demandés par la phase Polish (`docs/DESIGN.md` §8), valid�
 - Dernière activité = épisode **terminé** → premier épisode suivant **pas encore terminé** (ordre : saisons 1, 2… puis Spéciaux, par numéro), `kind: "NEXT"` (`positionSeconds` = 0, `durationSeconds` = durée analysée ou 0), ou `"RESUME"` s'il est déjà commencé. On ne passe jamais des saisons normales aux Spéciaux (ni l'inverse) : après le dernier épisode, l'animé est fini et n'apparaît plus.
 - Épisodes non visibles (fichier absent) ignorés ; `limit` compte les animés listés (les animés finis ne comptent pas).
 - Champs inchangés (l'app Android existante continue de fonctionner, champ `kind` en plus) ; `updatedAt` = date de la dernière activité.
-- Implémentation : `progress/UpNextService` (aussi utilisé par la fiche, §24.2), requêtes SQL bornées par le nombre d'animés commencés par l'utilisateur. Tests : `UpNextTest`, `ProgressTest`.
+- Implémentation : `progress/UpNextService` (aussi utilisé par la fiche, §24.3), requêtes SQL bornées par le nombre d'animés commencés par l'utilisateur. Tests : `UpNextTest`, `ProgressTest`.
+
+### 24.2 Filtres de la bibliothèque : `GET /api/anime` (S2)
+Paramètres facultatifs, cumulables entre eux et avec `q`, `sort`, `page`, `size` ; `total` compte les animés filtrés.
+- `yearFrom`, `yearTo` (1900–2100, bornes comprises) : année de l'animé ; un animé sans année est exclu dès qu'un de ces filtres est présent. `yearFrom > yearTo` → 400 `INVALID_FILTER`.
+- `watch` (progression de l'utilisateur connecté, épisodes visibles seulement) : `unseen` = aucun épisode commencé (position > 0) ni vu ; `inProgress` = au moins un commencé ou vu, mais pas tous vus ; `seen` = tous vus. Autre valeur → 400 `INVALID_FILTER`.
+- `browser` (analyse ffprobe, §22) : `true` = tous les épisodes visibles analysés et lisibles dans un navigateur ; `false` = au moins un épisode non lisible ou pas encore analysé.
+- Implémentation : une requête SQL (agrégats par animé, jointures à `playback_progress` et `media_probe` seulement si le filtre est demandé) ; sans filtre, résultat identique à avant. Tests : `AnimeFilterTest`, `AnimeListTest`.
 

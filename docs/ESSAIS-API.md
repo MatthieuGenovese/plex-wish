@@ -50,3 +50,23 @@ Attendu : le même animé, en tête de liste, `NEXT` sur l'épisode suivant (pos
 ```sh
 curl -s -H "Authorization: Bearer $T" "$B/api/me/continue-watching?limit=5"
 ```
+
+## S2. Filtres de la bibliothèque : `GET /api/anime`
+
+```powershell
+function Animes($query) { $r = Api "/api/anime?size=200&$query"; "$($r.total) animés"; $r.items | Select-Object -First 8 | Format-Table title, year, episodeCount }
+Animes "yearFrom=2010&yearTo=2015"        # années 2010 à 2015 comprises (sans année : exclus)
+Animes "watch=inProgress"                 # commencés, pas tout vus (votre progression)
+Animes "watch=seen"                       # tout vu
+Animes "watch=unseen&sort=recent"         # jamais commencés, derniers ajouts d'abord
+Animes "browser=true"                     # lisibles dans un navigateur (démo : les animés en MP4)
+Animes "q=no&yearFrom=2000&watch=unseen"  # combinés avec la recherche
+Animes "watch=plus-tard"                  # erreur 400 INVALID_FILTER (attendue)
+```
+
+Attendu : `watch=inProgress` et `watch=seen` dépendent du compte connecté (un autre compte a sa propre progression) ; `total` = nombre d'animés filtrés ; sans paramètre, la liste est inchangée (1 300 animés sur la démo).
+
+```sh
+curl -s -H "Authorization: Bearer $T" "$B/api/anime?watch=inProgress&yearFrom=2000&size=5"
+```
+

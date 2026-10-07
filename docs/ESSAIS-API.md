@@ -16,7 +16,7 @@ function Connect-Api($user, $password) {
   $script:REFRESH = $r.refreshToken
   "Connecté : $($r.user.username) ($($r.user.role))"
 }
-function Api($path) { Invoke-RestMethod "$B$path" -Headers $script:H }
+function Api($path) { $r = Invoke-RestMethod "$B$path" -Headers $script:H; $r }   # « $r » : une liste est renvoyée élément par élément
 Connect-Api "admin" "admin-password-123"   # mot de passe du .env (INITIAL_ADMIN_PASSWORD)
 ```
 
@@ -41,7 +41,7 @@ Vérifier le passage à l'épisode suivant : prendre une ligne `RESUME`, termine
 $e = (Api "/api/me/continue-watching" | Where-Object kind -eq "RESUME" | Select-Object -First 1)
 "$($e.animeTitle) : épisode $($e.episodeNumber)"
 Invoke-RestMethod -Method Put "$B/api/episodes/$($e.episodeId)/progress" -Headers $H -ContentType "application/json" `
-  -Body (@{ positionSeconds = 1400; durationSeconds = 1400 } | ConvertTo-Json)
+  -Body (@{ positionSeconds = 1400; durationSeconds = 1400 } | ConvertTo-Json) | Out-Null
 Api "/api/me/continue-watching" | Where-Object animeId -eq $e.animeId | Format-Table kind, episodeNumber, positionSeconds
 ```
 

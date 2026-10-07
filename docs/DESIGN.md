@@ -1,6 +1,6 @@
 # Phase Polish : audit et direction (P1)
 
-> Rédigé le 2026-10-07. Statut : **P1 livrée, en attente de décisions** (§10). P2 (web) et P3 (Android) ne commencent qu'après feu vert.
+> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; **P2.0 (serveur) livrée, en attente des essais** (`docs/ESSAIS-API.md`, ARCHITECTURE §24).
 > Référence visuelle : `docs/design/guide-de-style.html` (s'ouvre par double-clic, thème sombre/clair, trois accents, texte 100/130/200 %).
 > Données pour juger : catalogue de démonstration (§6), `scripts/demo-catalog.sh`.
 
@@ -257,7 +257,11 @@ Chaque bloc : tests verts, un commit, captures avant/après. Mesures « avant »
 - P3.7 Tests (calculs d'affichage : bouton principal, « reste N min », libellés de pistes, mise en colonne selon `fontScale`), scénario manuel dans `android/README.md` (TalkBack, police 200 %, thème clair, clavier ou manette en D-pad), APK.
 - Risques : impossible de voir l'app tourner ici (captures `@Preview` seulement) ; navigation D-pad testée seulement par toi ; flou indisponible avant Android 12 ; la mise à jour de la chaîne peut casser le build (bloc séparé, annulable).
 
-## 10. Décisions à prendre
+## 10. Décisions (prises le 2026-10-07)
+
+Réponses : 1) S1, S2, S5, S6, S4, puis S3 en dernier commit séparé ; 2) accent **Lagune** ; 3) **Figtree** embarquée, web et Android ; 4) mise à jour de la chaîne Android en **P3.0 séparé et annulable**, Media3 reste en 1.5.1 ; 5) **axe-core** dans les tests existants, pas de Playwright. Nom affiché : une seule constante (web et Android), « Anime Server » pour l'instant. P3 seulement après validation de la 9.2 sur le S24.
+
+Questions posées :
 
 1. **Bloc serveur P2.0** : lesquels de S1 (« À suivre »), S2 (filtres), S3 (genres), S4 (mot de passe), S6 (tri année) ? Proposition : S1 + S2 + S6 tout de suite, S3 et S4 ensuite.
 2. **Accent** : Lagune (proposé), Bleu actuel ou Sakura — à comparer dans le guide de style (boutons en haut).

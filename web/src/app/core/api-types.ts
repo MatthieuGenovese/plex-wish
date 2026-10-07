@@ -67,6 +67,60 @@ export interface AnimeDetail {
   /** Titre français (TMDB), s'il diffère du titre original. */
   frenchTitle: string | null;
   tmdbUrl: string | null;
+  /** Bouton principal de la fiche, pour l'utilisateur connecté (ARCHITECTURE §24.3). Absent sur un ancien serveur. */
+  resume?: Resume | null;
+  /** Genres AniList, libellés français (§24.6). */
+  genres?: Genre[];
+}
+
+export type ResumeKind = 'RESUME' | 'NEXT' | 'START' | 'REWATCH';
+
+export interface Resume {
+  kind: ResumeKind;
+  episodeId: number;
+  seasonId: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  episodeTitle: string | null;
+  positionSeconds: number;
+  /** 0 si inconnue. */
+  durationSeconds: number;
+}
+
+export interface Genre {
+  /** Valeur AniList (paramètre « genre » de la bibliothèque). */
+  genre: string;
+  label: string;
+}
+
+export interface GenreCount extends Genre {
+  animeCount: number;
+}
+
+/** « Continuer à regarder » : une entrée par animé (ARCHITECTURE §24.1). */
+export interface ContinueWatching {
+  kind: 'RESUME' | 'NEXT';
+  episodeId: number;
+  episodeNumber: number;
+  episodeTitle: string | null;
+  seasonId: number;
+  seasonNumber: number;
+  seasonLabel: string;
+  animeId: number;
+  animeTitle: string;
+  positionSeconds: number;
+  /** 0 si inconnue. */
+  durationSeconds: number;
+  updatedAt: string | null;
+  posterUrl: string | null;
+}
+
+export interface Progress {
+  episodeId: number;
+  positionSeconds: number;
+  durationSeconds: number;
+  completed: boolean;
+  updatedAt: string | null;
 }
 
 export interface EpisodeSummary {

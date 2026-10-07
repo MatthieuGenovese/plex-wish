@@ -1,0 +1,265 @@
+// Cartes d'animé, grille, rangées horizontales, carte « Reprendre », héros.
+
+// --- Carte d'animé ---------------------------------------------------------------------------------
+.anime-card { display: block; min-width: 0; }
+.card-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--r-md);
+  outline-offset: 4px;
+}
+.card-link:hover { color: var(--text); }
+.card-art { position: relative; display: block; }
+.card-art .poster { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.card-link:hover .poster,
+.card-link:focus-visible .poster {
+  transform: scale(1.04);
+  box-shadow: var(--shadow);
+}
+.card-badge { position: absolute; top: 6px; left: 6px; }
+.card-title {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-meta { margin-top: -4px; font-size: var(--fs-caption); color: var(--text-2); }
+
+// --- Grille ----------------------------------------------------------------------------------------
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--poster-w), 1fr));
+  gap: var(--space-5) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (max-width: 47.99rem) {
+  .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4) var(--space-3); }
+}
+
+// --- Rangée horizontale -----------------------------------------------------------------------------
+.rail { margin-bottom: var(--space-6); }
+.rail-head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); }
+.rail-head h2 { margin: 0; font-size: var(--fs-h2); overflow-wrap: break-word; min-width: 0; }
+.rail-more {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-left: auto;
+  min-height: var(--target);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+}
+.rail-body { position: relative; }
+.rail-track {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  // Les cartes s'agrandissent au survol / focus : marge pour ne pas être coupées.
+  padding: var(--space-2) var(--space-1) var(--space-3);
+  margin: 0 calc(-1 * var(--space-1));
+}
+.rail-track::-webkit-scrollbar { display: none; }
+.rail-list { display: flex; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.rail-list > li { flex: none; scroll-snap-align: start; }
+.rail-list .anime-card { width: var(--poster-w); }
+.rail-arrow {
+  position: absolute;
+  top: calc(50% - 22px - var(--space-4));
+  z-index: 2;
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--outline);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.rail-prev { left: -14px; }
+.rail-next { right: -14px; }
+.rail-body:hover .rail-arrow:not(:disabled) { opacity: 1; }
+.rail-arrow:disabled { display: none; }
+@media (hover: none), (max-width: 47.99rem) {
+  .rail-arrow { display: none; }
+}
+@media (max-width: 47.99rem) {
+  .rail-list { gap: var(--space-3); }
+  .rail-list .anime-card { width: 7.25rem; }
+  // La rangée va jusqu'au bord de l'écran (on voit qu'elle défile).
+  .rail-track { margin: 0 calc(-1 * var(--gutter)); padding-left: var(--gutter); padding-right: var(--gutter); scroll-padding-inline: var(--gutter); }
+}
+.rail-skeleton { display: flex; gap: var(--space-4); overflow: hidden; margin-top: var(--space-6); }
+.rail-skeleton .skeleton { flex: none; width: var(--poster-w); aspect-ratio: 2 / 3; }
+
+// --- Carte « Reprendre » (paysage) -----------------------------------------------------------------
+.resume-card {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-3);
+  width: 20rem;
+  min-height: 10.25rem;
+  padding: var(--space-3);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  color: #fff;
+  text-decoration: none;
+  background: #111;
+}
+.resume-card:hover { color: #fff; }
+.resume-bg {
+  position: absolute;
+  inset: -24px;
+  z-index: -2;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(18px) saturate(1.2);
+  transform: scale(1.05);
+}
+.resume-bg-ph { display: block; background: linear-gradient(150deg, hsl(var(--h) 40% 34%), hsl(calc(var(--h) + 60) 40% 18%)); }
+.resume-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgb(8 10 14 / 0.8), rgb(8 10 14 / 0.38)), linear-gradient(0deg, rgb(8 10 14 / 0.7), transparent 60%);
+}
+.resume-poster { width: 4.5rem; box-shadow: 0 6px 16px rgb(0 0 0 / 0.4); }
+.resume-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.resume-kicker { font-size: var(--fs-caption); font-weight: var(--fw-bold); letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
+.resume-title {
+  font-weight: var(--fw-semibold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.resume-meta { font-size: var(--fs-caption); opacity: 0.92; margin-bottom: var(--space-1); }
+.resume-card .progress { background: rgb(255 255 255 / 0.3); }
+.resume-go {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.16);
+}
+.resume-card:hover .resume-go,
+.resume-card:focus-visible .resume-go { background: var(--accent); color: var(--on-accent); }
+@media (max-width: 47.99rem) {
+  .resume-card { width: 17rem; min-height: 8.75rem; }
+  .resume-poster { width: 3.75rem; }
+}
+
+// --- Héros (accueil et fiche) : affiche floutée en fond --------------------------------------------
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'poster text' 'poster actions';
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  gap: var(--space-6);
+  min-height: 20rem;
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  border-radius: var(--r-lg);
+  color: #fff;
+  background: #111;
+}
+.hero-bg {
+  position: absolute;
+  inset: -48px;
+  z-index: -2;
+  width: calc(100% + 96px);
+  height: calc(100% + 96px);
+  object-fit: cover;
+  filter: blur(40px) saturate(1.3);
+}
+.hero-bg-ph { display: block; background: linear-gradient(135deg, #1d3a44, #22183a); }
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgb(8 10 14 / 0.86) 0%, rgb(8 10 14 / 0.55) 60%, rgb(8 10 14 / 0.3)),
+    linear-gradient(0deg, rgb(8 10 14 / 0.6), transparent 55%);
+}
+.hero-poster { grid-area: poster; width: 11rem; box-shadow: 0 20px 40px rgb(0 0 0 / 0.5); }
+.hero-text { grid-area: text; min-width: 0; }
+.hero-cta { grid-area: actions; min-width: 0; }
+.hero-kicker { margin: 0; font-size: var(--fs-caption); font-weight: var(--fw-bold); letter-spacing: 0.08em; text-transform: uppercase; color: rgb(255 255 255 / 0.82); }
+.hero-title {
+  margin: var(--space-2) 0;
+  font-size: clamp(1.5rem, 1rem + 2.2vw, var(--fs-display));
+  line-height: 1.1;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+}
+.hero-meta { margin: 0 0 var(--space-3); color: rgb(255 255 255 / 0.88); }
+.hero-progress { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); font-size: var(--fs-small); color: rgb(255 255 255 / 0.85); }
+.hero-progress .progress { width: 10rem; max-width: 50%; background: rgb(255 255 255 / 0.3); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.hero-actions .btn { max-width: 100%; }
+.hero .btn-ghost { color: #fff; border-color: rgb(255 255 255 / 0.6); }
+.hero .btn-ghost:hover { background: rgb(255 255 255 / 0.12); color: #fff; }
+.hero-hint { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 0; font-size: var(--fs-small); color: rgb(255 255 255 / 0.8); }
+.hero-skeleton { background: var(--surface-1); }
+.hero-skeleton::before { display: none; }
+.hero-skeleton .hero-poster { aspect-ratio: 2 / 3; box-shadow: none; }
+
+@media (max-width: 47.99rem) {
+  .hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-4);
+    min-height: 0;
+    padding: var(--space-6) var(--space-4) var(--space-4);
+    margin: 0 calc(-1 * var(--gutter)) var(--space-5);
+    border-radius: 0;
+  }
+  .hero { grid-template-areas: 'poster text' 'actions actions'; row-gap: var(--space-4); }
+  .hero-poster { width: 6.5rem; }
+  .hero-actions .btn { width: 100%; }
+}
+// Texte très agrandi (le contenu fait moins de 18 rem de large, ex. téléphone à 200 %) : affiche, texte et actions les uns sous les autres.
+main { container: page / inline-size; }
+@container page (max-width: 18rem) {
+  .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'poster' 'text' 'actions'; }
+}
+
+// Surfaces toujours sombres (images floutées) : accent clair du thème sombre, quel que soit le thème.
+.hero,
+.resume-card {
+  --accent: #3ed6c2;
+  --on-accent: #06221f;
+  --focus: #ffd54a;
+}

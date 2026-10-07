@@ -1,48 +1,36 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AnimeSummary } from '../core/api-types';
 import { Poster } from './poster';
+import { isNew } from './viewing';
 
-/** Vignette d'un animé : affiche (ou visuel de remplacement), titre, année, nombre d'épisodes. */
+/** Carte d'un animé : affiche (ou couverture composée), titre sur deux lignes, année et épisodes, badge « Nouveau ». */
 @Component({
   selector: 'app-anime-card',
   imports: [RouterLink, Poster],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a class="card-link" [routerLink]="['/anime', anime().id]">
-      <app-poster class="poster" [title]="anime().title" [url]="anime().posterUrl" />
-      <span class="title">{{ anime().title }}</span>
-      <span class="meta">
-        @if (anime().year) { {{ anime().year }} · }{{ anime().episodeCount }} épisode{{ anime().episodeCount > 1 ? 's' : '' }}
+      <span class="card-art">
+        <app-poster [title]="anime().title" [url]="anime().posterUrl" />
+        @if (showNew() && fresh()) {
+          <span class="badge badge-accent card-badge">Nouveau</span>
+        }
       </span>
+      <span class="card-title">{{ anime().title }}</span>
+      <span class="card-meta num">{{ meta() }}</span>
     </a>
   `,
-  styles: `
-    :host { display: block; }
-    .card-link {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-      height: 100%;
-      padding: var(--space-2);
-      border-radius: var(--radius);
-      color: var(--color-text);
-      text-decoration: none;
-      transition: background var(--transition);
-    }
-    .card-link:hover, .card-link:focus-visible { background: var(--color-surface-raised); color: var(--color-text); }
-    .poster { margin-bottom: var(--space-1); }
-    .title {
-      font-weight: var(--font-weight-medium);
-      line-height: var(--line-height-tight);
-      overflow-wrap: anywhere;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .meta { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-  `,
+  host: { class: 'anime-card' },
 })
 export class AnimeCard {
   readonly anime = input.required<AnimeSummary>();
+  /** Badge « Nouveau » (inutile dans la rangée « Récemment ajoutés »). */
+  readonly showNew = input(true);
+  protected readonly fresh = computed(() => isNew(this.anime().lastAddedAt));
+  protected readonly meta = computed(() => {
+    const a = this.anime();
+    const eps = `${a.episodeCount} épisode${a.episodeCount > 1 ? 's' : ''}`;
+    return a.year ? `${a.year} · ${eps}` : eps;
+  });
 }

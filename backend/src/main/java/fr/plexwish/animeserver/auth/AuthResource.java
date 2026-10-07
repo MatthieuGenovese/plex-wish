@@ -95,6 +95,37 @@ public class AuthResource {
         return Response.noContent().cookie(clearCookie()).build();
     }
 
+    /** Changement de mot de passe (S4) : mot de passe actuel et nouveau ; masqués dans toString(). */
+    public record ChangePasswordRequest(@NotNull @Size(max = 200) String currentPassword, @NotNull @Size(max = 200) String newPassword) {
+        @Override
+        public String toString() {
+            return "ChangePasswordRequest[currentPassword=***, newPassword=***]";
+        }
+    }
+
+    /** Nombre de sessions fermées (les autres appareils et navigateurs). */
+    public record ChangePasswordResponse(int closedSessions) {
+    }
+
+    /**
+     * Changement de son propre mot de passe (navigateur, ARCHITECTURE §24.5). Jeton d'accès exigé ; la session de
+     * ce navigateur (cookie, envoyé ici car sous /api/auth) est gardée, toutes les autres sont fermées.
+     */
+    @POST
+    @Path("/password")
+    @io.quarkus.security.Authenticated
+    @jakarta.ws.rs.Consumes(MediaType.APPLICATION_JSON)
+    public ChangePasswordResponse changePassword(@Valid @NotNull ChangePasswordRequest request, @CookieParam(COOKIE) String cookie,
+                                                 @Context HttpServerRequest http) {
+        return new ChangePasswordResponse(passwordChange.change(Long.parseLong(jwt.getSubject()), request.currentPassword(),
+                request.newPassword(), cookie, ClientIp.of(http)));
+    }
+
+    @Inject
+    PasswordChangeService passwordChange;
+    @Inject
+    org.eclipse.microprofile.jwt.JsonWebToken jwt;
+
     TokenResponse tokens(User user) {
         return new TokenResponse(accessTokens.issue(user), "Bearer", accessTokens.lifetimeSeconds(), UserDto.of(user));
     }

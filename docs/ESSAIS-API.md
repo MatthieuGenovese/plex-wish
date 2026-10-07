@@ -96,3 +96,37 @@ Animes "sort=year&yearTo=1999"             # combiné avec un filtre
 curl -s -H "Authorization: Bearer $T" "$B/api/anime?sort=year&size=5"
 ```
 
+## S4. Changer son mot de passe : `POST /api/auth/app/password` (app) et `/api/auth/password` (navigateur)
+
+À faire avec un compte d'essai (pas l'admin). Créer le compte dans *Administration → Utilisateurs* (par ex. `essai` / `ancien-mot-de-passe`), puis :
+
+```powershell
+function Set-Password($current, $new) {
+  Invoke-RestMethod -Method Post "$B/api/auth/app/password" -Headers $H -ContentType "application/json; charset=utf-8" `
+    -Body (@{ currentPassword = $current; newPassword = $new; refreshToken = $REFRESH } | ConvertTo-Json)
+}
+function Refresh($token) { Invoke-RestMethod -Method Post "$B/api/auth/app/refresh" -ContentType "application/json" -Body (@{ refreshToken = $token } | ConvertTo-Json) }
+
+Connect-Api "essai" "ancien-mot-de-passe"; $autre = $REFRESH      # une première session (« autre appareil »)
+Connect-Api "essai" "ancien-mot-de-passe"                         # la session courante
+Set-Password "ancien-mot-de-passe" "nouveau-mot-de-passe"         # → closedSessions : 1 (et l'onglet web connecté avec ce compte, s'il y en a un)
+Refresh $REFRESH | Select-Object -ExpandProperty user              # la session courante continue
+Refresh $autre                                                     # → erreur 401 : l'autre session est fermée
+Connect-Api "essai" "nouveau-mot-de-passe"                         # le nouveau mot de passe marche
+```
+
+Erreurs attendues (le message est dans la réponse) :
+
+```powershell
+Set-Password "faux-mot-de-passe" "x-nouveau-123"     # 400 WRONG_PASSWORD (5 de suite → 429 TOO_MANY_ATTEMPTS, connexion bloquée 15 min depuis ce PC pour ce compte)
+Set-Password "nouveau-mot-de-passe" "court"          # 400 WEAK_PASSWORD
+Set-Password "nouveau-mot-de-passe" "nouveau-mot-de-passe"   # 400 SAME_PASSWORD
+```
+
+Pour voir le corps d'une erreur en PowerShell 5 : `try { … } catch { $_.ErrorDetails.Message }`.
+
+```sh
+curl -s -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"ancien-mot-de-passe","newPassword":"nouveau-mot-de-passe"}' $B/api/auth/app/password
+```
+

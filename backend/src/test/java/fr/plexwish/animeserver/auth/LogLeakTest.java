@@ -130,6 +130,22 @@ class LogLeakTest {
         given().contentType(ContentType.JSON).body(Map.of("refreshToken", appRefresh2)).post("/api/auth/app/refresh")
                 .then().statusCode(401);
 
+        // Changement de mot de passe par l'utilisateur (S4), web puis app : aucun des deux mots de passe dans les logs.
+        String third = "third-leak-password-" + System.nanoTime();
+        String fourth = "fourth-leak-password-" + System.nanoTime();
+        Response session = login(name, newPassword, newIp());
+        String sessionCookie = session.getDetailedCookie(AuthResource.COOKIE).getValue();
+        given().contentType(ContentType.JSON).auth().oauth2(session.<String>path("accessToken")).cookie(AuthResource.COOKIE, sessionCookie)
+                .body(Map.of("currentPassword", newPassword, "newPassword", third)).post("/api/auth/password").then().statusCode(200);
+        given().contentType(ContentType.JSON).auth().oauth2(session.<String>path("accessToken"))
+                .body(Map.of("currentPassword", "wrong-" + third, "newPassword", fourth)).post("/api/auth/password").then().statusCode(400);
+        Response app2 = given().contentType(ContentType.JSON).header("X-Forwarded-For", newIp())
+                .body(Map.of("login", name, "password", third, "device", "Test")).post("/api/auth/app/login");
+        String appRefresh3 = app2.path("refreshToken");
+        given().contentType(ContentType.JSON).auth().oauth2(app2.<String>path("accessToken"))
+                .body(Map.of("currentPassword", third, "newPassword", fourth, "refreshToken", appRefresh3))
+                .post("/api/auth/app/password").then().statusCode(200);
+
         // URL de lecture signée : la signature ne doit apparaître nulle part, même avec le journal d'accès.
         String exp = String.valueOf(java.time.Instant.now().plusSeconds(600).getEpochSecond());
         String sig = streamSigner.signature(424242, id, Long.parseLong(exp));
@@ -145,7 +161,8 @@ class LogLeakTest {
         assertTrue(capture.debugRecords > 0, "les logs DEBUG doivent être actifs");
         for (String secret : List.of(password, "wrong-" + password, newPassword, "x".repeat(300), access, adminAccess,
                 refresh, refresh2, RefreshTokenService.hash(refresh), "admin-test-password", "$2a$12$", "$2y$12$", sig,
-                appRefresh, appRefresh2, appAccess, RefreshTokenService.hash(appRefresh2))) {
+                appRefresh, appRefresh2, appAccess, RefreshTokenService.hash(appRefresh2), third, "wrong-" + third, fourth,
+                sessionCookie, appRefresh3, RefreshTokenService.hash(appRefresh3))) {
             assertFalse(logs.contains(secret), "secret trouvé dans les logs : " + secret.substring(0, Math.min(12, secret.length())) + "…");
         }
     }

@@ -416,6 +416,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | POST | `/api/auth/login` | public (rate limited) |
 | POST | `/api/auth/refresh` | cookie refresh |
 | POST | `/api/auth/logout` | cookie refresh |
+| POST | `/api/auth/password`, `/api/auth/app/password` | authentifié (changer son mot de passe, §24.5) |
 | GET | `/api/me` | authentifié (utile au front pour le rôle) |
 | GET | `/api/anime?sort=title\|recent\|year&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
 | GET | `/api/anime/{id}` | authentifié |
@@ -878,4 +879,12 @@ Champ `resume` = l'épisode du bouton principal de la fiche, pour l'utilisateur 
 
 ### 24.4 Tri par année : `GET /api/anime?sort=year` (S6)
 Plus récents d'abord, animés sans année à la fin, puis par titre. Se combine avec les filtres et la recherche. Autre valeur de `sort` → 400 `INVALID_SORT`. Test : `AnimeFilterTest`.
+
+### 24.5 Changer son mot de passe (S4)
+- Navigateur : `POST /api/auth/password` `{currentPassword, newPassword}` avec le jeton d'accès (`Authorization: Bearer`). Sous `/api/auth` pour que le cookie de session soit envoyé : la session de ce navigateur est gardée.
+- App : `POST /api/auth/app/password` `{currentPassword, newPassword, refreshToken}` avec le jeton d'accès ; `refreshToken` = session de l'app, gardée ; en-tête `Origin` refusé (403 `NATIVE_CLIENT_ONLY`, §5.1.1).
+- Réponse 200 `{closedSessions}` : toutes les **autres** sessions (refresh tokens) de l'utilisateur sont révoquées (`PASSWORD_RESET`), comme lors d'une réinitialisation par l'admin. Session courante absente ou non reconnue → toutes sont fermées. Les jetons d'accès déjà émis restent valides au plus 15 min (comme pour l'admin, §5.1).
+- Règles de l'admin (§5.3) : 10 caractères au moins (400 `WEAK_PASSWORD`), 72 octets au plus (400 `PASSWORD_TOO_LONG`), bcrypt ; nouveau = actuel → 400 `SAME_PASSWORD`.
+- Mot de passe actuel faux → 400 `WRONG_PASSWORD` (pas 401 : les clients rafraîchiraient la session et rejoueraient la requête). Chaque échec compte dans l'anti brute force de la connexion (§5.4, couple IP + identifiant) : au 5e, 429 `TOO_MANY_ATTEMPTS`, pour le changement **et** la connexion depuis cette IP ; les autres IP ne sont pas bloquées.
+- Journal : « Mot de passe de 'x' changé par l'utilisateur : n autre(s) session(s) fermée(s) » ; jamais de mot de passe ni de jeton (`toString()` masqués, `LogLeakTest`). Tests : `PasswordChangeTest`.
 

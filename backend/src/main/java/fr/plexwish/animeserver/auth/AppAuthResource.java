@@ -97,6 +97,33 @@ public class AppAuthResource {
         return Response.noContent().build();
     }
 
+    /** Changement de mot de passe (S4) depuis l'app : {@code refreshToken} = session de l'app, gardée. Secrets masqués. */
+    public record AppChangePasswordRequest(@NotNull @Size(max = 200) String currentPassword,
+                                           @NotNull @Size(max = 200) String newPassword,
+                                           @Size(max = 200) String refreshToken) {
+        @Override
+        public String toString() {
+            return "AppChangePasswordRequest[currentPassword=***, newPassword=***, refreshToken=***]";
+        }
+    }
+
+    /** Comme {@code POST /api/auth/password} (§24.5), pour l'app : jeton d'accès exigé, pas d'en-tête Origin. */
+    @POST
+    @Path("/password")
+    @io.quarkus.security.Authenticated
+    public AuthResource.ChangePasswordResponse changePassword(@HeaderParam("Origin") String origin,
+                                                              @Valid @NotNull AppChangePasswordRequest request,
+                                                              @Context HttpServerRequest http) {
+        refuseBrowsers(origin);
+        return new AuthResource.ChangePasswordResponse(passwordChange.change(Long.parseLong(jwt.getSubject()),
+                request.currentPassword(), request.newPassword(), request.refreshToken(), ClientIp.of(http)));
+    }
+
+    @Inject
+    PasswordChangeService passwordChange;
+    @Inject
+    org.eclipse.microprofile.jwt.JsonWebToken jwt;
+
     private static void refuseBrowsers(String origin) {
         if (origin != null) {
             LOG.warnf("Requête /api/auth/app refusée : en-tête Origin '%s' (réservé aux clients natifs)", origin);

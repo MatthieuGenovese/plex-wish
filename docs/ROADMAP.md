@@ -18,7 +18,8 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
 | 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
 | 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée ; 9.2 remux à la demande : livrée le 2026-10-06, en attente de validation (S24, NAS) |
-| 8 | Android TV | à faire, après la phase 9 |
+| P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1 audit et direction : livrée le 2026-10-07, en attente de décisions (`docs/DESIGN.md` §10) ; P2 web et P3 Android : après feu vert |
+| 8 | Android TV | à faire, après le Polish |
 | 10 | Lecteur web | à faire |
 
 ---
@@ -136,7 +137,13 @@ Constat (2026-10-06, ARCHITECTURE §20.3 et §21) : AVI et OGM réels non lisibl
 - Sous-titres image (PGS, VobSub) : non extractibles en texte ; les afficher dans un navigateur demanderait de les incruster, donc du transcodage → hors périmètre, signalés dans le rapport.
 - À la demande, mêmes limites (délai, mémoire, cache borné) : l'extraction lit tout le fichier, son coût disque est proche de celui d'un remux.
 
-## Phase 8 — Android TV (après la phase 9)
+## Phase Polish — interface web et Android (avant le déploiement sur le NAS et la phase 8)
+Objectif : une interface évidente au premier regard, au niveau des meilleures applications de streaming, sans en copier les marques ni les visuels. Contraintes : aucun changement serveur, API ou sécurité sans accord ; tests verts ; aucune ressource externe au runtime (polices et icônes embarquées, licences listées) ; français ; accessibilité (contraste, texte agrandi, TalkBack, clavier, cibles de 48 px) ; tout ce qui est dessiné sur Android reste utilisable à la télécommande ; chaque dépendance nouvelle ou mise à jour majeure est proposée avant d'être installée.
+- **P1 — audit et direction** (livrée, `docs/DESIGN.md`) : inventaire et parcours, audit, propositions par parcours, direction visuelle et guide de style (`docs/design/guide-de-style.html`), équivalent Compose, catalogue de démonstration (`scripts/demo-catalog.sh`), dépendances proposées, changements serveur à valider, plan de P2 et P3. Arrêt, décisions.
+- **P2 — web** (après feu vert) : composants communs, accueil, recherche et filtres, fiche, comédien, connexion et compte, admin ; téléphone d'abord ; mesures avant/après sur le catalogue de démonstration ; tests d'accessibilité automatiques ; captures avant/après. Arrêt.
+- **P3 — Android** (après feu vert) : thème, composants, accueil, bibliothèque, fiche, comédien, lecteur (commandes, Préparation, erreurs), connexion ; taille de texte système, mode sombre, télécommande ; tests et scénario manuel. Arrêt.
+
+## Phase 8 — Android TV (après le Polish)
 - Périmètre à préciser au démarrage de la phase. Base prévue : un paquet `ui/tv` (écrans et navigation propres) sur les mêmes ViewModels et la même couche `data` que le téléphone (ARCHITECTURE §20).
 
 ## Phase 10 — Lecteur web

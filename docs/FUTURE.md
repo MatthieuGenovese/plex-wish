@@ -36,6 +36,9 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Fusion manuelle de deux fiches « comédien » si AniList en a en double (rare).
 - Rafraîchissement périodique des fiches appariées (synopsis complétés, nouvelles affiches) : aujourd'hui, uniquement via « Relancer » dans l'admin.
 
-## Polish de l'interface web
-Remarques de design du propriétaire du projet, à traiter ensemble dans une passe dédiée (les design tokens de `web/src/styles.scss` permettent de changer couleurs, espacements et typographie sans toucher aux composants).
-- *(à compléter)*
+## Interface (après la phase Polish, voir docs/DESIGN.md)
+- « Mes animés » : liste personnelle (ajouter / retirer), en plus de « Continuer à regarder ».
+- Vignettes d'épisodes extraites par ffmpeg sur le NAS (charge et stockage à mesurer).
+- Connexion de l'app par QR code ou lien d'invitation (adresse du serveur et identifiant préremplis).
+- Saut automatique à l'épisode suivant (voir « Lecture »).
+- Mise à jour de Media3 (1.5.1 → récente) et commandes du lecteur en Compose (`media3-ui-compose`), avec un nouveau test complet sur le S24 (AVI, OGM, sous-titres).

@@ -88,7 +88,8 @@ public class LibraryResource {
 
     /**
      * Animés visibles, paginés. {@code sort=title} : ordre alphabétique (bibliothèque) ; {@code sort=recent} :
-     * derniers ajouts d'abord (accueil). {@code q} : recherche dans le titre, sans tenir compte de la casse
+     * derniers ajouts d'abord (accueil) ; {@code sort=year} : plus récents d'abord, sans année à la
+     * fin (ARCHITECTURE §24.4). {@code q} : recherche dans le titre, sans tenir compte de la casse
      * ni des accents (« chunibyo » trouve « Chûnibyô »).
      * Filtres (ARCHITECTURE §24.2), cumulables : {@code yearFrom} / {@code yearTo} (animés sans année exclus) ;
      * {@code watch} = {@code unseen} (aucun épisode commencé), {@code inProgress} (commencé, pas tout vu),
@@ -109,7 +110,8 @@ public class LibraryResource {
         String order = switch (sort) {
             case "recent" -> "last_added DESC, lower(title), id";
             case "title" -> "lower(title), id";
-            default -> throw new ApiException(400, "INVALID_SORT", "sort doit valoir 'title' ou 'recent'");
+            case "year" -> "year DESC NULLS LAST, lower(title), id";
+            default -> throw new ApiException(400, "INVALID_SORT", "sort doit valoir 'title', 'recent' ou 'year'");
         };
         if (watch != null && !WATCH.contains(watch)) {
             throw new ApiException(400, "INVALID_FILTER", "watch doit valoir 'unseen', 'inProgress' ou 'seen'");

@@ -85,3 +85,14 @@ Attendu : `START` et `REWATCH` pointent sur le premier épisode (saison 1, sinon
 curl -s -H "Authorization: Bearer $T" "$B/api/anime/1000624"
 ```
 
+## S6. Tri par année : `GET /api/anime?sort=year`
+
+```powershell
+Animes "sort=year"                         # plus récents d'abord ; les animés sans année à la fin
+Animes "sort=year&yearTo=1999"             # combiné avec un filtre
+```
+
+```sh
+curl -s -H "Authorization: Bearer $T" "$B/api/anime?sort=year&size=5"
+```
+

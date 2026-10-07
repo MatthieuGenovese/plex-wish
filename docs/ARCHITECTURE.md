@@ -417,7 +417,7 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | POST | `/api/auth/refresh` | cookie refresh |
 | POST | `/api/auth/logout` | cookie refresh |
 | GET | `/api/me` | authentifié (utile au front pour le rôle) |
-| GET | `/api/anime?sort=recent\|title&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
+| GET | `/api/anime?sort=title\|recent\|year&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
 | GET | `/api/anime/{id}` | authentifié |
 | GET | `/api/anime/{id}/seasons` | authentifié |
 | GET | `/api/seasons/{id}/episodes` | authentifié |
@@ -875,4 +875,7 @@ Champ `resume` = l'épisode du bouton principal de la fiche, pour l'utilisateur 
 - `RESUME` : épisode commencé (reprendre à `positionSeconds`) ; `NEXT` : épisode suivant du dernier terminé ;
 - `START` : rien regardé → premier épisode (saison 1, sinon Spéciaux) ; `REWATCH` : tout vu → premier épisode.
 - Toujours présent (un animé visible a au moins un épisode). Les autres champs de la fiche sont inchangés. Tests : `UpNextTest`.
+
+### 24.4 Tri par année : `GET /api/anime?sort=year` (S6)
+Plus récents d'abord, animés sans année à la fin, puis par titre. Se combine avec les filtres et la recherche. Autre valeur de `sort` → 400 `INVALID_SORT`. Test : `AnimeFilterTest`.
 

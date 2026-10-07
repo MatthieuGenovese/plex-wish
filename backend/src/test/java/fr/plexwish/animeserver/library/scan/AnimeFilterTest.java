@@ -135,4 +135,13 @@ class AnimeFilterTest {
         // Sans filtre : inchangé (4 animés).
         as(user).get("/api/anime").then().body("total", equalTo(4));
     }
+
+    @Test
+    void sortByYearNewestFirstWithoutYearLast() {
+        as(user).queryParam("sort", "year").get("/api/anime").then().statusCode(200)
+                .body("items.title", contains("Gamma", "Beta", "Alpha", "Delta"));
+        as(user).queryParam("sort", "year").queryParam("yearTo", 2010).get("/api/anime").then()
+                .body("items.title", contains("Beta", "Alpha"));
+        as(user).queryParam("sort", "annee").get("/api/anime").then().statusCode(400).body("error", equalTo("INVALID_SORT"));
+    }
 }

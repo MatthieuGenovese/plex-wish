@@ -49,7 +49,11 @@ public class MetadataWorker extends BackgroundLoop {
 
     @Override
     protected Outcome step() throws Exception {
-        return switch (service.processNext()) {
+        MetadataService.Step step = service.processNext();
+        if (step instanceof MetadataService.Idle) {
+            step = service.backfillGenres(); // rien à apparier : genres des fiches plus anciennes (§24.6)
+        }
+        return switch (step) {
             case MetadataService.Done d -> new Worked();
             case MetadataService.Idle i -> new Idle(config.pollInterval());
             case MetadataService.Unavailable u -> new Pause(u.retryAfter());

@@ -26,10 +26,13 @@ public interface MetadataProvider {
     /** Fiche par identifiant du fournisseur (correction manuelle). */
     Optional<Candidate> byId(String providerId) throws ProviderUnavailableException;
 
-    /** Une fiche candidate, telle que renvoyée par le fournisseur. */
+    /** Genres de fiches déjà connues (par lots, ARCHITECTURE §24.6) : identifiant → genres. */
+    java.util.Map<String, List<String>> genres(List<String> providerIds) throws ProviderUnavailableException;
+
+    /** Une fiche candidate, telle que renvoyée par le fournisseur. {@code genres} : genres du fournisseur (jamais null). */
     record Candidate(String providerId, String romaji, String english, String nativeTitle, List<String> synonyms,
                      Integer year, String format, Integer episodes, String synopsis,
-                     String posterUrl, String posterLargeUrl, String siteUrl) {
+                     String posterUrl, String posterLargeUrl, String siteUrl, List<String> genres) {
 
         /** Tous les titres comparables (le titre natif japonais n'est pas comparable à un nom de dossier). */
         public List<String> titles() {

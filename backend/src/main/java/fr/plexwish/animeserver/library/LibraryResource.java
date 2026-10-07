@@ -39,7 +39,15 @@ public class LibraryResource {
     public record AnimeDetail(Long id, String title, String alternativeTitle, String synopsis, String synopsisLanguage,
                               String posterUrl, String posterLargeUrl, Integer year, String metadataSource,
                               String metadataUrl, List<SeasonDto> seasons, String synopsisSource, String frenchTitle,
-                              String tmdbUrl, Resume resume) {
+                              String tmdbUrl, Resume resume, List<GenreDto> genres) {
+    }
+
+    /** Genre : valeur AniList (paramètre {@code genre} de la liste) et libellé français (§24.6). */
+    public record GenreDto(String genre, String label) {
+    }
+
+    /** Genre et nombre d'animés visibles qui l'ont. */
+    public record GenreCount(String genre, String label, long animeCount) {
     }
 
     /**
@@ -95,7 +103,7 @@ public class LibraryResource {
      * {@code watch} = {@code unseen} (aucun épisode commencé), {@code inProgress} (commencé, pas tout vu),
      * {@code seen} (tous les épisodes vus), d'après la progression de l'utilisateur ; {@code browser=true} : tous les
      * épisodes analysés et lisibles dans un navigateur, {@code browser=false} : au moins un qui ne l'est pas (ou pas
-     * encore analysé).
+     * encore analysé) ; {@code genre} : genre AniList (valeur de {@code GET /api/genres}, §24.6).
      */
     @GET
     @Path("/anime")
@@ -106,7 +114,8 @@ public class LibraryResource {
                           @QueryParam("yearFrom") @Min(1900) @Max(2100) Integer yearFrom,
                           @QueryParam("yearTo") @Min(1900) @Max(2100) Integer yearTo,
                           @QueryParam("watch") String watch,
-                          @QueryParam("browser") Boolean browser) {
+                          @QueryParam("browser") Boolean browser,
+                          @QueryParam("genre") @jakarta.validation.constraints.Size(max = 40) String genre) {
         String order = switch (sort) {
             case "recent" -> "last_added DESC, lower(title), id";
             case "title" -> "lower(title), id";
@@ -154,6 +163,10 @@ public class LibraryResource {
         if (yearTo != null) {
             where.add("a.year <= :yearTo");
             params.put("yearTo", yearTo);
+        }
+        if (genre != null && !genre.isBlank()) {
+            where.add("EXISTS (SELECT 1 FROM anime_genre g WHERE g.anime_id = a.id AND g.genre = :genre)");
+            params.put("genre", genre.trim());
         }
         if (!where.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", where));
@@ -236,7 +249,31 @@ public class LibraryResource {
                 frSynopsis != null ? (String) tmdb[2] : a.synopsisLanguage, poster == null ? null : poster.small(),
                 poster == null ? null : poster.large(), a.year, anilist,
                 a.metadataUrl, seasons, frSynopsis != null ? "TMDB" : a.synopsis != null ? anilist : null, frTitle,
-                frSynopsis != null || frTitle != null ? tmdbUrl : null, resume);
+                frSynopsis != null || frTitle != null ? tmdbUrl : null, resume, genresOf(id));
+    }
+
+    private List<GenreDto> genresOf(long animeId) {
+        @SuppressWarnings("unchecked")
+        List<String> list = em.createNativeQuery("SELECT genre FROM anime_genre WHERE anime_id = ?1 ORDER BY genre")
+                .setParameter(1, animeId).getResultList();
+        return list.stream().map(g -> new GenreDto(g, Genres.label(g)))
+                .sorted(java.util.Comparator.comparing(GenreDto::label, java.text.Collator.getInstance(java.util.Locale.FRENCH)))
+                .toList();
+    }
+
+    /** Genres présents dans la bibliothèque (animés visibles), par libellé français (§24.6). */
+    @GET
+    @Path("/genres")
+    public List<GenreCount> genres() {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT g.genre, count(DISTINCT g.anime_id) FROM anime_genre g
+                WHERE EXISTS (SELECT 1 FROM season s JOIN episode e ON e.season_id = s.id
+                              JOIN media_file m ON m.id = e.media_file_id AND m.available WHERE s.anime_id = g.anime_id)
+                GROUP BY g.genre""").getResultList();
+        return rows.stream().map(r -> new GenreCount((String) r[0], Genres.label((String) r[0]), ((Number) r[1]).longValue()))
+                .sorted(java.util.Comparator.comparing(GenreCount::label, java.text.Collator.getInstance(java.util.Locale.FRENCH)))
+                .toList();
     }
 
     /** Saisons dans l'ordre 1, 2, 3… puis Spéciaux (saison 0) en dernier. */

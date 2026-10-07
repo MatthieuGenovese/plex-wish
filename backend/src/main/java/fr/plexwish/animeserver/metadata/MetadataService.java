@@ -210,6 +210,80 @@ public class MetadataService {
             st.setLong(11, animeId);
             st.executeUpdate();
         }
+        saveGenres(c, animeId, candidate == null ? null : candidate.genres());
+    }
+
+    /** Remplace les genres d'un animé ; {@code genres} null = fiche retirée (genres effacés, à récupérer plus tard). */
+    void saveGenres(Connection c, long animeId, List<String> genres) throws SQLException {
+        try (PreparedStatement del = c.prepareStatement("DELETE FROM anime_genre WHERE anime_id = ?")) {
+            del.setLong(1, animeId);
+            del.executeUpdate();
+        }
+        if (genres != null && !genres.isEmpty()) {
+            try (PreparedStatement ins = c.prepareStatement(
+                    "INSERT INTO anime_genre (anime_id, genre) VALUES (?, ?) ON CONFLICT DO NOTHING")) {
+                for (String g : genres) {
+                    ins.setLong(1, animeId);
+                    ins.setString(2, g);
+                    ins.addBatch();
+                }
+                ins.executeBatch();
+            }
+        }
+        try (PreparedStatement st = c.prepareStatement("UPDATE anime SET genres_fetched_at = ? WHERE id = ?")) {
+            st.setObject(1, genres == null ? null : OffsetDateTime.now(clock));
+            st.setLong(2, animeId);
+            st.executeUpdate();
+        }
+    }
+
+    /**
+     * Rattrapage des genres pour les fiches appariées avant leur ajout (§24.6) : 50 fiches par requête AniList
+     * (~26 requêtes pour 1 300 animés, même limiteur de débit). {@code Done} si un lot a été traité, {@code Idle}
+     * s'il n'y a plus rien à faire.
+     */
+    public Step backfillGenres() throws SQLException {
+        Map<String, Long> batch = new LinkedHashMap<>();
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement st = c.prepareStatement("""
+                     SELECT id, metadata_provider_id FROM anime
+                     WHERE metadata_provider = ? AND metadata_provider_id IS NOT NULL AND genres_fetched_at IS NULL
+                     ORDER BY id LIMIT 50""")) {
+            st.setString(1, provider.id());
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    batch.put(rs.getString(2), rs.getLong(1));
+                }
+            }
+        }
+        if (batch.isEmpty()) {
+            return new Idle();
+        }
+        Map<String, List<String>> found;
+        try {
+            found = provider.genres(List.copyOf(batch.keySet()));
+        } catch (ProviderUnavailableException e) {
+            Duration wait = e.retryAfter().orElse(config.unavailablePause());
+            lastUnavailable = e.getMessage();
+            pausedUntil = clock.instant().plus(wait);
+            LOG.infof("Genres : %s, nouvel essai dans %d s", e.getMessage(), wait.toSeconds());
+            return new Unavailable(e.getMessage(), wait);
+        }
+        try (Connection c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                for (var e : batch.entrySet()) {
+                    // Fiche absente de la réponse (supprimée chez AniList) : aucun genre, mais plus redemandée.
+                    saveGenres(c, e.getValue(), found.getOrDefault(e.getKey(), List.of()));
+                }
+                c.commit();
+            } catch (SQLException | RuntimeException ex) {
+                c.rollback();
+                throw ex;
+            }
+        }
+        LOG.infof("Genres : %d fiche(s) complétée(s)", batch.size());
+        return new Done(batch.values().iterator().next(), "GENRES");
     }
 
     /** Erreur propre à cet animé (réponse inattendue…) : nouvel essai plus tard, puis abandon en « non apparié ». */

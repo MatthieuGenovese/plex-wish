@@ -144,4 +144,23 @@ class AnimeFilterTest {
                 .body("items.title", contains("Beta", "Alpha"));
         as(user).queryParam("sort", "annee").get("/api/anime").then().statusCode(400).body("error", equalTo("INVALID_SORT"));
     }
+
+    @Test
+    void genresFilterAndList() throws Exception {
+        sql("""
+                INSERT INTO anime_genre (anime_id, genre)
+                SELECT id, g FROM anime, unnest(CASE title WHEN 'Alpha' THEN ARRAY['Action', 'Comedy'] WHEN 'Beta' THEN ARRAY['Comedy']
+                                                         WHEN 'Delta' THEN ARRAY['Slice of Life'] ELSE ARRAY[]::text[] END) g""");
+        as(user).queryParam("genre", "Comedy").get("/api/anime").then().statusCode(200)
+                .body("total", equalTo(2)).body("items.title", contains("Alpha", "Beta"));
+        as(user).queryParam("genre", "Comedy").queryParam("yearFrom", 2000).get("/api/anime").then()
+                .body("items.title", contains("Beta"));
+        as(user).queryParam("genre", "Western").get("/api/anime").then().statusCode(200).body("total", equalTo(0));
+        as(user).queryParam("genre", "x".repeat(41)).get("/api/anime").then().statusCode(400);
+        as(user).get("/api/genres").then().statusCode(200)
+                .body("label", contains("Action", "Comédie", "Tranche de vie"))
+                .body("genre", contains("Action", "Comedy", "Slice of Life"))
+                .body("animeCount", contains(1, 2, 1));
+        given().get("/api/genres").then().statusCode(401);
+    }
 }

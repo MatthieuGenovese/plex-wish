@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TitleMatcherTest {
 
     static Candidate c(String id, String romaji, String english, Integer year, String format, Integer episodes, String... synonyms) {
-        return new Candidate(id, romaji, english, null, List.of(synonyms), year, format, episodes, null, null, null, null);
+        return new Candidate(id, romaji, english, null, List.of(synonyms), year, format, episodes, null, null, null, null, List.of());
     }
 
     static Decision decide(String folder, Integer episodes, Candidate... candidates) {

@@ -418,7 +418,8 @@ Sur `library-sample.txt`, **chaînes uniquement, aucun vrai fichier** (certains 
 | POST | `/api/auth/logout` | cookie refresh |
 | POST | `/api/auth/password`, `/api/auth/app/password` | authentifié (changer son mot de passe, §24.5) |
 | GET | `/api/me` | authentifié (utile au front pour le rôle) |
-| GET | `/api/anime?sort=title\|recent\|year&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
+| GET | `/api/genres` | authentifié (genres présents, libellés français, §24.6) |
+| GET | `/api/anime?sort=title\|recent\|year&q=&page=&size=&yearFrom=&yearTo=&watch=&browser=&genre=` | authentifié (paginé : `{total, page, size, items}` ; filtres §24.2) |
 | GET | `/api/anime/{id}` | authentifié |
 | GET | `/api/anime/{id}/seasons` | authentifié |
 | GET | `/api/seasons/{id}/episodes` | authentifié |
@@ -887,4 +888,12 @@ Plus récents d'abord, animés sans année à la fin, puis par titre. Se combine
 - Règles de l'admin (§5.3) : 10 caractères au moins (400 `WEAK_PASSWORD`), 72 octets au plus (400 `PASSWORD_TOO_LONG`), bcrypt ; nouveau = actuel → 400 `SAME_PASSWORD`.
 - Mot de passe actuel faux → 400 `WRONG_PASSWORD` (pas 401 : les clients rafraîchiraient la session et rejoueraient la requête). Chaque échec compte dans l'anti brute force de la connexion (§5.4, couple IP + identifiant) : au 5e, 429 `TOO_MANY_ATTEMPTS`, pour le changement **et** la connexion depuis cette IP ; les autres IP ne sont pas bloquées.
 - Journal : « Mot de passe de 'x' changé par l'utilisateur : n autre(s) session(s) fermée(s) » ; jamais de mot de passe ni de jeton (`toString()` masqués, `LogLeakTest`). Tests : `PasswordChangeTest`.
+
+### 24.6 Genres AniList (S3, dernier commit de P2.0, abandonnable)
+- **Source** : le champ `genres` d'AniList, ajouté à la requête de fiche déjà faite (aucun appel en plus pour les nouveaux appariements). Stockés tels quels (anglais) dans `anime_genre` (V15), remplacés à chaque fiche appliquée (automatique ou manuelle), effacés si la fiche est retirée.
+- **Rattrapage** des fiches appariées avant cette version (`anime.genres_fetched_at` NULL) : quand il n'y a plus rien à apparier, la tâche des métadonnées demande les genres **par lots de 50** (`Page(media(id_in: …)) { id genres }`), avec le même limiteur de débit (30 requêtes/min) : ~26 requêtes pour 1 300 animés, une seule fois. Une fiche absente de la réponse est notée sans genre. Conditions d'AniList respectées : pas de collecte en masse au-delà des fiches déjà appariées.
+- **API** : `GET /api/genres` → `[{genre, label, animeCount}]` (animés visibles, tri par libellé français) ; `GET /api/anime?genre=Comedy` (valeur `genre`, 40 caractères au plus ; inconnu → liste vide) ; `genres: [{genre, label}]` dans `GET /api/anime/{id}`.
+- **Libellés** : `library/Genres` (Comédie, Tranche de vie, Science-fiction…) ; un genre inconnu garde son nom anglais.
+- **Abandon** : annuler le commit S3 retire la colonne de l'API et le rattrapage ; la migration V15 resterait appliquée sur une base qui l'a déjà reçue (table et colonne inutilisées, sans effet).
+- Tests : `MetadataTest` (genres de la fiche, rattrapage en un appel), `AnimeFilterTest` (filtre, liste, libellés).
 

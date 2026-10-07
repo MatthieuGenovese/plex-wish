@@ -85,6 +85,7 @@ public final class FakeAniList {
         cover.put("large", "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx" + id + ".jpg");
         cover.put("extraLarge", "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx" + id + ".jpg");
         m.put("siteUrl", "https://anilist.co/anime/" + id);
+        m.putArray("genres").add("Adventure").add("Fantasy");
         return m;
     }
 
@@ -125,12 +126,13 @@ public final class FakeAniList {
         JsonNode body = JSON.readTree(ex.getRequestBody().readAllBytes());
         JsonNode vars = body.path("variables");
         lastQuery = body.path("query").asText();
-        String key = vars.has("search") ? "search:" + vars.get("search").asText() : "id:" + vars.path("id").asText();
+        String key = vars.has("search") ? "search:" + vars.get("search").asText()
+                : vars.has("ids") ? "ids:" + vars.get("ids") : "id:" + vars.path("id").asText();
         log.add(key);
         Forced f;
         synchronized (this) {
             f = always != null ? always : forced.poll();
-            if (f == null && !vars.has("search")) {
+            if (f == null && !vars.has("search") && !vars.has("ids")) {
                 f = failById.get(vars.path("id").asInt());
             }
         }
@@ -143,7 +145,21 @@ public final class FakeAniList {
         ex.getResponseHeaders().add("X-RateLimit-Remaining", "29");
         ObjectNode response = JSON.createObjectNode();
         ObjectNode data = response.putObject("data");
-        if (vars.has("search")) {
+        if (vars.has("ids")) {
+            // Genres par lots (rattrapage, §24.6) : seulement id et genres, comme la vraie requête.
+            ArrayNode media = data.putObject("Page").putArray("media");
+            synchronized (this) {
+                for (JsonNode id : vars.get("ids")) {
+                    ObjectNode m = byId.get(id.asInt());
+                    if (m != null) {
+                        ObjectNode small = media.addObject();
+                        small.put("id", id.asInt());
+                        small.set("genres", m.get("genres"));
+                    }
+                }
+            }
+            send(ex, 200, JSON.writeValueAsString(response));
+        } else if (vars.has("search")) {
             ArrayNode media = data.putObject("Page").putArray("media");
             synchronized (this) {
                 searches.getOrDefault(vars.get("search").asText(), List.of()).forEach(media::add);

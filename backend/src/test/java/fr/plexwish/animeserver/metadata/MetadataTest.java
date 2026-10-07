@@ -321,4 +321,39 @@ class MetadataTest {
         put("Hunter x Hunter", "abc", null).statusCode(400);
         admin().body("{\"providerId\":\"1\"}").put("/api/admin/anime/999999/metadata").then().statusCode(404);
     }
+
+    @Test
+    void genresAreStoredWithTheSheetAndBackfilledInBatches() throws Exception {
+        runUntilIdle();
+        long frieren = animeId("Sousou no Frieren");
+        String token = adminToken();
+        given().auth().oauth2(token).get("/api/anime/" + frieren).then()
+                .body("genres.genre", org.hamcrest.Matchers.contains("Adventure", "Fantasy"))
+                .body("genres.label", org.hamcrest.Matchers.contains("Aventure", "Fantasy"));
+        given().auth().oauth2(token).get("/api/anime/" + animeId("Hunter x Hunter")).then()
+                .body("genres", org.hamcrest.Matchers.empty());
+        assertInstanceOf(MetadataService.Idle.class, service.backfillGenres(), "rien à rattraper après un appariement");
+
+        // Fiches appariées avant l'ajout des genres : rattrapées par un seul appel groupé.
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
+            st.execute("DELETE FROM anime_genre");
+            st.execute("UPDATE anime SET genres_fetched_at = NULL");
+        }
+        fake.onId(patched());
+        int before = fake.requests().size();
+        assertInstanceOf(MetadataService.Done.class, service.backfillGenres());
+        List<String> calls = fake.requests().subList(before, fake.requests().size());
+        assertEquals(1, calls.size(), calls.toString());
+        assertTrue(calls.get(0).startsWith("ids:"), calls.toString());
+        given().auth().oauth2(token).get("/api/anime/" + frieren).then()
+                .body("genres.label", org.hamcrest.Matchers.contains("Drame", "Mystère", "Tranche de vie"));
+        assertInstanceOf(MetadataService.Idle.class, service.backfillGenres());
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode patched() {
+        com.fasterxml.jackson.databind.node.ObjectNode m =
+                FakeAniList.media(154587, "Sousou no Frieren", "Frieren: Beyond Journey's End", 2023, "TV", 28);
+        m.putArray("genres").add("Drama").add("Slice of Life").add("Mystery");
+        return m;
+    }
 }

@@ -346,6 +346,13 @@ END $$;""")
     w(",\n".join("(" + ", ".join(q(x) for x in p) + "::timestamptz)" for p in uniq.values()))
     w(") AS v(episode_id, position_seconds, duration_seconds, completed, updated_at)")
     w("ON CONFLICT (user_id, episode_id) DO NOTHING;")
+    # Genres AniList (S3) : 1 à 3 par animé ayant une fiche, valeurs AniList (anglais), comme en vrai.
+    GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery",
+              "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"]
+    genre_rows = [(a[0], g) for a in animes if a[6] for g in R.sample(GENRES, R.randint(1, 3))]
+    insert("anime_genre", ["anime_id", "genre"], genre_rows, overriding=False)
+    w("UPDATE anime SET genres_fetched_at = now() WHERE id >= %d AND metadata_provider IS NOT NULL;" % ID_BASE)
+
     # Analyse ffprobe simulée (la vraie tâche est coupée dans la stack de démonstration) : MP4 lisible dans un
     # navigateur, MKV et AVI non ; AVI à remuxer pour Android. Sert au filtre « lisible dans le navigateur ».
     w("""INSERT INTO media_probe (media_file_id, probed_size, probed_modified, status, container, android_class,

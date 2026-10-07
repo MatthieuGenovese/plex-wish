@@ -130,3 +130,17 @@ curl -s -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json
   -d '{"currentPassword":"ancien-mot-de-passe","newPassword":"nouveau-mot-de-passe"}' $B/api/auth/app/password
 ```
 
+## S3. Genres : `GET /api/genres`, `GET /api/anime?genre=`, `genres` de la fiche
+
+Sur la démo, les genres sont inventés (1 à 3 par animé ayant une fiche). Sur la stack normale, ils arrivent avec les fiches AniList ; pour les fiches déjà appariées, la tâche des métadonnées les rattrape par lots de 50 quand elle n'a plus rien à apparier (journal du backend : « Genres : 50 fiche(s) complétée(s) »).
+
+```powershell
+Api "/api/genres" | Format-Table label, genre, animeCount        # libellés français, nombre d'animés
+Animes "genre=Slice%20of%20Life&sort=year"                       # filtre (valeur « genre », pas le libellé)
+(Api "/api/anime/1000624").genres | Format-Table genre, label     # genres de la fiche
+```
+
+```sh
+curl -s -H "Authorization: Bearer $T" "$B/api/genres"
+```
+

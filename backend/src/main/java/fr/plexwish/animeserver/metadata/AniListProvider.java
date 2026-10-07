@@ -33,7 +33,9 @@ public class AniListProvider implements MetadataProvider {
 
     private static final String FIELDS = """
             id title { romaji english native } synonyms format episodes seasonYear startDate { year }
-            description(asHtml: false) coverImage { large extraLarge } siteUrl""";
+            description(asHtml: false) coverImage { large extraLarge } siteUrl genres""";
+    /** Genres de fiches déjà appariées, par lots (rattrapage, §24.6) : une requête pour 50 fiches. */
+    static final String GENRES = "query ($ids: [Int]) { Page(page: 1, perPage: 50) { media(id_in: $ids, type: ANIME) { id genres } } }";
     /**
      * Recherche automatique sans les fiches pour adultes (isAdult) : sinon un titre court comme « Mamahaha » est
      * apparié avec un hentai homonyme (cas réel). Une fiche donnée par son identifiant (admin) reste possible.
@@ -129,6 +131,44 @@ public class AniListProvider implements MetadataProvider {
                 ? Optional.empty() : Optional.of(data.path("Media"));
     }
 
+    /** Genres de plusieurs fiches (50 au plus) : identifiant → genres ; une fiche absente de la réponse n'y est pas. */
+    @Override
+    public Map<String, List<String>> genres(List<String> providerIds) throws ProviderUnavailableException {
+        if (providerIds.size() > 50) {
+            throw new IllegalArgumentException("50 fiches au plus par requête");
+        }
+        List<Integer> ids = new ArrayList<>();
+        for (String id : providerIds) {
+            try {
+                ids.add(Integer.parseInt(id));
+            } catch (NumberFormatException ignored) {
+                // identifiant invalide : pas de genres
+            }
+        }
+        Map<String, List<String>> out = new java.util.HashMap<>();
+        if (ids.isEmpty()) {
+            return out;
+        }
+        JsonNode data = call(GENRES, Map.of("ids", ids));
+        if (data != null) {
+            for (JsonNode m : data.path("Page").path("media")) {
+                out.put(m.path("id").asText(), genreList(m.path("genres")));
+            }
+        }
+        return out;
+    }
+
+    private static List<String> genreList(JsonNode n) {
+        List<String> out = new ArrayList<>();
+        n.forEach(g -> {
+            String v = g.asText().trim();
+            if (!v.isEmpty() && v.length() <= 40 && !out.contains(v)) {
+                out.add(v);
+            }
+        });
+        return out;
+    }
+
     /** Un appel GraphQL ; null si la fiche n'existe pas (404). */
     private JsonNode call(String query, Map<String, Object> variables) throws ProviderUnavailableException {
         HttpResponse<String> response;
@@ -207,7 +247,8 @@ public class AniListProvider implements MetadataProvider {
                 text(m.path("title").path("native")), synonyms, year, text(m.path("format")),
                 integer(m.path("episodes")),
                 cleanSynopsis(text(m.path("description"))),
-                text(m.path("coverImage").path("large")), text(m.path("coverImage").path("extraLarge")), text(m.path("siteUrl")));
+                text(m.path("coverImage").path("large")), text(m.path("coverImage").path("extraLarge")), text(m.path("siteUrl")),
+                genreList(m.path("genres")));
     }
 
     private static Integer integer(JsonNode n) {

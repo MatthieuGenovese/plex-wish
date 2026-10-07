@@ -1,40 +1,63 @@
-import { Component } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Component, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter, map } from 'rxjs';
 
+/** Sections de l'administration (chemin relatif → libellé). */
+export const ADMIN_SECTIONS: { path: string; label: string }[] = [
+  { path: 'scan', label: 'Scan' },
+  { path: 'report', label: 'Rapport' },
+  { path: 'corrections', label: 'Corrections' },
+  { path: 'metadata', label: 'Métadonnées' },
+  { path: 'tmdb', label: 'Synopsis français' },
+  { path: 'posters', label: 'Affiches' },
+  { path: 'cast', label: 'Distribution' },
+  { path: 'media', label: 'Médias' },
+  { path: 'users', label: 'Utilisateurs' },
+];
+
+/**
+ * Administration : onglets sur grand écran, liste déroulante sur téléphone (neuf onglets prenaient la moitié
+ * de l'écran). Les deux sont dans le DOM, le CSS n'en montre qu'un.
+ */
 @Component({
   selector: 'app-admin',
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
-    <h1>Administration</h1>
-    <nav aria-label="Administration" class="tabs">
+    <div class="admin-head">
+      <h1>Administration</h1>
+      <div class="admin-picker">
+        <label for="admin-section">Section</label>
+        <select id="admin-section" (change)="go($event)">
+          @for (s of sections; track s.path) {
+            <option [value]="s.path" [selected]="current() === s.path">{{ s.label }}</option>
+          }
+        </select>
+      </div>
+    </div>
+    <nav aria-label="Administration" class="tabs admin-tabs">
       <ul>
-        <li><a routerLink="scan" routerLinkActive="active" ariaCurrentWhenActive="page">Scan</a></li>
-        <li><a routerLink="report" routerLinkActive="active" ariaCurrentWhenActive="page">Rapport</a></li>
-        <li><a routerLink="corrections" routerLinkActive="active" ariaCurrentWhenActive="page">Corrections</a></li>
-        <li><a routerLink="metadata" routerLinkActive="active" ariaCurrentWhenActive="page">Métadonnées</a></li>
-        <li><a routerLink="tmdb" routerLinkActive="active" ariaCurrentWhenActive="page">Synopsis français</a></li>
-        <li><a routerLink="posters" routerLinkActive="active" ariaCurrentWhenActive="page">Affiches</a></li>
-        <li><a routerLink="cast" routerLinkActive="active" ariaCurrentWhenActive="page">Distribution</a></li>
-        <li><a routerLink="media" routerLinkActive="active" ariaCurrentWhenActive="page">Médias</a></li>
-        <li><a routerLink="users" routerLinkActive="active" ariaCurrentWhenActive="page">Utilisateurs</a></li>
+        @for (s of sections; track s.path) {
+          <li><a [routerLink]="s.path" routerLinkActive="active" ariaCurrentWhenActive="page">{{ s.label }}</a></li>
+        }
       </ul>
     </nav>
     <router-outlet />
   `,
-  styles: `
-    .tabs ul {
-      display: flex; flex-wrap: wrap; gap: var(--space-1);
-      margin: 0 0 var(--space-5); padding: 0; list-style: none;
-      border-bottom: 1px solid var(--color-border);
-    }
-    .tabs a {
-      display: inline-flex; align-items: center;
-      min-height: var(--target-size); padding: 0 var(--space-4);
-      color: var(--color-text-muted); text-decoration: none;
-      border-radius: var(--radius) var(--radius) 0 0;
-    }
-    .tabs a:hover { color: var(--color-text); background: var(--color-surface-raised); }
-    .tabs a.active { color: var(--color-text); box-shadow: inset 0 -3px 0 var(--color-accent); }
-  `,
 })
-export class AdminPage {}
+export class AdminPage {
+  private readonly router = inject(Router);
+  protected readonly sections = ADMIN_SECTIONS;
+  protected readonly current = toSignal(
+    this.router.events.pipe(filter((e) => e instanceof NavigationEnd), map(() => this.section())),
+    { initialValue: this.section() },
+  );
+
+  private section(): string {
+    return this.router.url.split(/[?#]/)[0].split('/')[2] ?? 'scan';
+  }
+
+  protected go(event: Event): void {
+    this.router.navigate(['/admin', (event.target as HTMLSelectElement).value]);
+  }
+}

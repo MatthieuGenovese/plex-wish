@@ -178,5 +178,37 @@ a.person-chip:focus-visible .poster { transform: scale(1.06); }
   .person-photo { width: 4.5rem; }
   .avatar-lg { width: 3rem; height: 3rem; font-size: var(--fs-title); }
   .panel { padding: var(--space-3); }
+  .admin-head h1 { font-size: 1.25rem; }
 }
 .password-form { max-width: 26rem; }
+
+// --- Administration ----------------------------------------------------------------------------------
+.admin-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); margin-bottom: var(--space-3); }
+.admin-head h1 { margin: 0; hyphens: auto; min-width: 0; }
+.admin-picker { display: none; }
+.admin-tabs ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--outline);
+}
+.admin-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 var(--space-4);
+  color: var(--text-2);
+  font-weight: var(--fw-medium, 500);
+  text-decoration: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+.admin-tabs a:hover { color: var(--text); background: var(--surface-2); }
+.admin-tabs a.active { color: var(--text); font-weight: var(--fw-semibold); box-shadow: inset 0 -3px 0 var(--accent); }
+@media (max-width: 47.99rem) {
+  .admin-tabs { display: none; }
+  .admin-picker { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; margin-bottom: var(--space-3); }
+  .admin-picker label { font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--text-2); }
+}

@@ -137,6 +137,7 @@ input[type='radio'] {
   align-items: flex-end;
 }
 .form-row > .field { flex: 1 1 12rem; }
+.form-row.form-top { align-items: flex-start; } // champs avec aide : les étiquettes restent alignées
 
 // Recherche (pilule, icône à gauche, bouton « effacer » à droite)
 .search-field {
@@ -315,6 +316,7 @@ a.chip {
 
 // --- Tableaux (admin) -----------------------------------------------------------------------------
 .table-wrap {
+  position: relative; // contient les éléments « visually-hidden » des cellules (sinon débordement de la page)
   overflow-x: auto;
   border: 1px solid var(--outline);
   border-radius: var(--r-md);
@@ -331,14 +333,15 @@ td {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--outline);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 th {
   background: var(--surface-2);
   font-weight: var(--fw-semibold);
   white-space: nowrap;
 }
-tr:last-child td { border-bottom: 0; }
+tr:last-child > * { border-bottom: 0; }
+tbody th { background: none; white-space: normal; }
 table.wide { min-width: 60rem; }
 td.path { font-family: var(--font-mono); word-break: break-all; min-width: 16rem; }
 td button,
@@ -464,6 +467,11 @@ dialog::backdrop { background: var(--scrim); }
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+// Vignette (tableaux d'admin, ~2 rem) : le titre serait illisible, le dégradé seul suffit.
+@container (max-width: 4.5rem) {
+  .ph:not(.ph-round) > span { display: none; }
+  .ph:not(.ph-round)::before { display: none; }
 }
 .poster-round {
   aspect-ratio: 1;

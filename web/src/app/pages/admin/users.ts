@@ -18,7 +18,7 @@ const MIN_PASSWORD = 10;
     <section class="card" aria-labelledby="create-title">
       <h2 id="create-title">Créer un utilisateur</h2>
       <form [formGroup]="create" (ngSubmit)="submitCreate()" novalidate>
-        <div class="form-row">
+        <div class="form-row form-top">
           <div class="field">
             <label for="u-name">Nom d’utilisateur</label>
             <input id="u-name" formControlName="username" autocomplete="off" autocapitalize="none" spellcheck="false" />
@@ -29,7 +29,7 @@ const MIN_PASSWORD = 10;
             <input id="u-email" type="email" formControlName="email" autocomplete="off" />
           </div>
         </div>
-        <div class="form-row">
+        <div class="form-row form-top">
           <div class="field">
             <label for="u-password">Mot de passe initial</label>
             <input id="u-password" type="password" formControlName="password" autocomplete="new-password" />

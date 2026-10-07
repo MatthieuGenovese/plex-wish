@@ -46,6 +46,7 @@ code,
 .mono {
   font-family: var(--font-mono);
   font-size: var(--fs-small);
+  overflow-wrap: anywhere; // noms de variables longs (METADATA_ENABLED=false) : pas de débordement
 }
 
 .num { font-variant-numeric: tabular-nums; }

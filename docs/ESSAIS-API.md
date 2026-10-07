@@ -70,3 +70,18 @@ Attendu : `watch=inProgress` et `watch=seen` dépendent du compte connecté (un 
 curl -s -H "Authorization: Bearer $T" "$B/api/anime?watch=inProgress&yearFrom=2000&size=5"
 ```
 
+## S5. Reprise sur la fiche : `resume` dans `GET /api/anime/{id}`
+
+```powershell
+function Resume($animeId) { $a = Api "/api/anime/$animeId"; "$($a.title)"; $a.resume | Format-List kind, seasonNumber, episodeNumber, positionSeconds, durationSeconds }
+$c = (Api "/api/me/continue-watching")[0]; Resume $c.animeId                  # RESUME ou NEXT, comme « À suivre »
+$jamais = (Api "/api/anime?watch=unseen&size=1").items[0].id; Resume $jamais  # START, épisode 1
+$fini = (Api "/api/anime?watch=seen&size=1").items[0].id; Resume $fini        # REWATCH, épisode 1
+```
+
+Attendu : `START` et `REWATCH` pointent sur le premier épisode (saison 1, sinon Spéciaux) avec la position 0 ; `RESUME` donne la position enregistrée ; `NEXT` l'épisode suivant du dernier terminé.
+
+```sh
+curl -s -H "Authorization: Bearer $T" "$B/api/anime/1000624"
+```
+

@@ -39,7 +39,17 @@ public class LibraryResource {
     public record AnimeDetail(Long id, String title, String alternativeTitle, String synopsis, String synopsisLanguage,
                               String posterUrl, String posterLargeUrl, Integer year, String metadataSource,
                               String metadataUrl, List<SeasonDto> seasons, String synopsisSource, String frenchTitle,
-                              String tmdbUrl) {
+                              String tmdbUrl, Resume resume) {
+    }
+
+    /**
+     * Épisode proposé par le bouton principal de la fiche (ARCHITECTURE §24.3), pour l'utilisateur connecté :
+     * {@code kind} = {@code RESUME} (reprendre à {@code positionSeconds}), {@code NEXT} (épisode suivant),
+     * {@code START} (jamais regardé : premier épisode) ou {@code REWATCH} (tout vu : premier épisode).
+     * {@code durationSeconds} = 0 si inconnue.
+     */
+    public record Resume(String kind, long episodeId, long seasonId, int seasonNumber, int episodeNumber, String episodeTitle,
+                         int positionSeconds, int durationSeconds) {
     }
 
     /**
@@ -67,6 +77,8 @@ public class LibraryResource {
     fr.plexwish.animeserver.poster.PosterService posters;
     @Inject
     org.eclipse.microprofile.jwt.JsonWebToken jwt;
+    @Inject
+    fr.plexwish.animeserver.progress.UpNextService upNext;
 
     public record AnimePage(long total, int page, int size, List<AnimeSummary> items) {
     }
@@ -209,11 +221,20 @@ public class LibraryResource {
         String tmdbUrl = tmdb == null || tmdb[3] == null ? null : "https://www.themoviedb.org/" + tmdb[3] + "/" + tmdb[4];
         String anilist = "ANILIST".equals(a.metadataProvider) ? "AniList" : a.metadataProvider;
         var poster = posters.urls(List.of(id)).get(id);
+        Resume resume;
+        try {
+            resume = upNext.forAnime(Long.parseLong(jwt.getSubject()), id)
+                    .map(t -> new Resume(t.kind().name(), t.episodeId(), t.seasonId(), t.seasonNumber(), t.episodeNumber(),
+                            t.episodeTitle(), t.positionSeconds(), t.durationSeconds()))
+                    .orElse(null);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
         return new AnimeDetail(a.id, a.title, a.alternativeTitle, frSynopsis != null ? frSynopsis : a.synopsis,
                 frSynopsis != null ? (String) tmdb[2] : a.synopsisLanguage, poster == null ? null : poster.small(),
                 poster == null ? null : poster.large(), a.year, anilist,
                 a.metadataUrl, seasons, frSynopsis != null ? "TMDB" : a.synopsis != null ? anilist : null, frTitle,
-                frSynopsis != null || frTitle != null ? tmdbUrl : null);
+                frSynopsis != null || frTitle != null ? tmdbUrl : null, resume);
     }
 
     /** Saisons dans l'ordre 1, 2, 3… puis Spéciaux (saison 0) en dernier. */

@@ -125,4 +125,41 @@ class UpNextTest {
         scan();
         cw().body("episodeId", contains((int) third));
     }
+
+    // --- S5 : bouton principal de la fiche (resume dans GET /api/anime/{id}, ARCHITECTURE §24.3) ---
+
+    private io.restassured.response.ValidatableResponse detail(String anime) throws Exception {
+        long id = count(ds, "SELECT id FROM anime WHERE title = '" + anime + "'");
+        return given().auth().oauth2(user).get("/api/anime/" + id).then().statusCode(200);
+    }
+
+    @Test
+    void detailProposesStartThenResumeThenNextThenRewatch() throws Exception {
+        detail("Other").body("resume.kind", equalTo("START")).body("resume.episodeId", equalTo((int) ep("Other", 1, 1)))
+                .body("resume.seasonNumber", equalTo(1)).body("resume.episodeNumber", equalTo(1))
+                .body("resume.positionSeconds", equalTo(0));
+        watch(ep("Other", 1, 1), 300);
+        detail("Other").body("resume.kind", equalTo("RESUME")).body("resume.positionSeconds", equalTo(300))
+                .body("resume.durationSeconds", equalTo(1400)).body("resume.seasonId", org.hamcrest.Matchers.notNullValue());
+        finish(ep("Other", 1, 1));
+        detail("Other").body("resume.kind", equalTo("NEXT")).body("resume.episodeId", equalTo((int) ep("Other", 1, 2)));
+        finish(ep("Other", 1, 2));
+        detail("Other").body("resume.kind", equalTo("REWATCH")).body("resume.episodeId", equalTo((int) ep("Other", 1, 1)));
+    }
+
+    @Test
+    void detailStartsWithRegularSeasonsAndIsPerUser() throws Exception {
+        detail("Show").body("resume.kind", equalTo("START")).body("resume.episodeId", equalTo((int) ep("Show", 1, 1)));
+        finish(ep("Show", 2, 2)); // fin des saisons normales
+        detail("Show").body("resume.kind", equalTo("REWATCH")).body("resume.episodeId", equalTo((int) ep("Show", 1, 1)));
+        String other = accessToken(createdUser(), "upnext-password");
+        long show = count(ds, "SELECT id FROM anime WHERE title = 'Show'");
+        given().auth().oauth2(other).get("/api/anime/" + show).then().body("resume.kind", equalTo("START"));
+    }
+
+    private static String createdUser() {
+        String name = unique("upnext");
+        createUser(name, "upnext-password", "USER");
+        return name;
+    }
 }

@@ -869,3 +869,10 @@ Paramètres facultatifs, cumulables entre eux et avec `q`, `sort`, `page`, `size
 - `browser` (analyse ffprobe, §22) : `true` = tous les épisodes visibles analysés et lisibles dans un navigateur ; `false` = au moins un épisode non lisible ou pas encore analysé.
 - Implémentation : une requête SQL (agrégats par animé, jointures à `playback_progress` et `media_probe` seulement si le filtre est demandé) ; sans filtre, résultat identique à avant. Tests : `AnimeFilterTest`, `AnimeListTest`.
 
+### 24.3 Reprise sur la fiche : `resume` dans `GET /api/anime/{id}` (S5)
+Champ `resume` = l'épisode du bouton principal de la fiche, pour l'utilisateur connecté (même logique que §24.1, `UpNextService.forAnime`) :
+`{kind, episodeId, seasonId, seasonNumber, episodeNumber, episodeTitle, positionSeconds, durationSeconds}`.
+- `RESUME` : épisode commencé (reprendre à `positionSeconds`) ; `NEXT` : épisode suivant du dernier terminé ;
+- `START` : rien regardé → premier épisode (saison 1, sinon Spéciaux) ; `REWATCH` : tout vu → premier épisode.
+- Toujours présent (un animé visible a au moins un épisode). Les autres champs de la fiche sont inchangés. Tests : `UpNextTest`.
+

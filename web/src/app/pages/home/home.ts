@@ -15,7 +15,8 @@ import { longEpisode, percent, remainingMinutes } from '../../shared/viewing';
 
 /** Genres jamais proposés en rangée d'accueil (contenus pour adultes). */
 const HIDDEN_GENRES = new Set(['Hentai', 'Ecchi']);
-const ROW = 20;
+/** Cartes par rangée : assez pour défiler, pas plus (DOM et images : la rangée « Tout voir » mène à la suite). */
+const ROW = 12;
 
 interface HomeData {
   continueWatching: ContinueWatching[];
@@ -137,7 +138,7 @@ export class HomePage {
 
   protected readonly state = loadOn(this.once, () =>
     forkJoin({
-      continueWatching: this.api.continueWatching(20).pipe(catchError(() => of([] as ContinueWatching[]))),
+      continueWatching: this.api.continueWatching(ROW + 1).pipe(catchError(() => of([] as ContinueWatching[]))),
       recent: this.api.animes({ sort: 'recent', size: ROW }),
       genres: this.api.genres().pipe(catchError(() => of([] as GenreCount[]))),
     }).pipe(

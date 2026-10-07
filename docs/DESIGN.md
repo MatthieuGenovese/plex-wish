@@ -1,6 +1,6 @@
 # Phase Polish : audit et direction (P1)
 
-> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; **P2.0 (serveur) livrée, en attente des essais** (`docs/ESSAIS-API.md`, ARCHITECTURE §24).
+> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; P2.0 (serveur) livrée (`docs/ESSAIS-API.md`, ARCHITECTURE §24) ; **P2.1 à P2.8 (web) livrées, en attente des essais** (§12).
 > Référence visuelle : `docs/design/guide-de-style.html` (s'ouvre par double-clic, thème sombre/clair, trois accents, texte 100/130/200 %).
 > Données pour juger : catalogue de démonstration (§6), `scripts/demo-catalog.sh`.
 
@@ -279,3 +279,46 @@ Point ouvert, sans urgence : nom affiché dans les interfaces (« Anime Server �
 | Material Symbols Rounded 400 (SVG, via @material-symbols/svg-400 0.47.6) | `docs/design/icons.svg`, intégrées au guide | Apache 2.0 (`docs/design/Apache-2.0-MaterialSymbols.txt`) |
 | Affiches de démonstration | générées par `scripts/demo-catalog/generate.py` | code du projet |
 | Image Docker `python:3.13-alpine` (outil de dev, non distribuée) | `scripts/demo-catalog.sh` | PSF / licences Alpine |
+
+## 12. P2 — web livrée (2026-10-07) : bilan
+
+Commits P2.1 (fondations) à P2.7 (admin), puis P2.8 (mesures, états « peu de données », documentation). Captures avant/après : dossier `polish-p2/` sur le PC (hors dépôt).
+
+### 12.1 Mesures avant / après (catalogue de démonstration, conteneur local, Chromium)
+
+Bureau 1280 px ; téléphone 390 px entre parenthèses quand différent. Poids transférés (compressés), en Ko. « Polices+CSS » : Figtree (deux woff2, ~31 Ko, décision 3) et la feuille de style. LCP mesuré en local : indicatif, à ±150 ms.
+
+| Écran | Nœuds DOM | JS | Polices+CSS | Images | Total | LCP (ms) |
+|---|---|---|---|---|---|---|
+| Accueil | 303 → 910 | 111 → 131 | 2 → 40 | 77 → 121 (45 → 123) | 194 → 301 (162 → 303) | 408 → 716 (272 → 564) |
+| Bibliothèque | 493 → 617 | 114 → 129 | 2 → 40 | 131 → 131 (51 → 88) | 251 → 306 (171 → 263) | 408 → 524 (276 → 100) |
+| Recherche + filtres | 493 → 626 | 114 → 129 | 2 → 40 | 132 → 132 (48 → 91) | 252 → 307 (168 → 266) | 304 → 340 (292 → 136) |
+| Fiche | 221 → 297 | 114 → 134 | 2 → 40 | 3 → 3 | 124 → 182 | 700 → 244 (180 → 224) |
+| Fiche 1 100 épisodes | 699 → 929 | 114 → 134 | 2 → 40 | 0 → 0 | 135 → 193 | 256 → 256 (204 → 196) |
+| Comédien | 442 → 486 | 113 → 129 | 2 → 40 | 87 → 87 (53 → 80) | 206 → 260 (172 → 254) | 260 → 272 (268 → 132) |
+| Admin médias | 1 154 → 1 199 | 120 → 135 | 2 → 30 | 0 | 127 → 170 | 232 → 236 (148 → 172) |
+
+Lecture : l'accueil montre beaucoup plus (héros, « Continuer », « Récemment ajoutés », trois genres, « À découvrir » : 12 cartes par rangée, réduit de 20 à 12 après la première mesure, 1 349 → 910 nœuds) ; le téléphone affiche des affiches plus grandes (grille 3 colonnes au lieu de vignettes). Coût fixe : la police (~31 Ko, une fois, mise en cache) et ~15–20 Ko de JS (icônes, thèmes, nouveaux composants). Tout reste sous 310 Ko par écran.
+
+### 12.2 Déplacé ou retiré
+
+- Accueil : le bloc « Bibliothèque » alphabétique est retiré (la bibliothèque a son onglet) ; à la place, héros « À reprendre » / « Dernier ajout » et rangées.
+- Bibliothèque : la pagination (pages numérotées, `?page=`) est remplacée par « Afficher plus » (`?pages=` : nombre de pages chargées, F5 retrouve la liste) ; `?tri=recent` est conservé, nouveaux `titre` et `annee` ; nouveaux filtres `vu`, `navigateur`, `genre`, `periode`.
+- Recherche : un champ dans la barre du haut (bureau) et un onglet « Rechercher » (téléphone) ; l'ancien champ de la bibliothèque devient le composant partagé `SearchBox`. Le champ du haut est masqué sur la bibliothèque (pas deux champs à l'écran).
+- Fiche : les pastilles de nombre d'épisodes sur les boutons de saison sont retirées ; les tuiles d'épisodes deviennent une liste ; la distribution passe de cartes à des avatars ronds en rangée.
+- En-tête : « Se déconnecter » et le lien « Administration » passent dans le menu Compte (bureau) et la page `/compte` (téléphone).
+- Affiche absente : la vignette « initiales » devient une couverture composée (dégradé + titre) ; en vignette d'admin (≤ 4,5 rem), dégradé seul.
+- Admin : neuf onglets sur bureau, liste déroulante « Section » sur téléphone (les onglets prenaient la moitié de l'écran).
+- Conservé : pied de page (mention TMDB obligatoire), toutes les pages d'admin et leurs fonctions, toutes les URL existantes.
+
+### 12.3 Peu de données (vérifié)
+
+Compte neuf sans historique : héros « Dernier ajout » (pas de « Continuer »), fiche « Pour commencer », filtres « En cours » / « Vus » avec un message dédié. Catalogue réduit à deux animés : accueil sans rangées vides, genre sans résultat gardé dans la liste. Catalogue vide : « La bibliothèque est vide » (avec « Lancer un scan » pour l'admin) sur l'accueil comme sur la bibliothèque.
+
+### 12.4 Licences (ajouts P2)
+
+| Élément | Où | Licence |
+|---|---|---|
+| Figtree 5.3.0, sous-ensembles latin et latin-ext (woff2) | `web/public/fonts/` | SIL OFL 1.1 (`web/public/fonts/OFL.txt`) |
+| Material Symbols Rounded (tracés SVG recopiés) | `web/src/app/shared/icons.ts` | Apache 2.0 (`docs/design/Apache-2.0-MaterialSymbols.txt`) |
+| axe-core 4.14.0 (tests seulement, non livré) | `web/package.json` (devDependencies) | MPL 2.0 |

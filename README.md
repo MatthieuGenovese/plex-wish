@@ -387,6 +387,8 @@ scripts/demo-catalog.sh        # ou scripts\demo-catalog.ps1 sous Windows
 scripts/demo-catalog.sh down   # arrête et efface la stack de démonstration
 ```
 
+Pour la reconstruire avec le web à jour (après un `git pull`) : `scripts\demo-catalog.ps1 down` puis `scripts\demo-catalog.ps1` (ou `.sh`) ; le second lance `docker compose up --build`, donc les images backend et web sont reconstruites depuis le dépôt, et la progression de démonstration (épisodes en cours, « À suivre », un animé ajouté il y a deux heures) est créée pour le compte admin. Un compte créé ensuite n'a aucun historique (utile pour voir les états vides).
+
 Stack Docker séparée (`plexwish-demo` : sa base, son réseau, port `DEMO_WEB_PORT`, 8090 par défaut), sans aucune tâche qui irait sur Internet. Jamais sur le NAS ; ne pas y lancer de scan ; les épisodes n'ont pas de fichier (lecture impossible).
 
 ## Swagger / OpenAPI

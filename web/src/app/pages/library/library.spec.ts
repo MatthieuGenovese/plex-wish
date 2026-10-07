@@ -89,4 +89,12 @@ describe('LibraryPage (P2.4)', () => {
     await second.whenStable();
     expect((second.nativeElement as HTMLElement).querySelector('[role=alert]')?.textContent).toContain('Panne');
   });
+
+  it('nouveau compte, filtre « En cours » seul : message dédié, pas « moins de filtres »', async () => {
+    const { fixture, el } = await open({ vu: 'en-cours' });
+    http.expectOne((r) => r.url === '/api/anime').flush({ total: 0, page: 0, size: 60, items: [] });
+    await fixture.whenStable();
+    expect(el.querySelector('.state-title')?.textContent).toContain('Aucun animé en cours');
+    expect(await a11yViolations(el)).toEqual([]);
+  });
 });

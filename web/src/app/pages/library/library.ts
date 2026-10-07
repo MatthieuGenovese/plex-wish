@@ -68,6 +68,9 @@ interface Results {
         <label class="visually-hidden" for="f-genre">Genre</label>
         <select id="f-genre" class="select-chip" [class.selected]="!!genre()" (change)="navigate({ genre: value($event) || null })">
           <option value="" [selected]="!genre()">Tous les genres</option>
+          @if (genre() && !genreKnown()) {
+            <option [value]="genre()" selected>{{ genre() }}</option>
+          }
           @for (g of genres(); track g.genre) {
             <option [value]="g.genre" [selected]="genre() === g.genre">{{ g.label }} ({{ g.animeCount }})</option>
           }
@@ -112,8 +115,8 @@ interface Results {
           }
         </ul>
       } @else {
-        <app-state icon="search" [heading]="q() ? 'Aucun animé pour « ' + q() + ' »' : 'Aucun animé ne correspond'"
-                   [message]="filtered() ? 'Essayez avec moins de filtres, ou une partie du titre seulement.' : 'Vérifiez l’orthographe, ou cherchez une partie du titre.'">
+        @let e = empty();
+        <app-state [icon]="e.icon" [heading]="e.heading" [message]="e.message">
           @if (filtered() || q()) {
             <button type="button" class="btn-ghost" (click)="clearAll()">Tout effacer</button>
           }
@@ -148,6 +151,8 @@ export class LibraryPage {
   protected readonly results = signal<Results>({ loading: true, error: null, total: 0, items: [] });
   private readonly reloads = signal(0);
 
+  /** Genre de l'URL absent de la liste (aucun animé visible) : on l'affiche quand même, sélectionné. */
+  protected readonly genreKnown = computed(() => this.genres().some((g) => g.genre === this.genre()));
   protected readonly sortKey = computed(() => (this.tri() && SORTS[this.tri()!] ? this.tri()! : 'titre'));
   protected readonly filtered = computed(() => !!(this.vu() || this.navigateur() || this.genre() || this.periode()));
 
@@ -164,6 +169,29 @@ export class LibraryPage {
       yearFrom: period?.from,
       yearTo: period?.to,
       size: PAGE_SIZE,
+    };
+  });
+
+  /** Liste vide : le message dit pourquoi (seul filtre « En cours » ou « Vus » : rien de commencé encore). */
+  protected readonly empty = computed(() => {
+    const onlyWatch = !this.q() && !this.navigateur() && !this.genre() && !this.periode();
+    if (onlyWatch && !this.vu()) {
+      return { icon: 'video_library' as const, heading: 'La bibliothèque est vide',
+        message: 'Aucun animé n’a encore été importé. Revenez un peu plus tard.' };
+    }
+    if (onlyWatch && this.vu() === 'en-cours') {
+      return { icon: 'history' as const, heading: 'Aucun animé en cours',
+        message: 'Les animés commencés dans l’application Android apparaîtront ici.' };
+    }
+    if (onlyWatch && this.vu() === 'vus') {
+      return { icon: 'check_circle_fill' as const, heading: 'Aucun animé vu en entier pour l’instant',
+        message: 'Un animé apparaît ici quand tous ses épisodes ont été regardés.' };
+    }
+    return {
+      icon: 'search' as const,
+      heading: this.q() ? `Aucun animé pour « ${this.q()} »` : 'Aucun animé ne correspond',
+      message: this.filtered() ? 'Essayez avec moins de filtres, ou une partie du titre seulement.'
+        : 'Vérifiez l’orthographe, ou cherchez une partie du titre.',
     };
   });
 

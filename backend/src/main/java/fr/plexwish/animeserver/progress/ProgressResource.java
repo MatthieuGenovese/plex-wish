@@ -49,11 +49,15 @@ public class ProgressResource {
     public record Progress(long episodeId, int positionSeconds, int durationSeconds, boolean completed, Instant updatedAt) {
     }
 
-    /** Entrée « continuer à regarder » : de quoi afficher et relancer l'épisode sans autre appel. */
+    /**
+     * Entrée « continuer à regarder » : de quoi afficher et relancer l'épisode sans autre appel. {@code kind} :
+     * {@code RESUME} ou {@code NEXT} ; {@code durationSeconds} = 0 si la durée n'est pas connue.
+     */
     public record ContinueWatching(long episodeId, int episodeNumber, String episodeTitle,
                                    long seasonId, int seasonNumber, String seasonLabel,
                                    long animeId, String animeTitle,
-                                   int positionSeconds, int durationSeconds, Instant updatedAt, String posterUrl) {
+                                   int positionSeconds, int durationSeconds, Instant updatedAt, String posterUrl,
+                                   String kind) {
     }
 
     private static final String VISIBLE = """
@@ -128,41 +132,28 @@ public class ProgressResource {
         }
     }
 
-    /** Épisodes commencés (position > 0) et non terminés, du plus récemment regardé au plus ancien. */
+    /**
+     * « Continuer à regarder » : une entrée par animé en cours, de la dernière activité à la plus ancienne
+     * (ARCHITECTURE §24). {@code kind} = {@code RESUME} (épisode commencé, à reprendre à {@code positionSeconds})
+     * ou {@code NEXT} (épisode suivant d'un épisode terminé, à lire depuis le début). Animés finis : absents.
+     */
     @GET
     @Path("/me/continue-watching")
     public List<ContinueWatching> continueWatching(@QueryParam("limit") @DefaultValue("20") @Min(1) @Max(100) int limit)
             throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT e.id, e.episode_number, e.title, s.id, s.season_number, a.id, a.title,
-                            p.position_seconds, p.duration_seconds, p.updated_at
-                     FROM playback_progress p JOIN episode e ON e.id = p.episode_id
-                     JOIN media_file m ON m.id = e.media_file_id AND m.available
-                     JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
-                     WHERE p.user_id = ? AND NOT p.completed AND p.position_seconds > 0
-                     ORDER BY p.updated_at DESC, e.id LIMIT ?""")) {
-            st.setLong(1, userId());
-            st.setInt(2, limit);
-            List<ContinueWatching> list = new ArrayList<>();
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    int season = rs.getInt(5);
-                    list.add(new ContinueWatching(rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getLong(4), season,
-                            season == 0 ? "Spéciaux" : "Saison " + season, rs.getLong(6), rs.getString(7),
-                            rs.getInt(8), rs.getInt(9), instant(rs, 10), null));
-                }
-            }
-            // Affiche : même résolution que la bibliothèque (fichier sur le NAS, sinon URL distante), ARCHITECTURE §17.
-            var urls = posters.urls(list.stream().map(ContinueWatching::animeId).distinct().toList());
-            return list.stream().map(x -> {
-                var u = urls.get(x.animeId());
-                return new ContinueWatching(x.episodeId(), x.episodeNumber(), x.episodeTitle(), x.seasonId(), x.seasonNumber(),
-                        x.seasonLabel(), x.animeId(), x.animeTitle(), x.positionSeconds(), x.durationSeconds(), x.updatedAt(),
-                        u == null ? null : u.small());
-            }).toList();
-        }
+        List<UpNextService.Target> list = upNext.continueWatching(userId(), limit);
+        // Affiche : même résolution que la bibliothèque (fichier sur le NAS, sinon URL distante), ARCHITECTURE §17.
+        var urls = posters.urls(list.stream().map(UpNextService.Target::animeId).distinct().toList());
+        return list.stream().map(t -> {
+            var u = urls.get(t.animeId());
+            return new ContinueWatching(t.episodeId(), t.episodeNumber(), t.episodeTitle(), t.seasonId(), t.seasonNumber(),
+                    t.seasonLabel(), t.animeId(), t.animeTitle(), t.positionSeconds(), t.durationSeconds(), t.updatedAt(),
+                    u == null ? null : u.small(), t.kind().name());
+        }).toList();
     }
+
+    @Inject
+    UpNextService upNext;
 
     @Inject
     fr.plexwish.animeserver.poster.PosterService posters;

@@ -220,7 +220,7 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Table `playback_progress` (V6) : clé (utilisateur, épisode), position et durée en secondes, `completed`, `updated_at`. Une ligne par utilisateur et par épisode : les progressions de deux utilisateurs sont indépendantes.
 - `PUT /api/episodes/{id}/progress` `{positionSeconds, durationSeconds}` : le lecteur l'appelle régulièrement (toutes les 10 à 30 s, et à la pause / fermeture). Une position au-delà de la durée est ramenée à la durée. **Terminé au-delà de 90 %** de la durée (au-delà, pas à 90 % pile) : génériques de fin et aperçu de l'épisode suivant ne comptent pas. Revenir en arrière remet l'épisode « en cours ». 404 si l'épisode n'est pas visible.
 - `GET /api/me/progress[?animeId=]` : toute la progression de l'utilisateur (ou d'un animé, pour sa fiche), la plus récente d'abord.
-- `GET /api/me/continue-watching[?limit=20]` : épisodes commencés (position > 0) et non terminés, du plus récemment regardé au plus ancien, avec l'animé, la saison (libellé compris) et l'épisode : de quoi afficher la liste et relancer la lecture sans autre appel.
+- `GET /api/me/continue-watching[?limit=20]` : **une entrée par animé en cours** (épisode à reprendre ou épisode suivant, voir §24.1), de la dernière activité à la plus ancienne, avec l'animé, la saison (libellé compris) et l'épisode : de quoi afficher la liste et relancer la lecture sans autre appel.
 - Un épisode devenu indisponible disparaît des listes ; sa progression est conservée et revient avec le fichier.
 - La durée envoyée par le lecteur n'est pas recopiée dans `episode.duration_seconds` : elle vient d'un client, la durée « officielle » viendra de ffprobe (FUTURE).
 
@@ -850,4 +850,15 @@ Conception : §21. Pour Android seulement (le navigateur ne lit pas le MPEG-4 AS
 
 ### 23.4 Admin (`/api/admin/media/remux*`, onglet « Médias »)
 État (ffmpeg, chemin, occupation, prêtes / en file / en échec), file avec progression et priorité, échecs avec raison et « Relancer », « Préparer l'animé » (au plus 60 fichiers et la moitié du cache, sinon 400 `PREPARE_TOO_LARGE`), « Vider le cache » (avec confirmation ; les copies en cours de lecture sont gardées). Statut de remux par fichier dans la liste.
+
+## 24. API pour l'interface (phase Polish, P2.0)
+Changements serveur demandés par la phase Polish (`docs/DESIGN.md` §8), validés le 2026-10-07. Essais à la main : `docs/ESSAIS-API.md`.
+
+### 24.1 « À suivre » : `GET /api/me/continue-watching` (S1)
+- Une entrée par animé, triées par dernière activité (épisode commencé ou terminé le plus récemment).
+- Dernière activité = épisode **commencé et pas fini** → `kind: "RESUME"`, `positionSeconds` = position enregistrée.
+- Dernière activité = épisode **terminé** → premier épisode suivant **pas encore terminé** (ordre : saisons 1, 2… puis Spéciaux, par numéro), `kind: "NEXT"` (`positionSeconds` = 0, `durationSeconds` = durée analysée ou 0), ou `"RESUME"` s'il est déjà commencé. On ne passe jamais des saisons normales aux Spéciaux (ni l'inverse) : après le dernier épisode, l'animé est fini et n'apparaît plus.
+- Épisodes non visibles (fichier absent) ignorés ; `limit` compte les animés listés (les animés finis ne comptent pas).
+- Champs inchangés (l'app Android existante continue de fonctionner, champ `kind` en plus) ; `updatedAt` = date de la dernière activité.
+- Implémentation : `progress/UpNextService` (aussi utilisé par la fiche, §24.2), requêtes SQL bornées par le nombre d'animés commencés par l'utilisateur. Tests : `UpNextTest`, `ProgressTest`.
 

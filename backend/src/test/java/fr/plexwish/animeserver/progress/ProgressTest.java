@@ -96,7 +96,9 @@ class ProgressTest {
         given().auth().oauth2(bob).get("/api/me/progress").then()
                 .body("episodeId", contains((int) ep(2), (int) ep(1))).body("positionSeconds", contains(1390, 50));
         given().auth().oauth2(alice).get("/api/me/continue-watching").then().body("episodeId", contains((int) ep(1)));
-        given().auth().oauth2(bob).get("/api/me/continue-watching").then().body("episodeId", contains((int) ep(1)));
+        // Bob a fini l'épisode 2 après avoir commencé le 1 : la dernière activité décide → épisode 3 (§24).
+        given().auth().oauth2(bob).get("/api/me/continue-watching").then()
+                .body("episodeId", contains((int) ep(3))).body("kind", contains("NEXT"));
     }
 
     @Test
@@ -124,7 +126,8 @@ class ProgressTest {
                 .body("[0].episodeNumber", equalTo(1))
                 .body("[0].positionSeconds", equalTo(600)).body("[0].durationSeconds", equalTo(1400))
                 .body("[0].animeId", notNullValue()).body("[0].seasonId", notNullValue())
-                .body("[1].seasonLabel", equalTo("Spéciaux"));
+                .body("[1].seasonLabel", equalTo("Spéciaux"))
+                .body("kind", contains("RESUME", "RESUME"));
         given().auth().oauth2(alice).queryParam("limit", 1).get("/api/me/continue-watching").then()
                 .body("episodeId", contains((int) ep(1)));
         // Filtre par animé (pour la fiche d'un animé).

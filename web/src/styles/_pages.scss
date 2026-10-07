@@ -137,3 +137,46 @@ a.person-chip:focus-visible .poster { transform: scale(1.06); }
   .cast-list .entry { width: 6.25rem; }
   .person-chip .poster { width: 4.5rem; }
 }
+
+// --- Comédien ------------------------------------------------------------------------------------------
+.person-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin: var(--space-3) 0 var(--space-6); }
+.person-photo { width: 9rem; flex: none; }
+.person-text { min-width: 0; flex: 1 1 14rem; }
+.person-text h1 { margin: 0 0 var(--space-1); }
+.person-kicker { margin: 0; font-size: var(--fs-caption); font-weight: var(--fw-bold); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.native { font-size: var(--fs-title); margin: 0 0 var(--space-2); }
+.person-text .muted { margin: 0; }
+.person-text .source { font-size: inherit; }
+.role { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--fs-caption); color: var(--text-2); overflow-wrap: anywhere; }
+@media (max-width: 47.99rem) { .person-photo { width: 6.5rem; } }
+
+// --- Connexion -----------------------------------------------------------------------------------------
+.login {
+  max-width: 26rem;
+  margin: var(--space-6) auto;
+  padding: var(--space-6);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+.login-brand { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-5); font-weight: var(--fw-bold); font-size: var(--fs-title); }
+.login-brand .logo { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: var(--on-accent); }
+.login-brand .logo .icon { width: 24px; height: 24px; }
+.login h1 { font-size: var(--fs-h2); }
+.login .submit { width: 100%; margin-top: var(--space-2); }
+.login-help { margin: var(--space-4) 0 0; text-align: center; }
+.check { display: flex; align-items: center; gap: var(--space-2); min-height: var(--target); margin-bottom: var(--space-2); font-size: var(--fs-small); cursor: pointer; }
+@media (max-width: 47.99rem) {
+  .login { margin: var(--space-3) auto; padding: var(--space-5) var(--space-4); box-shadow: none; }
+}
+.topbar-guest { justify-content: center; }
+@container page (max-width: 18rem) {
+  .login { padding: var(--space-4) var(--space-3); border-radius: var(--r-md); }
+  .login-brand { font-size: var(--fs-body); }
+  // Texte très agrandi : portraits et avatars plafonnés, cadres moins épais (le texte garde la place).
+  .person-photo { width: 4.5rem; }
+  .avatar-lg { width: 3rem; height: 3rem; font-size: var(--fs-title); }
+  .panel { padding: var(--space-3); }
+}
+.password-form { max-width: 26rem; }

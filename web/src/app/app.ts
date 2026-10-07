@@ -33,7 +33,7 @@ import { SearchBox } from './shared/search-box';
         }
         <app-account-menu (logout)="logout()" />
       </header>
-    } @else {
+    } @else if (!onLogin()) {
       <header class="topbar topbar-guest">
         <a class="brand" routerLink="/"><span class="logo"><app-icon name="play_arrow_fill" /></span><span class="brand-name">{{ appName }}</span></a>
       </header>
@@ -64,6 +64,13 @@ export class App {
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   /** Sur la bibliothèque, son propre champ de recherche suffit (pas deux champs à l'écran). */
+  protected readonly onLogin = toSignal(
+    this.router.events.pipe(
+      filter((e) => e instanceof NavigationEnd),
+      map(() => this.router.url.startsWith('/login')),
+    ),
+    { initialValue: true },
+  );
   protected readonly onLibrary = toSignal(
     this.router.events.pipe(
       filter((e) => e instanceof NavigationEnd),

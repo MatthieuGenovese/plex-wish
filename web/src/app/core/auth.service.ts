@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, catchError, finalize, firstValueFrom, map, of, shareReplay, tap, throwError } from 'rxjs';
+import { Observable, catchError, finalize, firstValueFrom, map, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
 import { TokenResponse, User } from './api-types';
 
 /**
@@ -69,6 +69,23 @@ export class AuthService {
       catchError(() => of(undefined)),
       map(() => undefined),
       finalize(() => this.clearSession()),
+    );
+  }
+
+  /**
+   * Change son propre mot de passe (ARCHITECTURE §24.5). Sous /api/auth : le cookie de session part avec la
+   * requête (cette session est gardée, les autres sont fermées) ; le jeton d'accès est ajouté ici, l'intercepteur
+   * ne touchant pas à /api/auth. Jeton expiré : une seule tentative après rafraîchissement.
+   */
+  changePassword(currentPassword: string, newPassword: string): Observable<{ closedSessions: number }> {
+    const call = () =>
+      this.http.post<{ closedSessions: number }>('/api/auth/password', { currentPassword, newPassword }, {
+        headers: this.token() ? { Authorization: `Bearer ${this.token()}` } : {},
+      });
+    return call().pipe(
+      catchError((err: unknown) =>
+        err instanceof HttpErrorResponse && err.status === 401 ? this.refresh().pipe(switchMap(() => call())) : throwError(() => err),
+      ),
     );
   }
 

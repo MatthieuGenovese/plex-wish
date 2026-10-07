@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { LibraryApi } from '../../core/library-api';
 import { loadOn } from '../../shared/load-state';
 import { Poster } from '../../shared/poster';
+import { StateBox } from '../../shared/state';
 import { ROLE_LABELS } from '../anime-detail/cast-section';
 import { pageTitle } from '../../core/title-strategy';
 
@@ -13,59 +14,46 @@ import { pageTitle } from '../../core/title-strategy';
  */
 @Component({
   selector: 'app-person',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, StateBox],
   template: `
     @let s = person();
     @if (s.error) {
-      <div class="alert alert-error" role="alert">
-        <p>{{ s.status === 404 ? 'Ce comédien ne joue dans aucun animé disponible de la bibliothèque.' : s.error }}</p>
-        <p><a routerLink="/anime">Retour à la bibliothèque</a></p>
-      </div>
+      <app-state [icon]="s.status === 404 ? 'sentiment_dissatisfied' : 'cloud_off'" [error]="s.status !== 404"
+                 [heading]="s.status === 404 ? 'Ce comédien ne joue dans aucun animé disponible de la bibliothèque' : 'Impossible de charger la page'"
+                 [message]="s.status === 404 ? null : s.error">
+        <a class="btn btn-ghost" routerLink="/anime">Retour à la bibliothèque</a>
+      </app-state>
     } @else if (s.data; as p) {
-      <div class="hero">
-        <app-poster class="photo" [title]="p.name" [url]="p.imageUrl" [eager]="true" />
-        <div>
+      <header class="person-head">
+        <app-poster class="person-photo" variant="round" [title]="p.name" [url]="p.imageUrl" [eager]="true" />
+        <div class="person-text">
+          <p class="person-kicker">Comédien de doublage</p>
           <h1>{{ p.name }}</h1>
           @if (p.nativeName) { <p class="native" lang="ja">{{ p.nativeName }}</p> }
-          <p class="muted">Comédien de doublage · {{ groups().length }} animé{{ groups().length > 1 ? 's' : '' }} de la bibliothèque</p>
-          <p class="source">Source : <a [href]="p.sourceUrl" target="_blank" rel="noopener noreferrer">AniList</a></p>
+          <p class="muted">{{ groups().length }} animé{{ groups().length > 1 ? 's' : '' }} de la bibliothèque
+            · <span class="source">Source : <a [href]="p.sourceUrl" target="_blank" rel="noopener noreferrer">AniList</a></span></p>
         </div>
-      </div>
+      </header>
       <h2>Dans la bibliothèque</h2>
-      <ul class="grid">
+      <ul class="card-grid person-grid">
         @for (g of groups(); track g.animeId) {
-          <li>
+          <li class="anime-card">
             <a class="card-link" [routerLink]="['/anime', g.animeId]">
-              <app-poster [title]="g.animeTitle" [url]="g.posterUrl" />
-              <span class="title">{{ g.animeTitle }}@if (g.year) { <span class="muted"> · {{ g.year }}</span> }</span>
+              <span class="card-art"><app-poster [title]="g.animeTitle" [url]="g.posterUrl" /></span>
+              <span class="card-title">{{ g.animeTitle }}</span>
+              @if (g.year) { <span class="card-meta num">{{ g.year }}</span> }
               @for (r of g.roles; track $index) {
-                <span class="role">
-                  <span><span class="visually-hidden">Rôle : </span>{{ r.character.name }}</span>
-                  <span class="muted">{{ roles[r.role] }}</span>
-                </span>
+                <span class="role"><span class="visually-hidden">Rôle : </span>{{ r.character.name }}
+                  <span class="badge" [class.badge-success]="r.role === 'MAIN'">{{ roles[r.role] }}</span></span>
               }
             </a>
           </li>
         }
       </ul>
     } @else {
-      <p class="muted" role="status">Chargement…</p>
-    }
-  `,
-  styles: `
-    .hero { display: grid; grid-template-columns: 11rem 1fr; gap: var(--space-5); align-items: start; margin-bottom: var(--space-6); }
-    .hero h1 { margin-bottom: var(--space-1); }
-    .native { font-size: var(--font-size-lg); margin-bottom: var(--space-3); }
-    .source { color: var(--color-text-muted); font-size: var(--font-size-sm); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-    .card-link { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-radius: var(--radius);
-      color: var(--color-text); text-decoration: none; height: 100%; }
-    .card-link:hover, .card-link:focus-visible { background: var(--color-surface-raised); color: var(--color-text); }
-    .title { font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); overflow-wrap: anywhere; }
-    .role { display: flex; flex-wrap: wrap; column-gap: var(--space-2); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
-    @media (max-width: 40rem) {
-      .hero { grid-template-columns: 7rem 1fr; gap: var(--space-3); }
-      .hero h1 { font-size: var(--font-size-xl); }
+      <header class="person-head" aria-hidden="true"><span class="skeleton person-photo" style="aspect-ratio:1;border-radius:50%"></span>
+        <div class="person-text"><span class="skeleton skeleton-line" style="width:12rem;height:2rem"></span></div></header>
+      <p class="visually-hidden" role="status">Chargement…</p>
     }
   `,
 })

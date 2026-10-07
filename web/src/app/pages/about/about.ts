@@ -13,31 +13,42 @@ export const TMDB_NOTICE =
 @Component({
   selector: 'app-about',
   template: `
-    <h1>À propos</h1>
-    <p>{{ appName }} : serveur privé de streaming d’animés, pour un petit groupe d’amis.</p>
+    <div class="about">
+      <h1>À propos</h1>
+      <p class="lead">{{ appName }} : serveur privé de streaming d’animés, pour un petit groupe d’amis.</p>
 
-    <h2>Sources des informations</h2>
-    <section class="card" aria-labelledby="about-anilist">
-      <h3 id="about-anilist">AniList</h3>
-      <p>Synopsis en anglais, années, personnages et comédiens de doublage viennent d’<a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>, ainsi que les affiches quand TMDB n’en a pas.</p>
-    </section>
-    <section class="card" aria-labelledby="about-tmdb">
-      <h3 id="about-tmdb" class="tmdb-title">
-        @if (!logoBroken()) {
-          <img class="tmdb-logo" src="attribution/tmdb-logo.svg" alt="TMDB" (error)="logoBroken.set(true)" />
-        } @else {
-          TMDB
-        }
-      </h3>
-      <p>Synopsis et titres en français : <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.</p>
-      <p class="notice" lang="en" data-testid="tmdb-notice">{{ notice }}</p>
-    </section>
+      <h2>Sources des informations</h2>
+      <section class="panel" aria-labelledby="about-anilist">
+        <h3 id="about-anilist">AniList</h3>
+        <p>Synopsis en anglais, années, genres, personnages et comédiens de doublage viennent d’<a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a>, ainsi que les affiches quand TMDB n’en a pas.</p>
+      </section>
+      <section class="panel" aria-labelledby="about-tmdb">
+        <h3 id="about-tmdb" class="tmdb-title">
+          @if (!logoBroken()) {
+            <img class="tmdb-logo" src="attribution/tmdb-logo.svg" alt="TMDB" (error)="logoBroken.set(true)" />
+          } @else {
+            TMDB
+          }
+        </h3>
+        <p>Synopsis et titres en français : <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.</p>
+        <p class="notice" lang="en" data-testid="tmdb-notice">{{ notice }}</p>
+      </section>
+      <section class="panel" aria-labelledby="about-credits">
+        <h3 id="about-credits">Police et icônes</h3>
+        <p>Police Figtree (SIL Open Font License 1.1) ; icônes Material Symbols (Google, licence Apache 2.0).</p>
+      </section>
+    </div>
   `,
   styles: `
     .tmdb-title { display: flex; align-items: center; min-height: 1.5rem; }
     /* Plus discret que le nom de l'application (conditions TMDB). */
     .tmdb-logo { height: 1rem; width: auto; }
-    .notice { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+    .notice { color: var(--text-2); font-size: var(--fs-small); margin: 0; }
+    .about { max-width: 46rem; display: flex; flex-direction: column; gap: var(--space-4); }
+    .about h2 { margin: var(--space-3) 0 0; }
+    .about .panel h3 { margin-bottom: var(--space-2); }
+    .about .panel p:last-child { margin-bottom: 0; }
+    .lead { font-size: var(--fs-title); color: var(--text-2); }
   `,
 })
 export class AboutPage {

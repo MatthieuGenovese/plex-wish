@@ -7,6 +7,7 @@ main {
   padding: var(--space-5) var(--gutter) var(--space-7);
 }
 main:focus { outline: none; }
+main > * { display: block; }
 
 .topbar {
   position: sticky;
@@ -34,6 +35,7 @@ main:focus { outline: none; }
 }
 .brand:hover { color: var(--text); }
 .brand .logo {
+  flex: none;
   display: grid;
   place-items: center;
   width: 30px;

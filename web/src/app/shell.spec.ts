@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { AuthService } from './core/auth.service';
 import { tokens, USER, ADMIN } from './core/testing';
@@ -28,10 +28,15 @@ describe('Navigation (P2.2)', () => {
     http.expectOne('/api/auth/login').flush(tokens('t', user));
   }
 
-  it('déconnecté : la marque seule, aucune navigation', async () => {
+  it('déconnecté : la marque seule, aucune navigation (et rien du tout sur /login)', async () => {
     const fixture = TestBed.createComponent(App);
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/login');
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.brand')).toBeNull();
+    await router.navigateByUrl('/a-propos');
+    await fixture.whenStable();
     expect(el.querySelector('.brand')?.textContent).toContain(APP_NAME);
     expect(el.querySelector('.topnav')).toBeNull();
     expect(el.querySelector('.bottombar')).toBeNull();
@@ -83,5 +88,66 @@ describe('Navigation (P2.2)', () => {
     [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Se déconnecter'))!.click();
     http.expectOne('/api/auth/logout').flush(null);
     expect(TestBed.inject(AuthService).isLoggedIn()).toBe(false);
+  });
+});
+
+describe('Mon compte : changer son mot de passe (S4)', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [AccountPage],
+      providers: [provideRouter([{ path: '**', children: [] }]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(AuthService).login('x', 'y').subscribe();
+    http.expectOne('/api/auth/login').flush(tokens('jeton-1', USER));
+  });
+
+  async function fill(current: string, next: string, confirm = next) {
+    const fixture = TestBed.createComponent(AccountPage);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    for (const [id, v] of [['current-password', current], ['new-password', next], ['confirm-password', confirm]]) {
+      const input = el.querySelector<HTMLInputElement>('#' + id)!;
+      input.value = v;
+      input.dispatchEvent(new Event('input'));
+    }
+    el.querySelector('.password-form')!.dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+    return { fixture, el };
+  }
+
+  it('envoie l’ancien et le nouveau avec le jeton d’accès ; annonce les sessions fermées', async () => {
+    const { fixture, el } = await fill('ancien-mot-de-passe', 'nouveau-mot-de-passe');
+    const req = http.expectOne('/api/auth/password');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer jeton-1');
+    expect(req.request.body).toEqual({ currentPassword: 'ancien-mot-de-passe', newPassword: 'nouveau-mot-de-passe' });
+    req.flush({ closedSessions: 2 });
+    await fixture.whenStable();
+    expect(el.querySelector('[role=status]')?.textContent).toContain('Mot de passe changé. 2 autres sessions ont été fermées.');
+    expect(el.querySelector<HTMLInputElement>('#new-password')!.value).toBe('');
+  });
+
+  it('vérifications locales : longueur et confirmation ; mot de passe actuel faux', async () => {
+    const short = await fill('ancien-mot-de-passe', 'court');
+    expect(short.el.querySelector('[role=alert]')?.textContent).toContain('au moins 10 caractères');
+    const mismatch = await fill('ancien-mot-de-passe', 'nouveau-mot-de-passe', 'autre-mot-de-passe');
+    expect(mismatch.el.querySelector('[role=alert]')?.textContent).toContain('pas identiques');
+    http.expectNone('/api/auth/password');
+    const wrong = await fill('faux-mot-de-passe', 'nouveau-mot-de-passe');
+    http.expectOne('/api/auth/password').flush({ status: 400, error: 'WRONG_PASSWORD', message: 'x' }, { status: 400, statusText: 'Bad' });
+    await wrong.fixture.whenStable();
+    expect(wrong.el.querySelector('[role=alert]')?.textContent).toContain('Le mot de passe actuel est incorrect.');
+    expect(await a11yViolations(wrong.el)).toEqual([]);
+  });
+
+  it('jeton expiré : rafraîchi une fois puis la demande est rejouée', async () => {
+    await fill('ancien-mot-de-passe', 'nouveau-mot-de-passe');
+    http.expectOne('/api/auth/password').flush({ status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    http.expectOne('/api/auth/refresh').flush(tokens('jeton-2', USER));
+    const retry = http.expectOne('/api/auth/password');
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer jeton-2');
+    retry.flush({ closedSessions: 0 });
   });
 });

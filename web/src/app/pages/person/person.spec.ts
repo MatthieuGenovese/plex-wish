@@ -38,8 +38,8 @@ describe('PersonPage', () => {
     expect(el.querySelector('h1')?.textContent).toBe('Atsumi Tanezaki');
     expect(el.querySelector('.native')?.textContent).toBe('種﨑敦美');
     expect(el.querySelector('.native')?.getAttribute('lang')).toBe('ja');
-    expect(el.querySelector('.hero img')?.getAttribute('src')).toBe('/api/cast-images/p1');
-    const cards = el.querySelectorAll('.grid li');
+    expect(el.querySelector('.person-head img')?.getAttribute('src')).toBe('/api/cast-images/p1');
+    const cards = el.querySelectorAll('.person-grid li');
     expect(cards.length).toBe(2);
     expect(cards[0].querySelector('a')?.getAttribute('href')).toBe('/anime/7');
     expect(cards[1].textContent).toContain('Anya Forger');
@@ -58,6 +58,6 @@ describe('PersonPage', () => {
     const { fixture, el, req } = await open();
     req.flush({ status: 404, error: 'PERSON_NOT_FOUND', message: 'Comédien introuvable' }, { status: 404, statusText: 'Not Found' });
     await fixture.whenStable();
-    expect(el.querySelector('.alert-error')?.textContent).toContain('aucun animé disponible');
+    expect(el.querySelector('.state-title')?.textContent).toContain('aucun animé disponible');
   });
 });

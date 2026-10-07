@@ -3,12 +3,15 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService, safeReturnUrl } from '../../core/auth.service';
 import { errorCode, errorMessage } from '../../core/errors';
+import { APP_NAME } from '../../core/app-name';
+import { Icon } from '../../shared/icon';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Icon],
   template: `
-    <section class="card login" aria-labelledby="login-title">
+    <section class="login" aria-labelledby="login-title">
+      <div class="login-brand" aria-hidden="true"><span class="logo"><app-icon name="play_arrow_fill" /></span>{{ appName }}</div>
       <h1 id="login-title">Connexion</h1>
       @if (error(); as e) {
         <div class="alert" [class.alert-error]="!locked()" [class.alert-warning]="locked()" role="alert">
@@ -17,22 +20,22 @@ import { errorCode, errorMessage } from '../../core/errors';
       }
       <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
         <div class="field">
-          <label for="login">Identifiant ou email</label>
+          <label for="login">Identifiant ou e-mail</label>
           <input id="login" formControlName="login" autocomplete="username" autocapitalize="none" spellcheck="false" />
         </div>
         <div class="field">
           <label for="password">Mot de passe</label>
-          <input id="password" type="password" formControlName="password" autocomplete="current-password" />
+          <input id="password" [type]="showPassword() ? 'text' : 'password'" formControlName="password" autocomplete="current-password" />
         </div>
-        <button type="submit" class="btn-primary submit" [disabled]="pending()">
+        <label class="check">
+          <input type="checkbox" [checked]="showPassword()" (change)="showPassword.set(!showPassword())" />Afficher le mot de passe
+        </label>
+        <button type="submit" class="btn-primary btn-lg submit" [disabled]="pending()">
           {{ pending() ? 'Connexion…' : 'Se connecter' }}
         </button>
       </form>
+      <p class="hint login-help">Mot de passe oublié ? Demandez à l’administrateur de le réinitialiser.</p>
     </section>
-  `,
-  styles: `
-    .login { max-width: 26rem; margin: var(--space-6) auto; }
-    .submit { width: 100%; }
   `,
 })
 export class LoginPage {
@@ -49,6 +52,8 @@ export class LoginPage {
   protected readonly pending = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly locked = signal(false);
+  protected readonly showPassword = signal(false);
+  protected readonly appName = APP_NAME;
 
   submit(): void {
     if (this.form.invalid) {

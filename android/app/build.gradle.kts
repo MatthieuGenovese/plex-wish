@@ -1,8 +1,7 @@
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "8.7.3"
-    id("org.jetbrains.kotlin.android") version "2.4.21"
+    id("com.android.application") version "9.4.1"
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
 }
@@ -15,7 +14,7 @@ val signing = Properties().apply {
 
 android {
     namespace = "fr.plexwish.anime"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "fr.plexwish.anime"
@@ -64,12 +63,6 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
-    }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 

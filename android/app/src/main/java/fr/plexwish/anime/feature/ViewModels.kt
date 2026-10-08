@@ -24,13 +24,13 @@ object ViewModels {
 
     val Factory: ViewModelProvider.Factory = viewModelFactory {
         initializer { LoginViewModel(container().auth, container().session) }
-        initializer { HomeViewModel(container().api, container().session) }
+        initializer { HomeViewModel(container().api, container().session, container().progressBus) }
         initializer { LibraryViewModel(container().api, container().session, createSavedStateHandle()) }
-        initializer { AnimeDetailViewModel(container().api, container().session, createSavedStateHandle()) }
+        initializer { AnimeDetailViewModel(container().api, container().session, createSavedStateHandle(), container().progressBus) }
         initializer { PersonViewModel(container().api, container().session, createSavedStateHandle()) }
         initializer {
             val c = container()
-            PlayerViewModel(c.api, c::newPlaybackEngine, createSavedStateHandle(), c.appScope)
+            PlayerViewModel(c.api, c::newPlaybackEngine, createSavedStateHandle(), c.appScope, progressBus = c.progressBus)
         }
     }
 }

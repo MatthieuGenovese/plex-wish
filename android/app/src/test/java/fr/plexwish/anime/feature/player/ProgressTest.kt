@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import fr.plexwish.anime.data.api.ApiException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -110,5 +111,42 @@ class ProgressTest : PlayerTestBase() {
         engine.current!!.onPlayingChanged(false)
         Thread.sleep(200)
         assertEquals(before, progressPuts.size)
+    }
+
+    @Test
+    fun reporterAnnouncesOnlyWhatTheServerAccepted() {
+        val saved = CopyOnWriteArrayList<ProgressReporter.Sample>()
+        var down = true
+        val r = ProgressReporter(
+            send = { _, _ -> if (down) throw ApiException(0, null, "réseau") },
+            scope = CoroutineScope(Dispatchers.Unconfined), clock = { 0L }, onSaved = { saved += it },
+        )
+        r.flush(600_000, 1_440_000)
+        assertTrue("échec : rien d'annoncé", saved.isEmpty())
+        down = false
+        r.flush(610_000, 1_440_000)
+        assertEquals(listOf(ProgressReporter.Sample(610, 1440)), saved)
+    }
+
+    @Test
+    fun leavingThePlayerAnnouncesTheLastPositionWithItsAnime() {
+        // Scénario du S24 : retour à la fiche, la barre de l'épisode doit suivre la dernière position, même si
+        // l'envoi de sortie arrive après le retour à l'écran.
+        val events = CopyOnWriteArrayList<ProgressSaved>()
+        val collector = CoroutineScope(Dispatchers.Unconfined).launch { bus.events.collect { events += it } }
+        val store = ViewModelStore()
+        val engine = FakeEngine()
+        ViewModelProvider.create(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T = player(engine) as T
+        })[PlayerViewModel::class.java]
+        await("chargement") { engine.loads.size == 1 }
+        engine.durationMs = 1_440_000
+        engine.current!!.onReady()
+        engine.positionMs = 1_200_000
+        store.clear() // sortie du lecteur
+        await("annonce") { events.any { it.positionSeconds == 1200 } }
+        assertEquals(ProgressSaved(7, 5, 1200, 1440), events.last())
+        collector.cancel()
     }
 }

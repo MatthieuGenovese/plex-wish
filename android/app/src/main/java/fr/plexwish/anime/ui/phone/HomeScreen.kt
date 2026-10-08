@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.components.ProgressBar
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -91,10 +92,7 @@ private fun ContinueCard(c: ContinueWatching, onClick: () -> Unit) {
     ) {
         Poster(c.animeTitle, c.posterUrl)
         if (c.durationSeconds > 0) {
-            LinearProgressIndicator(
-                progress = { (c.positionSeconds.toFloat() / c.durationSeconds).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-            )
+            ProgressBar(c.positionSeconds.toFloat() / c.durationSeconds)
         }
         Text(c.animeTitle, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text("${c.seasonLabel} · ép. ${c.episodeNumber}", style = MaterialTheme.typography.bodySmall,

@@ -9,6 +9,8 @@ import fr.plexwish.anime.data.api.AppTokens
 import fr.plexwish.anime.data.auth.SessionStore
 import fr.plexwish.anime.feature.detail.AnimeDetailViewModel
 import fr.plexwish.anime.feature.detail.DetailState
+import fr.plexwish.anime.feature.player.ProgressBus
+import fr.plexwish.anime.feature.player.ProgressSaved
 import fr.plexwish.anime.feature.person.PersonState
 import fr.plexwish.anime.feature.person.PersonViewModel
 import fr.plexwish.anime.tokensJson
@@ -40,6 +42,9 @@ class AnimeDetailViewModelTest {
     private lateinit var session: SessionStore
     private lateinit var api: AnimeApi
     private var castStatus = 200
+    @Volatile
+    private var progressBody = """[{"episodeId":1001,"positionSeconds":1400,"durationSeconds":1440,"completed":true,"updatedAt":"2026-10-05T10:00:00Z"},
+        {"episodeId":1002,"positionSeconds":600,"durationSeconds":1440,"completed":false,"updatedAt":"2026-10-05T10:00:00Z"}]"""
     private val paths = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     private val anime = """{"id":7,"title":"Frieren","alternativeTitle":"Sousou no Frieren","frenchTitle":"Frieren",
@@ -75,9 +80,7 @@ class AnimeDetailViewModelTest {
                     "/api/anime/8" -> MockResponse().setResponseCode(404).setBody("""{"status":404,"error":"ANIME_NOT_FOUND","message":"Animé introuvable"}""")
                     "/api/seasons/10/episodes" -> MockResponse().setBody(episodes(28))
                     "/api/seasons/11/episodes" -> MockResponse().setBody(episodes(250))
-                    "/api/me/progress" -> MockResponse().setBody(
-                        """[{"episodeId":1001,"positionSeconds":1400,"durationSeconds":1440,"completed":true,"updatedAt":"2026-10-05T10:00:00Z"},
-                            {"episodeId":1002,"positionSeconds":600,"durationSeconds":1440,"completed":false,"updatedAt":"2026-10-05T10:00:00Z"}]""")
+                    "/api/me/progress" -> MockResponse().setBody(progressBody)
                     "/api/anime/7/cast" -> if (castStatus == 200) MockResponse().setBody(cast) else MockResponse().setResponseCode(castStatus)
                     "/api/people/95185" -> MockResponse().setBody(person)
                     else -> MockResponse().setResponseCode(404)
@@ -180,5 +183,35 @@ class AnimeDetailViewModelTest {
         val s = wait(vm) { !it.loading }
         assertTrue(s.notFound)
         assertFalse(paths.any { it.contains("admin") })
+    }
+
+    @Test
+    fun savedPositionUpdatesTheEpisodeBarWithoutLeavingTheDetail() {
+        // Retour du lecteur : la dernière position est enregistrée APRÈS le retour à la fiche. La barre doit suivre.
+        val bus = ProgressBus()
+        val vm = AnimeDetailViewModel(api, session, SavedStateHandle(mapOf("id" to 7L)), bus)
+        wait(vm) { it.episodes.isNotEmpty() && it.progress.isNotEmpty() }
+        val before = paths.count { it.startsWith("/api/me/progress") }
+        progressBody = """[{"episodeId":1001,"positionSeconds":1400,"durationSeconds":1440,"completed":true,"updatedAt":"2026-10-05T10:00:00Z"},
+            {"episodeId":1002,"positionSeconds":300,"durationSeconds":1440,"completed":false,"updatedAt":"2026-10-05T10:05:00Z"}]"""
+        bus.saved(ProgressSaved(7, 1002, 300, 1440)) // retour en arrière dans l'épisode : 600 → 300
+        assertEquals(300, vm.state.value.progress.getValue(1002).positionSeconds) // tout de suite
+        runBlocking { withTimeout(5000) { while (paths.count { it.startsWith("/api/me/progress") } == before) kotlinx.coroutines.delay(10) } }
+        assertEquals(300, wait(vm) { it.progress[1002]?.positionSeconds == 300 }.progress.getValue(1002).positionSeconds)
+        // Au-delà de 90 % : « vu » sans attendre la relecture.
+        bus.saved(ProgressSaved(7, 1003, 1350, 1440))
+        assertTrue(vm.state.value.progress.getValue(1003).completed)
+    }
+
+    @Test
+    fun positionOfAnotherAnimeIsIgnored() {
+        val bus = ProgressBus()
+        val vm = AnimeDetailViewModel(api, session, SavedStateHandle(mapOf("id" to 7L)), bus)
+        wait(vm) { it.episodes.isNotEmpty() && it.progress.isNotEmpty() }
+        val before = paths.count { it.startsWith("/api/me/progress") }
+        bus.saved(ProgressSaved(9, 1002, 10, 1440))
+        Thread.sleep(200)
+        assertEquals(600, vm.state.value.progress.getValue(1002).positionSeconds)
+        assertEquals(before, paths.count { it.startsWith("/api/me/progress") })
     }
 }

@@ -73,6 +73,9 @@ class AppContainer(private val context: Context) {
         }
     })
 
+    /** Positions enregistrées : la fiche et l'accueil se mettent à jour dès que l'envoi a abouti. */
+    val progressBus = fr.plexwish.anime.feature.player.ProgressBus()
+
     /** Travaux qui doivent survivre à un écran (envoi de la progression à la sortie du lecteur). */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

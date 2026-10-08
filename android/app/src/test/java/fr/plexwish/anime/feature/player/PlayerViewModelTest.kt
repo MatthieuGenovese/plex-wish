@@ -93,9 +93,11 @@ open class PlayerTestBase {
 
     val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
+    val bus = ProgressBus()
+
     fun player(engine: FakeEngine, saved: SavedStateHandle = SavedStateHandle(mapOf("id" to 5L)), intervalMs: Long = 10_000) =
         PlayerViewModel(api, { engine }, saved, appScope, RecoveryPolicy(networkDelaysMs = listOf(0, 0, 0)), progressIntervalMs = intervalMs,
-            preparingDelayUnitMs = 20)
+            preparingDelayUnitMs = 20, progressBus = bus)
 }
 
 class PlayerViewModelTest : PlayerTestBase() {

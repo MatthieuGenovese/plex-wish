@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.components.ProgressBar
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,10 +82,7 @@ fun AnimeDetailScreen(
     LaunchedEffect(lifecycle) {
         var first = true
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            if (!first) {
-                kotlinx.coroutines.delay(800) // la dernière position part en arrière-plan à la sortie du lecteur
-                vm.refreshProgress()
-            }
+            if (!first) vm.refreshProgress() // la dernière position, envoyée à la sortie du lecteur, arrive par ProgressBus
             first = false
         }
     }
@@ -236,9 +234,9 @@ private fun EpisodeRow(e: EpisodeSummary, progress: ProgressDto?, onEpisode: ((E
                 }
             }
             if (progress != null && !progress.completed && progress.positionSeconds > 0) {
-                LinearProgressIndicator(
-                    progress = { progress.positionSeconds.toFloat() / progress.durationSeconds.coerceAtLeast(1) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ProgressBar(
+                    progress.positionSeconds.toFloat() / progress.durationSeconds.coerceAtLeast(1),
+                    Modifier.padding(top = 8.dp),
                 )
             }
         }

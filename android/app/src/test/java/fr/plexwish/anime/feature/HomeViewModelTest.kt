@@ -58,4 +58,35 @@ class HomeViewModelTest {
         Thread.sleep(300)
         assertEquals(emptyList<Throwable>(), uncaught)
     }
+
+    @Test
+    fun continueWatchingFollowsTheLastSavedPosition() {
+        // Sortie du lecteur : « Continuer à regarder » relu quand la position est enregistrée (plus de délai au hasard).
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val server = MockWebServer().apply {
+            dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = when (request.requestUrl!!.encodedPath) {
+                    "/api/me/continue-watching" -> {
+                        val pos = if (calls.incrementAndGet() == 1) 100 else 900
+                        okhttp3.mockwebserver.MockResponse().setBody(
+                            """[{"animeId":7,"animeTitle":"Frieren","posterUrl":null,"episodeId":5,"seasonId":10,"seasonNumber":1,"seasonLabel":"Saison 1","episodeNumber":3,
+                                "positionSeconds":$pos,"durationSeconds":1440,"kind":"RESUME","updatedAt":"2026-10-05T10:00:00Z"}]""")
+                    }
+                    "/api/anime" -> okhttp3.mockwebserver.MockResponse().setBody("""{"total":0,"page":0,"size":20,"items":[]}""")
+                    else -> okhttp3.mockwebserver.MockResponse().setResponseCode(404)
+                }
+            }
+            start()
+        }
+        val session = SessionStore(MemoryStore(), FakeCipher())
+        session.startSession(server.url("/"), AppJson.decodeFromString<AppTokens>(tokensJson("a", "r")))
+        val bus = fr.plexwish.anime.feature.player.ProgressBus()
+        val vm = HomeViewModel(AnimeApi(session, OkHttpClient()), session, bus)
+        val s = runBlocking { withTimeout(10_000) { vm.state.first { !it.loading } } }
+        assertEquals(null, s.error)
+        assertEquals(100, s.continueWatching.single().positionSeconds)
+        bus.saved(fr.plexwish.anime.feature.player.ProgressSaved(7, 5, 900, 1440))
+        runBlocking { withTimeout(10_000) { vm.state.first { it.continueWatching.singleOrNull()?.positionSeconds == 900 } } }
+        server.shutdown()
+    }
 }

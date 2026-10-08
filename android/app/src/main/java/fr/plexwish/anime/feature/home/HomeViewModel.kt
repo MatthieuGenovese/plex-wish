@@ -8,6 +8,7 @@ import fr.plexwish.anime.data.api.ApiException
 import fr.plexwish.anime.data.api.ContinueWatching
 import fr.plexwish.anime.data.auth.SessionStore
 import fr.plexwish.anime.feature.image
+import fr.plexwish.anime.feature.player.ProgressBus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,13 +24,20 @@ data class HomeState(
     val error: String? = null,
 )
 
-class HomeViewModel(private val api: AnimeApi, private val session: SessionStore) : ViewModel() {
+class HomeViewModel(
+    private val api: AnimeApi,
+    private val session: SessionStore,
+    progressBus: ProgressBus = ProgressBus(),
+) : ViewModel() {
 
+    private var refreshJob: kotlinx.coroutines.Job? = null
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state.asStateFlow()
 
     init {
         load()
+        // Position enregistrée (sortie du lecteur) : « Continuer à regarder » relu quand l'envoi a abouti.
+        viewModelScope.launch { progressBus.events.collect { refreshContinueWatching() } }
     }
 
     fun load() {
@@ -54,13 +62,10 @@ class HomeViewModel(private val api: AnimeApi, private val session: SessionStore
         }
     }
 
-    /**
-     * Retour sur l'accueil (après le lecteur) : « Continuer à regarder » relu sans tout recharger. Petit délai : la
-     * dernière position part en arrière-plan à la sortie du lecteur. Une erreur ici n'est pas affichée.
-     */
+    /** « Continuer à regarder » relu sans tout recharger (retour sur l'accueil, position enregistrée). Erreur ignorée. */
     fun refreshContinueWatching() {
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(800)
+        refreshJob?.cancel() // seule la dernière relecture compte
+        refreshJob = viewModelScope.launch {
             try {
                 val cw = api.continueWatching(20).map { it.copy(posterUrl = session.image(it.posterUrl)) }
                 _state.update { it.copy(continueWatching = cw) }

@@ -57,6 +57,8 @@ class PlayerViewModel(
     progressIntervalMs: Long = 10_000,
     /** Unité du délai entre deux demandes pendant la préparation (1 s ; raccourcie dans les tests). */
     private val preparingDelayUnitMs: Long = 1_000,
+    /** Positions enregistrées, pour la fiche et l'accueil. */
+    private val progressBus: ProgressBus? = null,
 ) : ViewModel(), PlaybackEngine.Listener {
 
     val episodeId: Long = checkNotNull(saved.get<Long>("id")) { "identifiant d'épisode manquant" }
@@ -76,6 +78,7 @@ class PlayerViewModel(
     private val progress = ProgressReporter(
         send = { pos, dur -> api.saveProgress(episodeId, pos, dur) },
         scope = progressScope, clock = clock, intervalMs = progressIntervalMs,
+        onSaved = { progressBus?.saved(ProgressSaved(episode?.animeId, episodeId, it.positionSeconds, it.durationSeconds)) },
     )
 
     /** Dernière position sûre (ms) : sert à repartir au bon endroit après une erreur. */

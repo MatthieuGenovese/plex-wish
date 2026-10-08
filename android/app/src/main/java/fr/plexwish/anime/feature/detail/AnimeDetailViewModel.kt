@@ -11,6 +11,7 @@ import fr.plexwish.anime.data.api.EpisodeSummary
 import fr.plexwish.anime.data.api.ProgressDto
 import fr.plexwish.anime.data.auth.SessionStore
 import fr.plexwish.anime.feature.image
+import fr.plexwish.anime.feature.player.ProgressBus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,15 +75,30 @@ class AnimeDetailViewModel(
     private val api: AnimeApi,
     private val session: SessionStore,
     private val saved: SavedStateHandle,
+    private val progressBus: ProgressBus = ProgressBus(),
 ) : ViewModel() {
 
     val animeId: Long = checkNotNull(saved.get<Long>("id")) { "identifiant d'animé manquant" }
     private val _state = MutableStateFlow(DetailState())
     val state: StateFlow<DetailState> = _state.asStateFlow()
     private var episodesJob: Job? = null
+    private var progressJob: Job? = null
 
     init {
         load()
+        // Position enregistrée pour un épisode de cet animé (lecteur ouvert depuis la fiche, ou sortie du lecteur) :
+        // la barre de l'épisode change tout de suite, puis la progression est relue (le serveur décide de « vu »).
+        viewModelScope.launch {
+            progressBus.events.collect { e ->
+                if (e.animeId != null && e.animeId != animeId) return@collect
+                if (e.animeId == null && _state.value.episodes.none { it.id == e.episodeId }) return@collect
+                _state.update { s ->
+                    s.copy(progress = s.progress + (e.episodeId to ProgressDto(e.episodeId, e.positionSeconds, e.durationSeconds,
+                        completed = e.positionSeconds * 10L >= e.durationSeconds * 9L)))
+                }
+                refreshProgress()
+            }
+        }
     }
 
     fun load() {
@@ -120,7 +136,10 @@ class AnimeDetailViewModel(
 
     /** Relu au retour sur la fiche (après le lecteur, au bloc suivant). Une erreur ici n'est pas affichée. */
     fun refreshProgress() {
-        viewModelScope.launch {
+        // Seule la dernière relecture compte : une réponse plus ancienne (partie avant l'enregistrement de la dernière
+        // position) ne doit pas l'écraser.
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
             try {
                 val list = api.progress(animeId)
                 _state.update { s -> s.copy(progress = list.associateBy { it.episodeId }) }

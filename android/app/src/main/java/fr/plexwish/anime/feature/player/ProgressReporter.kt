@@ -19,6 +19,8 @@ class ProgressReporter(
     private val scope: CoroutineScope,
     private val clock: () -> Long = System::currentTimeMillis,
     private val intervalMs: Long = 10_000,
+    /** Appelé après chaque envoi réussi (la fiche et l'accueil se mettent à jour). */
+    private val onSaved: (Sample) -> Unit = {},
 ) {
     data class Sample(val positionSeconds: Int, val durationSeconds: Int)
 
@@ -46,6 +48,7 @@ class ProgressReporter(
                 try {
                     send(s.positionSeconds, s.durationSeconds)
                     lastSent = s
+                    onSaved(s)
                 } catch (e: ApiException) {
                     // Réseau ou serveur indisponible : la position sera renvoyée à la prochaine occasion.
                     SafeLog.i(TAG, "Progression non envoyée (${e.code ?: "HTTP " + e.status}), nouvel essai plus tard")

@@ -75,7 +75,7 @@ class AuthRepository(
     }
 
     private fun notOurServer() = ApiException(0, "NOT_ANIME_SERVER",
-        "Cette adresse ne répond pas comme un Anime Server. Vérifiez-la (ex. https://anime.mondomaine.fr).")
+        "Cette adresse ne répond pas comme un serveur ${fr.plexwish.anime.BuildConfig.APP_NAME}. Vérifiez-la (ex. https://anime.mondomaine.fr).")
 
     private companion object {
         val JSON = "application/json".toMediaType()

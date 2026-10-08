@@ -22,7 +22,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
         title = { Text("À propos") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Anime Server ${BuildConfig.VERSION_NAME}")
+                Text("${BuildConfig.APP_NAME} ${BuildConfig.VERSION_NAME}")
                 Text("Fiches, affiches et distribution : AniList (anilist.co). Synopsis en français et affiches : TMDB (themoviedb.org).")
                 Text(TMDB_NOTICE)
             }

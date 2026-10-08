@@ -6,6 +6,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
 }
 
+// Nom affiché de l'application : SEUL endroit côté Android (étiquette du lanceur, écrans). Web : web/src/app/core/app-name.ts.
+val appName = "Anime Server"
+
+// Adresse du serveur préremplie à l'écran de connexion (modifiable dans l'app) : propriété `plexwish.serverUrl` de
+// local.properties (non versionné) ou de la ligne de commande (-Pplexwish.serverUrl=https://…). Vide par défaut.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val defaultServerUrl: String = (findProperty("plexwish.serverUrl") as String?) ?: localProps.getProperty("plexwish.serverUrl") ?: ""
+
 // Signature de release facultative : keystore.properties (non versionné), voir README. Sans lui, APK non signé.
 val signing = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -24,6 +35,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        resValue("string", "app_name", appName)
+        buildConfigField("String", "APP_NAME", "\"$appName\"")
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl.replace("\"", "")}\"")
     }
 
     signingConfigs {
@@ -40,6 +54,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "$appName (debug)")
             // HTTP en clair autorisé seulement ici (tests sur le réseau local / adb reverse).
             buildConfigField("boolean", "ALLOW_HTTP", "true")
         }
@@ -53,6 +68,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     compileOptions {
@@ -63,6 +79,13 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric (écrans Compose rendus sur la JVM : tests d'interface et captures, sans émulateur).
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("robolectric.graphicsMode", "NATIVE")
+            it.systemProperty("screenshots.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
+            it.maxHeapSize = "2g"
+        }
     }
 }
 
@@ -71,7 +94,6 @@ dependencies {
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -94,6 +116,11 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Écrans Compose testés et capturés sur la JVM (dépendances de test seulement, rien dans l'APK de release).
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.robolectric:robolectric:4.17")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }

@@ -1,10 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Home
+import fr.plexwish.anime.ui.theme.AppIcons
+
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -77,14 +74,14 @@ fun PhoneApp(container: AppContainer) {
                     title = {
                         Text(when (route) {
                             Routes.LIBRARY -> "Bibliothèque"
-                            Routes.HOME -> "Anime Server"
+                            Routes.HOME -> fr.plexwish.anime.BuildConfig.APP_NAME
                             Routes.PERSON -> "Comédien"
                             else -> ""
                         })
                     },
                     navigationIcon = {
                         if (route == Routes.ANIME || route == Routes.PERSON) IconButton(onClick = { nav.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                            Icon(AppIcons.ArrowBack, contentDescription = "Retour")
                         }
                     },
                     actions = { AccountMenu(container.session.username) { scope.launch { container.auth.logout() } } },
@@ -122,7 +119,7 @@ fun PhoneApp(container: AppContainer) {
 @Composable
 private fun BottomBar(nav: NavHostController, route: String?) {
     NavigationBar {
-        listOf(Triple(Routes.HOME, "Accueil", Icons.Default.Home), Triple(Routes.LIBRARY, "Bibliothèque", Icons.AutoMirrored.Filled.List))
+        listOf(Triple(Routes.HOME, "Accueil", AppIcons.Home), Triple(Routes.LIBRARY, "Bibliothèque", AppIcons.VideoLibrary))
             .forEach { (r, label, icon) ->
                 NavigationBarItem(
                     selected = route == r,
@@ -145,7 +142,7 @@ private fun AccountMenu(username: String?, onLogout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
     if (about) AboutDialog { about = false }
-    IconButton(onClick = { open = true }) { Icon(Icons.Default.AccountCircle, contentDescription = "Compte") }
+    IconButton(onClick = { open = true }) { Icon(AppIcons.AccountCircle, contentDescription = "Compte") }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         username?.let {
             DropdownMenuItem(text = { Text("Connecté : $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }, onClick = {}, enabled = false)

@@ -1,5 +1,9 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.theme.AppIcons
+
+import fr.plexwish.anime.ui.theme.AppTheme
+
 import fr.plexwish.anime.ui.components.ProgressBar
 
 import androidx.compose.foundation.clickable
@@ -20,8 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,7 +63,6 @@ import fr.plexwish.anime.ui.components.ErrorMessage
 import fr.plexwish.anime.ui.components.Loading
 import fr.plexwish.anime.ui.components.Poster
 import fr.plexwish.anime.ui.components.TMDB_NOTICE
-import fr.plexwish.anime.ui.theme.AppColors
 
 /**
  * Fiche d'un animé : affiche, titres, synopsis et sources ; saisons ; épisodes (par tranches de 100) avec la
@@ -211,7 +212,7 @@ private fun EpisodeRow(e: EpisodeSummary, progress: ProgressDto?, onEpisode: ((E
     }
     val label = listOfNotNull("Épisode ${e.episodeNumber}", e.title, minutes?.let { "$it min" }, state).joinToString(", ")
     Surface(
-        color = AppColors.Surface, shape = RoundedCornerShape(8.dp),
+        color = AppTheme.palette.surface1, shape = RoundedCornerShape(8.dp),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             .then(if (onEpisode != null) Modifier.clickable(role = Role.Button) { onEpisode(e) } else Modifier)
             .clearAndSetSemantics {
@@ -224,13 +225,13 @@ private fun EpisodeRow(e: EpisodeSummary, progress: ProgressDto?, onEpisode: ((E
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${e.episodeNumber}", color = AppColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
+                Text("${e.episodeNumber}", color = AppTheme.palette.accent, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     minutes?.let { Muted("$it min") }
                 }
                 if (progress?.completed == true) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AppColors.Success)
+                    Icon(AppIcons.CheckCircleFill, contentDescription = null, tint = AppTheme.palette.ok)
                 }
             }
             if (progress != null && !progress.completed && progress.positionSeconds > 0) {
@@ -264,11 +265,11 @@ private fun CastCard(e: CastEntry, onPerson: (String) -> Unit, modifier: Modifie
         // Sans comédien : visuel de remplacement (initiales du personnage), jamais d'image de personnage.
         Poster(p?.name ?: e.character.name, p?.imageUrl)
         Text(p?.name ?: "Voix non renseignée", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-            color = if (p != null) AppColors.Text else AppColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(e.character.name, style = MaterialTheme.typography.bodySmall, color = AppColors.TextMuted, maxLines = 2,
+            color = if (p != null) AppTheme.palette.text else AppTheme.palette.text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(e.character.name, style = MaterialTheme.typography.bodySmall, color = AppTheme.palette.text2, maxLines = 2,
             overflow = TextOverflow.Ellipsis)
         Text(roleLabel, style = MaterialTheme.typography.labelSmall,
-            color = if (e.role == "MAIN") AppColors.Success else AppColors.TextMuted)
+            color = if (e.role == "MAIN") AppTheme.palette.ok else AppTheme.palette.text2)
     }
 }
 

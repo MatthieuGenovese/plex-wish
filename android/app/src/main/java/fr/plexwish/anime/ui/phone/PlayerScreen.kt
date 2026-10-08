@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.theme.AppIcons
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -21,8 +23,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -124,7 +124,7 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
                 Modifier.fillMaxWidth().safeDrawingPadding().background(Color(0x99000000)).padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Color.White) }
+                IconButton(onClick = onBack) { Icon(AppIcons.ArrowBack, contentDescription = "Retour", tint = Color.White) }
                 Column(Modifier.weight(1f)) {
                     Text(s.title, color = Color.White, fontWeight = FontWeight.Medium, maxLines = 1)
                     s.subtitle?.let { Text(it, color = Color(0xFFCCCCCC), style = MaterialTheme.typography.bodySmall, maxLines = 1) }

@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.theme.AppIcons
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,9 +15,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,10 +57,10 @@ fun LibraryScreen(vm: LibraryViewModel, onAnime: (Long) -> Unit, padding: Paddin
         OutlinedTextField(
             value = s.query, onValueChange = vm::onQuery, singleLine = true,
             label = { Text("Rechercher un titre") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
             trailingIcon = {
                 if (s.query.isNotEmpty()) IconButton(onClick = { vm.onQuery("") }) {
-                    Icon(Icons.Default.Clear, contentDescription = "Effacer la recherche")
+                    Icon(AppIcons.Close, contentDescription = "Effacer la recherche")
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

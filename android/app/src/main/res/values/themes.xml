@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Anime" parent="android:Theme.Material.NoActionBar">
+    <!-- Fond de fenêtre avant le premier affichage de Compose : celui du thème clair (values-night : sombre).
+         Les couleurs de l'interface viennent des jetons (ui/theme/Tokens.kt), comme sur le web. -->
+    <style name="Theme.Anime" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
-    <color name="background">#FF101218</color>
-    <color name="accent">#FF7AA2FF</color>
+    <color name="background">#FFF5F6F8</color>
+    <!-- Icône du lanceur : carré Lagune, triangle « lecture » sombre (comme le logo du web). -->
+    <color name="launcher_background">#FF3ED6C2</color>
 </resources>

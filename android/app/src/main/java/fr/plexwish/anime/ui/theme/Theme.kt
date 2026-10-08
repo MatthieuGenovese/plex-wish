@@ -1,44 +1,74 @@
 package fr.plexwish.anime.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.unit.dp
 
-/** Mêmes couleurs que l'interface web (thème sombre, contrastes vérifiés sur le web). */
-object AppColors {
-    val Background = Color(0xFF101218)
-    val Surface = Color(0xFF171A22)
-    val SurfaceRaised = Color(0xFF212531)
-    val Border = Color(0xFF2C3140)
-    val Text = Color(0xFFECEEF3)
-    val TextMuted = Color(0xFFA3A9B8)
-    val Accent = Color(0xFF7AA2FF)
-    val OnAccent = Color(0xFF0B1020)
-    val Success = Color(0xFF5FD49A)
-    val Danger = Color(0xFFFF7B7B)
+/** Préférence de thème, enregistrée sur l'appareil (ThemePrefs). Sombre par défaut, comme le web. */
+enum class ThemeMode(val label: String) { SYSTEM("Système"), DARK("Sombre"), LIGHT("Clair") }
+
+/** Schéma Material 3 construit depuis les jetons (DESIGN §5.6). */
+fun colorSchemeOf(p: Palette): ColorScheme {
+    val base = if (p.dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = p.accent, onPrimary = p.onAccent,
+        primaryContainer = p.accentSoft, onPrimaryContainer = p.text,
+        secondary = p.accent, onSecondary = p.onAccent,
+        secondaryContainer = p.accentSoft, onSecondaryContainer = p.text,
+        tertiary = p.accent, onTertiary = p.onAccent,
+        background = p.bg, onBackground = p.text,
+        surface = p.bg, onSurface = p.text, surfaceVariant = p.surface2, onSurfaceVariant = p.text2,
+        surfaceDim = p.bg, surfaceBright = p.surface3,
+        surfaceContainerLowest = p.bg, surfaceContainerLow = p.surface1, surfaceContainer = p.surface1,
+        surfaceContainerHigh = p.surface2, surfaceContainerHighest = p.surface3,
+        inverseSurface = p.text, inverseOnSurface = p.bg, inversePrimary = p.accent,
+        outline = p.outlineStrong, outlineVariant = p.outline,
+        error = p.err, onError = if (p.dark) p.onAccent else p.surface1, errorContainer = p.errBg, onErrorContainer = p.text,
+        scrim = androidx.compose.ui.graphics.Color.Black,
+    )
 }
 
-private val Colors = darkColorScheme(
-    primary = AppColors.Accent,
-    onPrimary = AppColors.OnAccent,
-    secondary = AppColors.Accent,
-    onSecondary = AppColors.OnAccent,
-    background = AppColors.Background,
-    onBackground = AppColors.Text,
-    surface = AppColors.Surface,
-    onSurface = AppColors.Text,
-    surfaceVariant = AppColors.SurfaceRaised,
-    onSurfaceVariant = AppColors.TextMuted,
-    surfaceContainer = AppColors.Surface,
-    surfaceContainerHigh = AppColors.SurfaceRaised,
-    outline = AppColors.Border,
-    error = AppColors.Danger,
-    onError = AppColors.OnAccent,
+/** Formes : petites 6 dp, moyennes 10 dp, grandes 16 dp (boutons : pilule, CircleShape). */
+val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
+val PillShape = CircleShape
+
 @Composable
-fun AnimeTheme(content: @Composable () -> Unit) {
-    // Tailles de texte en sp (typographie Material) : la taille de police du système s'applique.
-    MaterialTheme(colorScheme = Colors, content = content)
+fun AnimeTheme(mode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+    }
+    PaletteTheme(if (dark) DarkPalette else LightPalette, content)
+}
+
+/** Applique une palette (sert aussi aux surfaces toujours sombres : héros, lecteur). */
+@Composable
+fun PaletteTheme(palette: Palette, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalPalette provides palette) {
+        // Tailles de texte en sp : la taille de police du système s'applique (testée à 200 %).
+        MaterialTheme(colorScheme = colorSchemeOf(palette), typography = AppTypography, shapes = AppShapes, content = content)
+    }
+}
+
+/** Accès court aux jetons : {@code AppTheme.palette.accent}. */
+object AppTheme {
+    val palette: Palette
+        @Composable @ReadOnlyComposable get() = LocalPalette.current
 }

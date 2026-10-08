@@ -32,7 +32,7 @@ inline fun <reified T> Response.decode(): T = use {
     try {
         AppJson.decodeFromString<T>(text)
     } catch (e: Exception) {
-        throw ApiException(code, null, "Réponse inattendue du serveur. L'adresse est-elle bien celle de l'Anime Server ?", e)
+        throw ApiException(code, null, "Réponse inattendue du serveur. L'adresse est-elle bien celle du serveur ${fr.plexwish.anime.BuildConfig.APP_NAME} ?", e)
     }
 }
 

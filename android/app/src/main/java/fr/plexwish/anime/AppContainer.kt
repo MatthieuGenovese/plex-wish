@@ -30,6 +30,19 @@ class AppContainer(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("session", Context.MODE_PRIVATE)
 
+    private fun store(name: String): KeyValueStore {
+        val p = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        return object : KeyValueStore {
+            override fun get(key: String) = p.getString(key, null)
+            override fun put(key: String, value: String?) {
+                p.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+            }
+        }
+    }
+
+    /** Thème choisi (Système / Sombre / Clair), enregistré sur ce téléphone. */
+    val themePrefs = fr.plexwish.anime.ui.theme.ThemePrefs(store("ui"))
+
     val session = SessionStore(object : KeyValueStore {
         override fun get(key: String) = prefs.getString(key, null)
         override fun put(key: String, value: String?) {

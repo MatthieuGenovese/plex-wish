@@ -41,7 +41,7 @@ fun LoginScreen(vm: LoginViewModel) {
             Modifier.widthIn(max = 480.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Anime Server", style = MaterialTheme.typography.headlineMedium)
+            Text(fr.plexwish.anime.BuildConfig.APP_NAME, style = MaterialTheme.typography.headlineMedium)
             if (s.expired) {
                 Text("Votre session a expiré : reconnectez-vous.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

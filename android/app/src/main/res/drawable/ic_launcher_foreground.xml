@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Icône simple : un triangle « lecture » dans la zone sûre de l'icône adaptative (108 dp). -->
+<!-- Icône : triangle « lecture » arrondi, dans la zone sûre de l'icône adaptative (108 dp). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FF7AA2FF" android:pathData="M44,36 L74,54 L44,72 Z" />
+    <path android:fillColor="#FF06221F"
+        android:pathData="M45,38.5 C45,36.2 47.5,34.8 49.5,36 L72.5,50.5 C74.4,51.7 74.4,54.3 72.5,55.5 L49.5,70 C47.5,71.2 45,69.8 45,67.5 Z" />
 </vector>

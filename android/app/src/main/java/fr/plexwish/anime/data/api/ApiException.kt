@@ -31,7 +31,7 @@ class ApiException(
                 404 -> "Introuvable."
                 429 -> "Trop de tentatives, réessayez dans quelques minutes."
                 in 500..599 -> "Le serveur a rencontré une erreur (HTTP $status). Réessayez plus tard."
-                else -> "Réponse inattendue du serveur (HTTP $status). L'adresse est-elle bien celle de l'Anime Server ?"
+                else -> "Réponse inattendue du serveur (HTTP $status). L'adresse est-elle bien celle du serveur ${fr.plexwish.anime.BuildConfig.APP_NAME} ?"
             }
             return ApiException(status, body?.error, message)
         }

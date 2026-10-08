@@ -5,16 +5,16 @@ import androidx.media3.common.PlaybackException
 /** Familles d'erreur, pour le message à l'utilisateur et la reprise automatique. */
 enum class FailureKind { FORBIDDEN, NOT_FOUND, NETWORK, SERVER, CONTAINER, MALFORMED, VIDEO_CODEC, AUDIO_CODEC, STALLED, UNKNOWN }
 
-/** Avertissement (la lecture continue) : son ou sous-titres absents ou illisibles. */
-enum class WarningKind { NO_AUDIO, AUDIO_UNSUPPORTED, NO_SUBTITLES, SUBTITLES_UNSUPPORTED, IMAGE_SUBTITLES }
+/** Avertissement (la lecture continue) : son absent ou illisible. */
+enum class WarningKind { NO_AUDIO, AUDIO_UNSUPPORTED }
 
 /** Message utile + détails techniques (sans URL ni jeton) pour l'écran « Détails ». */
 data class Diagnosis(val message: String, val details: List<Pair<String, String>>)
 
 /**
  * Traduction des erreurs et des pistes en messages compréhensibles. Distingue : conteneur non lu (OGM, AVI exotique),
- * vidéo non décodable (HEVC 10 bits sur un téléphone sans décodeur…), son illisible, sous-titres absents ou dans un
- * format qu'Android ignore (ASS dans un MP4, sous-titres d'un AVI), erreurs réseau, lien refusé (403), fichier absent.
+ * vidéo non décodable (HEVC 10 bits sur un téléphone sans décodeur…), son illisible, erreurs réseau, lien refusé (403),
+ * fichier absent. Les sous-titres ne font l'objet d'aucun message.
  */
 object Diagnostics {
 
@@ -128,21 +128,8 @@ object Diagnostics {
                 "Pas de son : ce téléphone ne sait pas lire l'audio de ce fichier (${audio.joinToString { codecName(it.mimeType, it.codecs) }}).",
                 details)
         }
-        val text = tracks.filter { it.type == TrackType.TEXT }
-        when {
-            text.isEmpty() -> out += WarningKind.NO_SUBTITLES to Diagnosis(
-                "Aucun sous-titre lisible dans ce fichier $c : " + when (container?.lowercase()) {
-                    "mp4", "m4v" -> "un MP4 ne peut porter que des sous-titres texte simples ; des sous-titres ASS mis dans un MP4 sont ignorés par Android."
-                    "avi" -> "Android ne lit pas les sous-titres contenus dans un AVI (VobSub ou autres)."
-                    else -> "il n'en contient pas, ou dans un format qu'Android ne lit pas."
-                }, details)
-            text.none { it.supported } -> out += WarningKind.SUBTITLES_UNSUPPORTED to Diagnosis(
-                "Les sous-titres de ce fichier (${text.joinToString { codecName(it.mimeType, it.codecs) }}) ne sont pas lisibles par Android.",
-                details)
-            text.filter { it.supported }.all { isImageSubtitle(it.mimeType, it.codecs) } -> out += WarningKind.IMAGE_SUBTITLES to Diagnosis(
-                "Sous-titres en images (${text.first().let { codecName(it.mimeType, it.codecs) }}) : affichés tels quels, " +
-                    "sans réglage de taille ni de style.", details)
-        }
+        // Sous-titres : jamais d'avertissement. Selon le fichier, ils sont dans une piste (MKV, MP4, copies des AVI et
+        // OGM) ou incrustés dans l'image (fréquent dans les AVI) : l'absence de piste ne veut pas dire « pas de sous-titres ».
         return out
     }
 
@@ -181,9 +168,6 @@ object Diagnostics {
     /** Sous-titres convertis à l'extraction : Media3 met « application/x-media3-cues » et garde le type d'origine dans codecs. */
     private fun realMime(mime: String?, codecs: String?) =
         if (mime == "application/x-media3-cues" && !codecs.isNullOrBlank()) codecs else mime
-
-    fun isImageSubtitle(mime: String?, codecs: String?) =
-        realMime(mime, codecs) in setOf("application/vobsub", "application/pgs", "application/dvbsubs")
 
     /** Nom lisible d'un codec, avec la profondeur 10 bits quand la chaîne de codec la donne. */
     fun codecName(mime: String?, codecs: String?): String {

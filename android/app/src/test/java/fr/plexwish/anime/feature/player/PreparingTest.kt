@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.media3.common.PlaybackException
-import fr.plexwish.anime.ui.phone.waitLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -85,12 +84,5 @@ class PreparingTest : PlayerTestBase() {
         assertEquals(900_000, engine.loads[1].startMs)
         engine.current!!.onReady()
         assertEquals(PlayerPhase.PLAYING, vm.state.value.phase)
-    }
-
-    @Test
-    fun waitLabels() {
-        assertEquals("moins d'une minute", waitLabel(40))
-        assertEquals("environ 3 min", waitLabel(170))
-        assertEquals("environ 1 h 05", waitLabel(3900))
     }
 }

@@ -28,7 +28,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -42,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -62,7 +64,6 @@ import androidx.media3.ui.PlayerView
 import fr.plexwish.anime.feature.player.Diagnosis
 import fr.plexwish.anime.feature.player.PlayerPhase
 import fr.plexwish.anime.feature.player.PlayerViewModel
-import fr.plexwish.anime.feature.player.PreparingInfo
 import fr.plexwish.anime.playback.ExoPlaybackEngine
 
 /**
@@ -134,14 +135,11 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
         }
 
         when (s.phase) {
-            PlayerPhase.LOADING, PlayerPhase.RECONNECTING -> Column(
-                Modifier.align(Alignment.Center).semantics { liveRegion = LiveRegionMode.Polite },
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                CircularProgressIndicator()
-                if (s.phase == PlayerPhase.RECONNECTING) Text("Reconnexion…", color = Color.White, modifier = Modifier.padding(top = 8.dp))
-            }
-            PlayerPhase.PREPARING -> PreparingPanel(s.preparing, onBack, Modifier.align(Alignment.Center))
+            PlayerPhase.LOADING -> BusyIndicator(null, Modifier.align(Alignment.Center))
+            PlayerPhase.RECONNECTING -> BusyIndicator("Reconnexion…", Modifier.align(Alignment.Center))
+            // Conversion pour Android sur le serveur : un indicateur et une ligne, directement sur l'image (pas de cadre).
+            // Annuler = retour (bouton ou geste de retour, touche Retour de la télécommande).
+            PlayerPhase.PREPARING -> BusyIndicator("Préparation de l'épisode…", Modifier.align(Alignment.Center))
             PlayerPhase.ERROR -> s.error?.let {
                 ErrorPanel(it, vm::retry, { vm.showDetails(it) }, onBack, Modifier.align(Alignment.Center),
                     onWithoutSound = if (s.canPlayWithoutSound) vm::playWithoutSound else null)
@@ -169,46 +167,22 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
     }
 }
 
-/** « Préparation de l'épisode… » : conversion pour Android sur le serveur, place dans la file, attente estimée. */
+/** Indicateur de chargement, avec une ligne de texte éventuelle, posé sur l'image (ombre portée pour rester lisible). */
 @Composable
-private fun PreparingPanel(info: PreparingInfo?, onCancel: () -> Unit, modifier: Modifier) {
-    Surface(color = Color(0xF0171A22), shape = MaterialTheme.shapes.large, modifier = modifier.padding(24.dp).widthIn(max = 520.dp)) {
-        Column(
-            Modifier.padding(20.dp).semantics { liveRegion = LiveRegionMode.Polite },
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Préparation de l'épisode…", style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text("Ce fichier est converti pour Android sur le serveur, sans perte de qualité. Une seule fois : " +
-                "les lectures suivantes démarreront tout de suite.", color = Color(0xFFDDDDDD), style = MaterialTheme.typography.bodyMedium)
-            val progress = info?.progress
-            if (progress != null) {
-                LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth())
-            } else {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            info?.let { i ->
-                Text(
-                    listOfNotNull(
-                        when (i.position) {
-                            0 -> null
-                            1 -> "Un autre épisode est préparé avant celui-ci."
-                            else -> "${i.position} épisodes sont préparés avant celui-ci."
-                        },
-                        "Attente estimée : ${waitLabel(i.estimatedSeconds)}.",
-                    ).joinToString(" "),
-                    color = Color.White,
-                )
-            }
-            TextButton(onClick = onCancel) { Text("Annuler") }
+private fun BusyIndicator(text: String?, modifier: Modifier) {
+    Column(
+        modifier.padding(24.dp).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CircularProgressIndicator(color = Color.White)
+        text?.let {
+            Text(
+                it, color = Color.White, textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium.copy(shadow = Shadow(Color.Black, Offset(0f, 1f), 6f)),
+            )
         }
     }
-}
-
-/** « moins d'une minute », « environ 3 min ». */
-internal fun waitLabel(seconds: Long): String = when {
-    seconds < 60 -> "moins d'une minute"
-    seconds < 3600 -> "environ ${(seconds + 30) / 60} min"
-    else -> "environ ${seconds / 3600} h ${String.format(java.util.Locale.ROOT, "%02d", (seconds % 3600) / 60)}"
 }
 
 @kotlin.OptIn(ExperimentalLayoutApi::class)

@@ -42,33 +42,29 @@ class DiagnosticsTest {
     }
 
     @Test
-    fun assInMkvIsReadButAssInMp4IsReported() {
+    fun subtitlesNeverRaiseAWarningWhateverTheContainer() {
+        // MKV avec ASS, MP4 sans piste de texte, AVI / OGM convertis (sous-titres parfois incrustés dans l'image),
+        // sous-titres en images : aucun message, la lecture se fait sans bandeau.
         val ass = TrackInfo(TrackType.TEXT, "application/x-media3-cues", "text/x-ssa", "fr", supported = true, selected = true)
-        assertTrue(Diagnostics.warnings(listOf(video, aac, ass), "mkv").isEmpty())
-        // MP4 + ASS : Android ne voit aucune piste de sous-titres.
-        val mp4 = Diagnostics.warnings(listOf(video, aac), "mp4")
-        assertEquals(listOf(WarningKind.NO_SUBTITLES), mp4.map { it.first })
-        assertTrue(mp4[0].second.message.contains("ASS mis dans un MP4"))
-    }
-
-    @Test
-    fun aviCasesAreDistinguished() {
-        // MPEG-4 Part 2 + MP3 : lisible, pas de sous-titres (normal en AVI).
-        val xvid = listOf(TrackInfo(TrackType.VIDEO, "video/mp4v-es", supported = true), TrackInfo(TrackType.AUDIO, "audio/mpeg", supported = true))
-        val w1 = Diagnostics.warnings(xvid, "avi")
-        assertEquals(listOf(WarningKind.NO_SUBTITLES), w1.map { it.first })
-        assertTrue(w1[0].second.message.contains("AVI"))
-        assertTrue(w1[0].second.details.any { it.second.startsWith("MPEG-4 Part 2") })
-        // H.264 + HE-AAC non reconnu dans l'AVI + VobSub : pas de son, pas de sous-titres, deux avertissements.
-        val w2 = Diagnostics.warnings(listOf(video), "avi")
-        assertEquals(listOf(WarningKind.NO_AUDIO, WarningKind.NO_SUBTITLES), w2.map { it.first })
-        assertTrue(w2[0].second.message.contains("HE-AAC"))
-    }
-
-    @Test
-    fun imageSubtitlesAndUnsupportedAudioAreReported() {
         val vobsub = TrackInfo(TrackType.TEXT, "application/x-media3-cues", "application/vobsub", "fr", supported = true)
-        assertEquals(listOf(WarningKind.IMAGE_SUBTITLES), Diagnostics.warnings(listOf(video, aac, vobsub), "mkv").map { it.first })
+        val pgsUnreadable = TrackInfo(TrackType.TEXT, "application/pgs", null, "fr", supported = false)
+        assertTrue(Diagnostics.warnings(listOf(video, aac, ass), "mkv").isEmpty())
+        assertTrue(Diagnostics.warnings(listOf(video, aac), "mp4").isEmpty())
+        assertTrue(Diagnostics.warnings(listOf(video, aac), "mkv").isEmpty()) // copie remuxée d'un AVI ou d'un OGM
+        assertTrue(Diagnostics.warnings(listOf(video, aac, vobsub), "mkv").isEmpty())
+        assertTrue(Diagnostics.warnings(listOf(video, aac, pgsUnreadable), "mkv").isEmpty())
+        val xvid = listOf(TrackInfo(TrackType.VIDEO, "video/mp4v-es", supported = true), TrackInfo(TrackType.AUDIO, "audio/mpeg", supported = true))
+        assertTrue(Diagnostics.warnings(xvid, "avi").isEmpty())
+        assertTrue(Diagnostics.warnings(xvid, "ogm").isEmpty())
+    }
+
+    @Test
+    fun missingOrUnsupportedAudioIsStillReported() {
+        // H.264 + HE-AAC non reconnu : pas de son (seul avertissement, rien sur les sous-titres).
+        val w2 = Diagnostics.warnings(listOf(video), "avi")
+        assertEquals(listOf(WarningKind.NO_AUDIO), w2.map { it.first })
+        assertTrue(w2[0].second.message.contains("HE-AAC"))
+        val vobsub = TrackInfo(TrackType.TEXT, "application/x-media3-cues", "application/vobsub", "fr", supported = true)
         val dts = TrackInfo(TrackType.AUDIO, "audio/vnd.dts", supported = false)
         val w = Diagnostics.warnings(listOf(video, dts, vobsub), "mkv")
         assertEquals(WarningKind.AUDIO_UNSUPPORTED, w[0].first)

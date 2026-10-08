@@ -14,6 +14,9 @@ data class TrackInfo(
     /** Le téléphone sait le décoder (ou le dépasse « peut-être » : compté comme lisible). */
     val supported: Boolean = true,
     val selected: Boolean = false,
+    /** Position dans les pistes du lecteur (groupe, piste) : sert à choisir la piste dans le panneau « Audio et sous-titres ». */
+    val group: Int = -1,
+    val index: Int = -1,
 )
 
 /**
@@ -65,6 +68,18 @@ interface PlaybackEngine {
     fun setAudioEnabled(enabled: Boolean)
     fun pause()
     fun release()
+
+    /** Lecture demandée par l'utilisateur (après une pause). */
+    fun play() {}
+
+    /** Se placer à {@code positionMs} (barre de progression, ±10 s). */
+    fun seekTo(positionMs: Long) {}
+
+    /**
+     * Choix de l'utilisateur dans « Audio et sous-titres » : cette piste (sa langue devient la préférence mémorisée),
+     * ou, pour {@code null} en sous-titres, sous-titres désactivés.
+     */
+    fun selectTrack(type: TrackType, track: TrackInfo?) {}
 }
 
 /**

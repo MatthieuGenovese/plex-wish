@@ -43,6 +43,25 @@ class FakeEngine : PlaybackEngine {
         released = true
     }
 
+    var plays = 0
+    val seeks = CopyOnWriteArrayList<Long>()
+    val selections = CopyOnWriteArrayList<Pair<TrackType, TrackInfo?>>()
+
+    override fun play() {
+        plays++
+        playWhenReady = true
+        current?.onResumeRequested()
+    }
+
+    override fun seekTo(positionMs: Long) {
+        seeks += positionMs
+        this.positionMs = positionMs
+    }
+
+    override fun selectTrack(type: TrackType, track: TrackInfo?) {
+        selections += type to track
+    }
+
     fun playing(p: Boolean) {
         isPlaying = p
         if (p) playWhenReady = true

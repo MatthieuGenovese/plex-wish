@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
@@ -112,7 +113,7 @@ class ExoPlaybackEngine(
     private fun selectedLanguage(tracks: Tracks, type: Int): String? = tracks.groups.filter { it.type == type }
         .firstNotNullOfOrNull { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language } }
 
-    private fun tracksOf(tracks: Tracks): List<TrackInfo> = tracks.groups.flatMap { g ->
+    private fun tracksOf(tracks: Tracks): List<TrackInfo> = tracks.groups.withIndex().flatMap { (gi, g) ->
         val type = when (g.type) {
             C.TRACK_TYPE_VIDEO -> TrackType.VIDEO
             C.TRACK_TYPE_AUDIO -> TrackType.AUDIO
@@ -122,7 +123,8 @@ class ExoPlaybackEngine(
         (0 until g.length).map { i ->
             val f: Format = g.getTrackFormat(i)
             TrackInfo(type, f.sampleMimeType, f.codecs, f.language, f.label,
-                supported = g.isTrackSupported(i, /* allowExceedsCapabilities = */ true), selected = g.isTrackSelected(i))
+                supported = g.isTrackSupported(i, /* allowExceedsCapabilities = */ true), selected = g.isTrackSelected(i),
+                group = gi, index = i)
         }
     }
 
@@ -170,6 +172,26 @@ class ExoPlaybackEngine(
     }
     override val playWhenReady: Boolean get() = player.playWhenReady
     override fun pause() = player.pause()
+    override fun play() = player.play()
+    override fun seekTo(positionMs: Long) = player.seekTo(positionMs.coerceAtLeast(0))
+
+    /** Choix fait dans le panneau : hors de {@code applying}, il est donc mémorisé comme préférence (rememberChoice). */
+    override fun selectTrack(type: TrackType, track: TrackInfo?) {
+        val c = when (type) {
+            TrackType.AUDIO -> C.TRACK_TYPE_AUDIO
+            TrackType.TEXT -> C.TRACK_TYPE_TEXT
+            else -> return
+        }
+        val b = player.trackSelectionParameters.buildUpon()
+        if (track == null) {
+            b.setTrackTypeDisabled(c, true)
+        } else {
+            val group = player.currentTracks.groups.getOrNull(track.group) ?: return
+            if (track.index !in 0 until group.length) return
+            b.setTrackTypeDisabled(c, false).setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, track.index))
+        }
+        player.trackSelectionParameters = b.build()
+    }
     override fun release() = player.release()
 
     /**

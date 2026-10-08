@@ -201,7 +201,8 @@ class AnimeDetailViewModelTest {
         assertEquals(300, vm.state.value.progress.getValue(1002).positionSeconds) // tout de suite
         runBlocking { withTimeout(5000) { while (paths.count { it.startsWith("/api/me/progress") } == before) kotlinx.coroutines.delay(10) } }
         assertEquals(300, wait(vm) { it.progress[1002]?.positionSeconds == 300 }.progress.getValue(1002).positionSeconds)
-        // Au-delà de 90 % : « vu » sans attendre la relecture.
+        // Au-delà de 90 % : « vu » sans attendre la relecture (le serveur, relu ensuite, le confirme).
+        progressBody = progressBody.trimEnd().trimEnd(']') + ",{\"episodeId\":1003,\"positionSeconds\":1350,\"durationSeconds\":1440,\"completed\":true}]"
         bus.saved(ProgressSaved(7, 1003, 1350, 1440))
         assertTrue(vm.state.value.progress.getValue(1003).completed)
     }

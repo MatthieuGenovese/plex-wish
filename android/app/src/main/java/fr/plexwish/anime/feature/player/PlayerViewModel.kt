@@ -39,7 +39,12 @@ data class PlayerState(
     val soundOff: Boolean = false,
     /** Phase PREPARING : l'épisode est converti pour Android sur le serveur. */
     val preparing: PreparingInfo? = null,
-)
+    /** Pistes du fichier (panneau « Audio et sous-titres »). */
+    val tracks: List<TrackInfo> = emptyList(),
+) {
+    val audioTracks get() = tracks.filter { it.type == TrackType.AUDIO && it.supported }
+    val textTracks get() = tracks.filter { it.type == TrackType.TEXT && it.supported }
+}
 
 /**
  * Lecteur d'un épisode : URL signée, reprise à la position enregistrée, reprise automatique après coupure (403 →
@@ -214,6 +219,7 @@ class PlayerViewModel(
 
     override fun onTracks(tracks: List<TrackInfo>) {
         this.tracks = tracks
+        _state.update { it.copy(tracks = tracks) }
         if (tracks.isEmpty()) return
         Diagnostics.undecodableVideo(tracks, episode?.container)?.let { d ->
             engine.pause()
@@ -312,6 +318,24 @@ class PlayerViewModel(
     }
 
     fun showDetails(d: Diagnosis?) = _state.update { it.copy(details = d) }
+
+    /** Lecture / pause (surcouche, touche Lecture de la télécommande). */
+    fun togglePlay() {
+        if (engine.isPlaying || (engine.playWhenReady && _state.value.phase == PlayerPhase.PLAYING)) engine.pause() else engine.play()
+    }
+
+    /** Recul / avance (±10 s) ou barre de progression : bornés au fichier. */
+    fun seekTo(positionMs: Long) {
+        val d = durationMs()
+        val target = if (d > 0) positionMs.coerceIn(0, d) else positionMs.coerceAtLeast(0)
+        engine.seekTo(target)
+        lastPositionMs = target
+    }
+
+    fun seekBy(deltaMs: Long) = seekTo(engine.positionMs + deltaMs)
+
+    /** Panneau « Audio et sous-titres » : piste choisie (mémorisée pour les épisodes suivants), ou sous-titres désactivés. */
+    fun selectTrack(type: TrackType, track: TrackInfo?) = engine.selectTrack(type, track)
 
     fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
 

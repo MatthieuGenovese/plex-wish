@@ -2,7 +2,9 @@ package fr.plexwish.anime
 
 import android.content.Context
 import android.os.Build
-import coil.ImageLoader
+import coil3.ImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
 import fr.plexwish.anime.data.api.AnimeApi
 import fr.plexwish.anime.data.auth.AuthInterceptor
 import fr.plexwish.anime.data.auth.AuthRepository
@@ -57,7 +59,7 @@ class AppContainer(private val context: Context) {
 
     /** Images : servies par notre serveur, sans authentification (identifiants aléatoires, ARCHITECTURE §17). */
     val imageLoader: ImageLoader = ImageLoader.Builder(context)
-        .okHttpClient(baseClient)
+        .components { add(OkHttpNetworkFetcherFactory(callFactory = { baseClient })) }
         .crossfade(true)
         .build()
 

@@ -1,10 +1,11 @@
 package fr.plexwish.anime
 
 import android.app.Application
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
 
-class AnimeApp : Application(), ImageLoaderFactory {
+class AnimeApp : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
         private set
 
@@ -15,5 +16,5 @@ class AnimeApp : Application(), ImageLoaderFactory {
         container = AppContainer(this)
     }
 
-    override fun newImageLoader(): ImageLoader = container.imageLoader
+    override fun newImageLoader(context: PlatformContext): ImageLoader = container.imageLoader
 }

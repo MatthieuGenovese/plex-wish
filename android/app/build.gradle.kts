@@ -85,7 +85,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Images (cache mémoire + disque), avec le même client OkHttp.
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
 
     // Lecteur (même version que le spike, validée sur le Galaxy S24).
     implementation("androidx.media3:media3-exoplayer:1.5.1")

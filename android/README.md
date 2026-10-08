@@ -2,7 +2,7 @@
 
 Application téléphone (Kotlin, Jetpack Compose, Media3) dans `android/app`. Même API REST que l'interface web, aucune logique métier dupliquée : l'app affiche ce que renvoie le serveur. Choix techniques : `docs/ARCHITECTURE.md` §20.
 
-`android/spike/` (phase 0) ne sert plus : il sera supprimé à la fin du Polish (P3), avec `/api/dev/stream`.
+L'app du spike (phase 0, `android/spike/`) et l'endpoint `/api/dev/*` ont été supprimés à la fin du Polish (P3) ; compte rendu : `docs/SPIKE.md`.
 
 ## Prérequis
 

@@ -16,7 +16,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.1 | Synopsis en français (TMDB) | ✅ validée le 2026-10-03 |
 | 6.2 | Affiches stockées sur le NAS | ✅ validée le 2026-10-03 |
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
-| 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
+| 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; spike et `/api/dev/*` supprimés le 2026-10-08 |
 | 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée ; 9.2 remux à la demande : livrée le 2026-10-06, en attente de validation (S24, NAS) |
 | P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1, P2 (serveur et web), 9.2 et P3.0 (chaîne Android) validées ; P3.1–P3.7 (app Android) et suppression du spike livrées le 2026-10-08, en attente des essais sur le S24 (DESIGN §13) |
 | 8 | Android TV | à faire, après le Polish |
@@ -77,7 +77,7 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 ## Phase 5 — Streaming définitif et progression (backend, testable avec curl)
 - URL de lecture signée (HMAC, 6 h, liée au fichier et à l'utilisateur) et endpoint Range durci : ARCHITECTURE §6.
 - Progression par utilisateur, « continuer à regarder », terminé au-delà de 90 % : ARCHITECTURE §6.3.
-- Endpoint du spike `/api/dev/*` : **conservé derrière son drapeau** (`DEV_SPIKE_STREAM_ENABLED`, faux par défaut, absent de Docker Compose) tant que l'app Android du spike s'en sert. **À retirer** (code, tests, config, SPIKE.md §3) dès que l'app Android passe par `/api/episodes/{id}/stream-url` + `/api/stream/…`, au plus tard avec l'app Android complète. `ByteRange` et `VideoMediaTypes` restent (utilisés par le streaming définitif).
+- Endpoint du spike `/api/dev/*` : **supprimé le 2026-10-08** (avec `android/spike`). Avant : conservé derrière son drapeau (`DEV_SPIKE_STREAM_ENABLED`, faux par défaut, absent de Docker Compose) tant que l'app Android du spike s'en sert. **À retirer** (code, tests, config, SPIKE.md §3) dès que l'app Android passe par `/api/episodes/{id}/stream-url` + `/api/stream/…`, au plus tard avec l'app Android complète. `ByteRange` et `VideoMediaTypes` restent (utilisés par le streaming définitif).
 - Pas de lecteur web dans cette phase.
 
 ## Phase 6 — Métadonnées (AniList)
@@ -98,7 +98,7 @@ Bilan ensemble, puis dans l'ordre prévu : streaming définitif (URL signées), 
 
 ## Phase 7 — Application Android (téléphone)
 - Kotlin, Compose, Media3 dans `android/app`, structure prête pour la TV. ARCHITECTURE §20, `android/README.md`.
-- Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque (validés sur Galaxy S24 le 2026-10-05) ; fiche, distribution (comédiens seuls) et page comédien (validés le 2026-10-05) ; lecteur Media3 et progression. Reste, après validation du lecteur : suppression de `android/spike` et de `/api/dev/stream`.
+- Livré : connexion (refresh token natif chiffré par le Keystore), accueil, bibliothèque (validés sur Galaxy S24 le 2026-10-05) ; fiche, distribution (comédiens seuls) et page comédien (validés le 2026-10-05) ; lecteur Media3 et progression. `android/spike` et `/api/dev/stream` supprimés le 2026-10-08 (fin de P3).
 
 ## Phase 9 — Traitement média (ffprobe, remux, sous-titres)
 But : savoir ce que contient chaque fichier, et rendre lisibles sans ré-encodage ceux qui ne le sont que par leur conteneur. Prérequis du lecteur web (phase 10), utile aussi à l'app Android. **Le transcodage (ré-encodage vidéo ou audio) reste hors périmètre.**

@@ -39,7 +39,7 @@ La racine du dépôt git (`plex-wish/`) **est** la racine du monorepo décrit da
 plex-wish/
 ├── backend/              Quarkus (Maven)
 ├── web/                  Angular
-├── android/spike/        App Kotlin jetable (phase 0 uniquement)
+├── android/app/          Application Android (téléphone ; le spike de la phase 0 a été retiré)
 ├── dev-media/            Vidéos de test locales (contenu ignoré par git, .gitkeep versionné)
 ├── docs/                 ARCHITECTURE, ROADMAP, SPIKE, FUTURE
 ├── docker-compose.yml
@@ -64,7 +64,7 @@ fr.plexwish.animeserver
 ├── auth/       login, refresh, logout, JWT, refresh tokens, anti brute force
 ├── user/       User, rôles, gestion admin des utilisateurs, admin initial
 ├── library/    Anime, Season, Episode, MediaFile, scan, FilenameParser, rapport
-├── stream/     (spike puis streaming définitif) Range + URL signées
+├── stream/     streaming : Range + URL signées (le spike /api/dev/* a été retiré)
 └── common/     config, gestion d'erreurs (ExceptionMapper → JSON uniforme), sécurité média
 ```
 
@@ -473,7 +473,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - Images construites localement ou sur le NAS (`docker compose build`) ; pas de registre à cette étape.
 
 ### Variables d'environnement (`.env.example`)
-`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `DOCKER_SUBNET`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `JAVA_OPTS`, `DEV_SPIKE_STREAM_ENABLED`, `DEV_MEDIA_PATH` et `COOKIE_SECURE` (dev uniquement).
+`MEDIA_PATH`, `WEB_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_SECRET`, `STREAM_SIGNING_SECRET`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`, `PUBLIC_URL`, `CORS_ORIGINS`, `SWAGGER_ENABLED`, `PUID`, `PGID`, `DOCKER_SUBNET`, `TRUSTED_PROXY_IPS`, `REFRESH_REUSE_GRACE_SECONDS`, `JAVA_OPTS` et `COOKIE_SECURE` (dev uniquement).
 
 ## 11. Sécurité — récapitulatif
 - Médias : lecture seule (montage `:ro` **et** aucune API d'écriture) ; accès uniquement par ID ; chemin résolu vérifié avec `toRealPath().startsWith(mediaRoot)` → test de path traversal (`../`, encodages, liens symboliques).

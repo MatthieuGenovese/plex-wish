@@ -6,7 +6,7 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 - Architecture et décisions : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Application Android : [`android/README.md`](android/README.md)
-- Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
+- Spike vidéo (phase 0, compte rendu ; code retiré) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
 > État (2026-10-08) : serveur (bibliothèque, comptes, streaming par URL signée, progression, métadonnées AniList / TMDB, analyse ffprobe, remux à la demande des AVI et OGM), interface web refaite (Polish P2 : accueil, recherche et filtres, fiche, compte, thème clair) et **application Android** avec lecteur (`android/README.md`), validée sur un Galaxy S24. En cours : refonte de l'app Android (Polish P3). Pas encore de lecteur dans le navigateur (phase 10) : sur le web, « Voir l'épisode » ouvre la fiche, la lecture se fait dans l'app.
 
@@ -29,7 +29,7 @@ cd backend
 - En dev, un admin est créé automatiquement : `admin` / `admin-dev-password` (secrets et `PUBLIC_URL=http://localhost:4200` ont aussi des valeurs de dev ; ils ne servent jamais en prod).
 - PostgreSQL : pas d'installation, Quarkus **Dev Services** démarre un conteneur `postgres:16-alpine` jetable et applique les migrations Flyway.
 - Tests : `.\mvnw.cmd test` (Docker Desktop doit tourner).
-- Propriétés de configuration propres à l'application : toujours sous le préfixe **`anime.`** (`anime.auth.*`, `anime.library.*`, `anime.spike.stream.*`). Quarkus refuse de démarrer si une propriété inconnue apparaît sous un préfixe mappé, et Maven ou la JVM définissent des propriétés système génériques (sous Windows, `mvnw quarkus:dev` définit `library.jansi.path`, qui bloquait le démarrage avec `SRCFG00050` quand le préfixe était `library`). Ne pas créer de préfixe générique (`library`, `auth`, `app`…). Les variables d'environnement (`MEDIA_ROOT`, `JWT_SECRET`…) ne changent pas. Test : `MavenSystemPropertiesTest`.
+- Propriétés de configuration propres à l'application : toujours sous le préfixe **`anime.`** (`anime.auth.*`, `anime.library.*`, `anime.media.*`…). Quarkus refuse de démarrer si une propriété inconnue apparaît sous un préfixe mappé, et Maven ou la JVM définissent des propriétés système génériques (sous Windows, `mvnw quarkus:dev` définit `library.jansi.path`, qui bloquait le démarrage avec `SRCFG00050` quand le préfixe était `library`). Ne pas créer de préfixe générique (`library`, `auth`, `app`…). Les variables d'environnement (`MEDIA_ROOT`, `JWT_SECRET`…) ne changent pas. Test : `MavenSystemPropertiesTest`.
 
 ## Lancer le front (dev)
 

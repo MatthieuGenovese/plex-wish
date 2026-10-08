@@ -147,3 +147,12 @@ data class PreparingDto(
     val retryAfterSeconds: Int = 5,
     val message: String? = null,
 )
+
+/** Changement de mot de passe (app) : la session de ce téléphone ({@code refreshToken}) est gardée. Jamais journalisé. */
+@Serializable
+data class PasswordChange(val currentPassword: String, val newPassword: String, val refreshToken: String) {
+    override fun toString() = "PasswordChange(***)"
+}
+
+@Serializable
+data class PasswordChanged(val closedSessions: Int = 0)

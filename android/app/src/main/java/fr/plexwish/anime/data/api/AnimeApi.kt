@@ -1,6 +1,7 @@
 package fr.plexwish.anime.data.api
 
 import fr.plexwish.anime.data.auth.SessionStore
+import kotlinx.serialization.encodeToString
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -64,6 +65,20 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
     }
 
     suspend fun episode(id: Long): EpisodeDetail = get(url("/api/episodes/$id"))
+
+    /**
+     * Change le mot de passe (S4, ARCHITECTURE §24.5) : la session de ce téléphone est gardée, les autres sont fermées
+     * (nombre renvoyé). Erreurs du serveur (mot de passe actuel faux, trop court, identique…) en {@link ApiException}.
+     */
+    suspend fun changePassword(current: String, new: String): Int {
+        val refresh = session.refreshToken() ?: throw ApiException(401, "NO_SESSION", "Session expirée, reconnectez-vous.")
+        val body = AppJson.encodeToString(PasswordChange(current, new, refresh)).toRequestBody("application/json".toMediaType())
+        return try {
+            call(Request.Builder().url(url("/api/auth/app/password")).post(body).build()).decode<PasswordChanged>().closedSessions
+        } catch (e: IOException) {
+            throw ApiException.fromNetwork(e)
+        }
+    }
 
     /**
      * Lien de lecture : URL signée prête (déjà rendue absolue, même serveur), ou « préparation en cours » (HTTP 202 :

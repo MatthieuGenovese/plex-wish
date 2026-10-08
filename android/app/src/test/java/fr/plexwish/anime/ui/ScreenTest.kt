@@ -87,7 +87,8 @@ abstract class ScreenTest {
     fun assertAccessible() {
         val nodes = compose.onRoot(useUnmergedTree = false).fetchSemanticsNode().let { all(it) }
         val density = compose.density.density
-        val problems = nodes.filter { it.config.getOrNull(SemanticsActions.OnClick) != null }.mapNotNull { n ->
+        // Éléments hors de l'écran (défilement) ignorés : vérifiés quand on les capture à l'écran.
+        val problems = nodes.filter { it.config.getOrNull(SemanticsActions.OnClick) != null && !it.boundsInRoot.isEmpty }.mapNotNull { n ->
             val label = listOfNotNull(
                 n.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString(),
                 n.config.getOrNull(SemanticsProperties.Text)?.joinToString(),

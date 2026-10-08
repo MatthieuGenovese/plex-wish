@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import androidx.compose.ui.focus.focusRequester
+
 import fr.plexwish.anime.ui.theme.AppIcons
 
 import androidx.compose.foundation.layout.Arrangement
@@ -41,7 +43,9 @@ import fr.plexwish.anime.ui.components.Loading
 
 /** Bibliothèque : recherche, tri, grille d'affiches avec pages chargées au fil du défilement. */
 @Composable
-fun LibraryScreen(vm: LibraryViewModel, onAnime: (Long) -> Unit, padding: PaddingValues) {
+fun LibraryScreen(vm: LibraryViewModel, onAnime: (Long) -> Unit, padding: PaddingValues, searchMode: Boolean = false) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (searchMode) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val s by vm.state.collectAsStateWithLifecycle()
     // État du défilement conservé à la navigation (pile de navigation) et à la rotation (rememberSaveable interne).
     val grid = rememberLazyGridState()
@@ -64,7 +68,7 @@ fun LibraryScreen(vm: LibraryViewModel, onAnime: (Long) -> Unit, padding: Paddin
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).focusRequester(focus),
         )
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LibrarySort.entries.forEach { sort ->

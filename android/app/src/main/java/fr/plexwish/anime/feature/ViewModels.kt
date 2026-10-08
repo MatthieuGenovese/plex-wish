@@ -24,6 +24,7 @@ object ViewModels {
 
     val Factory: ViewModelProvider.Factory = viewModelFactory {
         initializer { LoginViewModel(container().auth, container().session) }
+        initializer { fr.plexwish.anime.feature.account.AccountViewModel(container().api) }
         initializer { HomeViewModel(container().api, container().session, container().progressBus) }
         initializer { LibraryViewModel(container().api, container().session, createSavedStateHandle()) }
         initializer { AnimeDetailViewModel(container().api, container().session, createSavedStateHandle(), container().progressBus) }

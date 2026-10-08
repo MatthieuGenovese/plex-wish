@@ -31,10 +31,11 @@ import fr.plexwish.anime.ui.theme.AppTheme
 import fr.plexwish.anime.ui.theme.Dimens
 import fr.plexwish.anime.ui.theme.PillShape
 
-/** Titre d'écran (titre 1 du web), lu comme titre par TalkBack. */
+/** Titre d'écran (titre 1 du web), lu comme titre par TalkBack ; plus petit quand le texte du système est agrandi. */
 @Composable
 fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.headlineLarge, modifier = modifier.semantics { heading() })
+    val style = if (LocalDensity.current.fontScale >= 1.3f) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineLarge
+    Text(text, style = style, modifier = modifier.semantics { heading() })
 }
 
 /** Titre de section (titre 2), lu comme titre par TalkBack. */

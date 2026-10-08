@@ -37,6 +37,7 @@ class LibraryViewModelTest {
     private lateinit var session: SessionStore
     private lateinit var api: AnimeApi
     private val total = 130
+    private val requests = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     @Before
     fun setUp() {
@@ -45,6 +46,8 @@ class LibraryViewModelTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val url = request.requestUrl!!
+                if (url.encodedPath == "/api/genres") return MockResponse().setBody("""[{"genre":"Comedy","label":"Comédie","animeCount":40}]""")
+                requests += url.encodedQuery ?: ""
                 val page = url.queryParameter("page")!!.toInt()
                 val size = url.queryParameter("size")!!.toInt()
                 val q = url.queryParameter("q")
@@ -102,5 +105,31 @@ class LibraryViewModelTest {
         val restored = LibraryViewModel(api, session, saved)
         assertEquals("Frieren", restored.state.value.query)
         assertEquals(LibrarySort.RECENT, restored.state.value.sort)
+    }
+
+    @Test
+    fun filtersAndSortGoToTheServerAndSurviveProcessDeath() {
+        // Arrivée depuis « Tout voir » d'une rangée de genre : argument de navigation « genre ».
+        val saved = SavedStateHandle(mapOf("genre" to "Comedy"))
+        val vm = LibraryViewModel(api, session, saved)
+        waitFor(vm) { !it.loading && it.genres.isNotEmpty() }
+        assertEquals("Comédie", vm.state.value.genreLabel)
+        vm.onWatch(fr.plexwish.anime.feature.library.WatchFilter.IN_PROGRESS)
+        vm.onPeriod(fr.plexwish.anime.feature.library.Period.Y2010)
+        vm.onSort(LibrarySort.YEAR)
+        waitFor(vm) { !it.loading }
+        assertTrue(requests.toString(), requests.any { it.contains("sort=year") && it.contains("watch=inProgress") && it.contains("genre=Comedy")
+            && it.contains("yearFrom=2010") && it.contains("yearTo=2019") })
+        // Toucher le filtre choisi le retire ; processus recréé : les filtres reviennent.
+        vm.onWatch(fr.plexwish.anime.feature.library.WatchFilter.IN_PROGRESS)
+        assertNull(vm.state.value.watch)
+        val restored = LibraryViewModel(api, session, saved)
+        assertEquals(fr.plexwish.anime.feature.library.Period.Y2010, restored.state.value.period)
+        assertEquals(LibrarySort.YEAR, restored.state.value.sort)
+        requests.clear()
+        restored.clearFilters()
+        waitFor(restored) { !it.loading && it.genre == null }
+        Thread.sleep(200)
+        assertTrue(requests.toString(), requests.any { it.contains("sort=year") && !it.contains("genre=") && !it.contains("yearFrom") })
     }
 }

@@ -6,7 +6,7 @@ Application téléphone (Kotlin, Jetpack Compose, Media3) dans `android/app`. M�
 
 ## Prérequis
 
-- **Android Studio** récent (Ladybug ou plus), avec le SDK Android 35. Le JDK fourni avec Android Studio convient (JDK 17 ou plus).
+- **Android Studio** à jour (compatible AGP 9.4 : *Help → Check for Updates*), avec le **SDK Android 37** (*SDK Manager → SDK Platforms → Android 37.0*, et *SDK Tools → Build-Tools 37*). Le JDK fourni avec Android Studio convient (JDK 17 ou plus). Chaîne : Gradle 9.8.1, AGP 9.4.1 (Kotlin intégré), Kotlin 2.4.21, Compose BOM 2026.09.00, Coil 3.6.3, Media3 1.5.1 (inchangé, validé sur le S24). `targetSdk` reste 35 (comportement système inchangé).
 - Un téléphone Android 8.0 ou plus (minSdk 26), par exemple le Galaxy S24.
 
 ## Ouvrir le projet

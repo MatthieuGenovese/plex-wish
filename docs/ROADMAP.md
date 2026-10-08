@@ -18,7 +18,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 6.3 | Distribution et comédiens de doublage (AniList) | ✅ validée le 2026-10-03 |
 | 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; reste la suppression du spike |
 | 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée ; 9.2 remux à la demande : livrée le 2026-10-06, en attente de validation (S24, NAS) |
-| P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1 validée ; P2.0 (serveur) et P2.1–P2.8 (web) livrées le 2026-10-07, en attente des essais (DESIGN §12) ; P3 Android après feu vert et validation de la 9.2 sur le S24 |
+| P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1, P2 (serveur et web) et 9.2 validées ; P3.0 (chaîne Android : Kotlin 2.4, AGP 9.4, Compose BOM 2026.09, Coil 3) livrée le 2026-10-08, en attente du test complet du lecteur sur le S24 ; puis P3.1–P3.7 (arrêt à la fin) et suppression du spike |
 | 8 | Android TV | à faire, après le Polish |
 | 10 | Lecteur web | à faire |
 

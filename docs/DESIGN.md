@@ -1,6 +1,6 @@
 # Phase Polish : audit et direction (P1)
 
-> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; P2.0 (serveur) livrée (`docs/ESSAIS-API.md`, ARCHITECTURE §24) ; **P2.1 à P2.8 (web) livrées, en attente des essais** (§12).
+> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; P2.0 (serveur) livrée (`docs/ESSAIS-API.md`, ARCHITECTURE §24) ; P2.1 à P2.8 (web) livrées et validées (§12) ; **P3.0 (chaîne Android) livrée, en attente du test complet du lecteur sur le S24**.
 > Référence visuelle : `docs/design/guide-de-style.html` (s'ouvre par double-clic, thème sombre/clair, trois accents, texte 100/130/200 %).
 > Données pour juger : catalogue de démonstration (§6), `scripts/demo-catalog.sh`.
 

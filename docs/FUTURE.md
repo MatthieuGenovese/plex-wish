@@ -40,5 +40,6 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - « Mes animés » : liste personnelle (ajouter / retirer), en plus de « Continuer à regarder ».
 - Vignettes d'épisodes extraites par ffmpeg sur le NAS (charge et stockage à mesurer).
 - Connexion de l'app par QR code ou lien d'invitation (adresse du serveur et identifiant préremplis).
-- Saut automatique à l'épisode suivant (voir « Lecture »).
+- Saut automatique à l'épisode suivant (voir « Lecture ») : en fin d'épisode, carte « Épisode suivant » avec un compte à rebours de 10 s annulable, et bouton dans la surcouche du lecteur (proposé en P3, pas encore validé).
+- « Vu » plus juste qu'au-delà de 90 % : temps restant (ex. moins de 3 min, plancher à 95 % pour les épisodes courts) ou chapitre « ED / Ending » des MKV lu par ffprobe (changement serveur).
 - Mise à jour de Media3 (1.5.1 → récente) et commandes du lecteur en Compose (`media3-ui-compose`), avec un nouveau test complet sur le S24 (AVI, OGM, sous-titres).

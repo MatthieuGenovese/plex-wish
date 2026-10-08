@@ -5,6 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,9 +59,15 @@ abstract class ScreenTest {
     fun shoot(
         name: String,
         variants: List<Variant> = ALL,
+        /** Mode clavier / télécommande (sinon : mode tactile, où les boutons ne prennent pas le focus). */
+        keyboard: Boolean = false,
         content: @Composable () -> Unit,
     ) {
         compose.setContent {
+            if (keyboard) {
+                val modes = LocalInputModeManager.current
+                SideEffect { modes.requestInputMode(InputMode.Keyboard) }
+            }
             val d = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(d.density, variant.fontScale)) {
                 PaletteTheme(if (variant.dark) DarkPalette else LightPalette) {

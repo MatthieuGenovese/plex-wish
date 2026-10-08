@@ -19,21 +19,28 @@ data class LoginState(
     val error: String? = null,
     /** La session précédente a expiré ou a été révoquée. */
     val expired: Boolean = false,
+    /** « Afficher le mot de passe ». */
+    val visible: Boolean = false,
 ) {
     val canSubmit get() = !loading && server.isNotBlank() && login.isNotBlank() && password.isNotEmpty()
     override fun toString() = "LoginState(server=$server, login=$login, loading=$loading)" // jamais le mot de passe
 }
 
-class LoginViewModel(private val auth: AuthRepository, session: SessionStore) : ViewModel() {
+/**
+ * Connexion. Adresse du serveur : la dernière utilisée, sinon celle préremplie à la compilation
+ * ({@code BuildConfig.DEFAULT_SERVER_URL}, propriété {@code plexwish.serverUrl}), toujours modifiable.
+ */
+class LoginViewModel(private val auth: AuthRepository, session: SessionStore, defaultServer: String = "") : ViewModel() {
 
     private val _state = MutableStateFlow(
-        LoginState(server = auth.savedServer.orEmpty(), login = auth.savedUsername.orEmpty(), expired = session.expired.value),
+        LoginState(server = auth.savedServer ?: defaultServer, login = auth.savedUsername.orEmpty(), expired = session.expired.value),
     )
     val state: StateFlow<LoginState> = _state.asStateFlow()
 
     fun onServer(v: String) = _state.update { it.copy(server = v, error = null) }
     fun onLogin(v: String) = _state.update { it.copy(login = v, error = null) }
     fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
+    fun toggleVisible() = _state.update { it.copy(visible = !it.visible) }
 
     fun submit() {
         val s = _state.value

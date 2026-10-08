@@ -15,8 +15,10 @@ Application téléphone (Kotlin, Jetpack Compose, Media3) dans `android/app`. M�
 
 ```powershell
 .\gradlew.bat assembleDebug          # Linux / macOS : ./gradlew assembleDebug
-.\gradlew.bat testDebugUnitTest      # tests unitaires (fausse API, aucun réseau réel)
+.\gradlew.bat testDebugUnitTest      # tests unitaires (fausse API, aucun réseau réel) et écrans (voir ci-dessous)
 ```
+
+**Écrans testés sans téléphone** : les écrans Compose sont rendus sur la JVM par Robolectric (dépendance de test seulement, rien dans l'APK) : libellés TalkBack, cibles de 48 dp, ordre de focus au clavier, contrastes des couleurs. Chaque test d'écran écrit aussi ses captures dans `build/screenshots/` (thème sombre et clair, texte à 100 et 200 %, téléphone 384 × 832 dp ; lecteur en paysage) : à regarder, aucune comparaison automatique.
 
 L'APK de test est dans `build/outputs/apk/debug/anime-android-debug.apk` (application « Anime Server (debug) », installable à côté de la version normale).
 
@@ -46,6 +48,8 @@ Dans l'app **debug**, adresse du serveur : `http://localhost:8080`.
 
 ## Adresse du serveur
 
+**Préremplie à la compilation** (facultatif) : `plexwish.serverUrl=https://anime.mondomaine.fr` dans `android/app/local.properties` (non versionné), ou `.\gradlew.bat assembleRelease -Pplexwish.serverUrl=https://…`. Les amis n'ont alors que leur identifiant à taper ; l'adresse reste modifiable à l'écran de connexion. Sans cette propriété, le champ est vide.
+
 Au premier lancement : l'adresse publique (celle de `PUBLIC_URL`, ex. `https://anime.mondomaine.fr` ou `https://monnas.synology.me`), puis identifiant et mot de passe. Le `https://` peut être omis. L'app vérifie que l'adresse répond comme un Anime Server avant d'envoyer le mot de passe. L'adresse et l'identifiant sont mémorisés ; le mot de passe ne l'est jamais. Pour changer de serveur : *Compte → Se déconnecter*.
 
 - Version **release** : `https://` obligatoire (le HTTP en clair est bloqué par la configuration réseau d'Android).
@@ -54,25 +58,26 @@ Au premier lancement : l'adresse publique (celle de `PUBLIC_URL`, ex. `https://a
 
 ## Ce que fait l'app
 
-- **Connexion** : adresse du serveur, identifiant, mot de passe (voir ci-dessus).
-- **Accueil** : « Continuer à regarder » (épisode commencé ou épisode suivant, avec sa barre de progression), derniers ajouts. Tirer vers le bas pour actualiser.
-- **Bibliothèque** : recherche, tri.
-- **Fiche d'un animé** : synopsis (« Lire la suite »), sources, saisons, épisodes (par tranches de 100 pour les longues séries) avec leur état (barre « en cours », coche « vu »), distribution (doubleurs japonais, personnage, rôle) et page de chaque comédien.
-- **Lecture** depuis la fiche ou l'accueil, reprise à la position enregistrée ; la fiche et l'accueil suivent la dernière position dès qu'elle est enregistrée (voir « Progression »).
-- *Compte → À propos* : sources des données (AniList, TMDB) et mention TMDB.
+Même direction que l'interface web (`docs/DESIGN.md`) : accent « Lagune », police Figtree (embarquée), icônes Material Symbols, thème sombre ou clair.
 
-Les images ne viennent que du serveur : une affiche ou une photo pas encore stockée sur le NAS s'affiche en initiales colorées.
+- **Connexion** : adresse du serveur (préremplie ou mémorisée), identifiant, mot de passe (bouton « Afficher »), aide « Mot de passe oublié ».
+- **Barre du bas** : Accueil, Rechercher, Bibliothèque, Compte.
+- **Accueil** : bandeau « À reprendre » (lecture directe) ou « À suivre » (épisode suivant du dernier terminé), sinon le dernier ajout ; rangées « Continuer à regarder », « Récemment ajoutés », trois genres, « À découvrir » (« Tout voir » mène à la bibliothèque filtrée). Tirer vers le bas pour actualiser.
+- **Rechercher / Bibliothèque** : recherche, filtres Non vus / En cours / Vus, genre, période, tri (titre, derniers ajouts, année) ; grille de 3 colonnes (2 avec un grand texte) ; messages dédiés quand rien ne correspond.
+- **Fiche d'un animé** : bandeau (affiche, titres, genres cliquables) et bouton principal : « Reprendre », « Épisode suivant », « Commencer » ou « Revoir depuis le début » ; synopsis (« Lire la suite »), sources, saisons (boutons, ou liste au-delà de 3), tranches de 100 épisodes, épisodes avec leur état (vu, en cours, prochain), distribution en portraits ronds, page de chaque comédien.
+- **Compte** : thème (Système / Sombre / Clair, enregistré sur le téléphone, sombre par défaut), changement du mot de passe (les autres appareils sont déconnectés, celui-ci reste connecté), À propos (sources, mention TMDB, licences), déconnexion.
+- **Accessibilité** : taille de texte du système respectée (testée à 200 % : mises en page en colonne), TalkBack (chaque carte est lue en une phrase), clavier et télécommande (anneau de focus jaune ou bleu, ordre de lecture, aucune action réservée au toucher long).
 
-La refonte de l'interface (thème clair, bandeau d'accueil, filtres, changement de mot de passe…) est l'étape P3 du Polish (`docs/DESIGN.md`).
+Les images ne viennent que du serveur : une affiche absente s'affiche en couverture composée (couleur tirée du titre, titre écrit dessus), un comédien sans photo en initiales.
 
 ## Lecteur
 
-Plein écran en paysage. Commandes de Media3 : lecture / pause, avance et recul, barre de progression, bouton **Sous-titres** et bouton **Paramètres** (piste audio). Tous sont lus par TalkBack, en français. Chargement et reconnexion : un indicateur qui tourne au centre de l'image.
+Plein écran en paysage. Un toucher (ou une touche de la télécommande) affiche la surcouche : retour et titres en haut ; **reculer de 10 s**, **lecture / pause**, **avancer de 10 s** au centre ; barre de progression (d'un seul tenant) et temps en bas, avec le bouton **« Audio et sous-titres »** (panneau qui liste les pistes audio et de sous-titres, « Désactivés » compris). Elle se masque seule pendant la lecture (plus tard avec TalkBack). Touches de la télécommande : Lecture/Pause, avance et retour rapides, Retour. Tout est lu par TalkBack, en français. Chargement et reconnexion : un indicateur qui tourne au centre de l'image.
 
 ### Pistes par défaut
 
 - Audio **japonais**, sous-titres **français**, quand ils existent. Sans piste française, une piste de sous-titres sans langue (fréquent chez les fansubs) ou marquée « par défaut » est choisie.
-- Un changement fait dans le lecteur est **mémorisé** sur le téléphone (langue de l'audio, langue des sous-titres, ou sous-titres désactivés) et s'applique aux épisodes suivants.
+- Un choix fait dans « Audio et sous-titres » est **mémorisé** sur le téléphone (langue de l'audio, langue des sous-titres, ou sous-titres désactivés) et s'applique aux épisodes suivants.
 - Taille et style des sous-titres : ceux du fichier, ajustés par *Paramètres Android → Accessibilité → Sous-titres* (taille, police, fond).
 
 ### Sous-titres

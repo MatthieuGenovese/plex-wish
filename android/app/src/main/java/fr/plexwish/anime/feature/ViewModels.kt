@@ -23,7 +23,7 @@ object ViewModels {
         (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as AnimeApp).container
 
     val Factory: ViewModelProvider.Factory = viewModelFactory {
-        initializer { LoginViewModel(container().auth, container().session) }
+        initializer { LoginViewModel(container().auth, container().session, fr.plexwish.anime.BuildConfig.DEFAULT_SERVER_URL) }
         initializer { fr.plexwish.anime.feature.account.AccountViewModel(container().api) }
         initializer { HomeViewModel(container().api, container().session, container().progressBus) }
         initializer { LibraryViewModel(container().api, container().session, createSavedStateHandle()) }

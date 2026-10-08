@@ -1,6 +1,6 @@
 # Phase Polish : audit et direction (P1)
 
-> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; P2.0 (serveur) livrée (`docs/ESSAIS-API.md`, ARCHITECTURE §24) ; P2.1 à P2.8 (web) livrées et validées (§12) ; **P3.0 (chaîne Android) livrée, en attente du test complet du lecteur sur le S24**.
+> Rédigé le 2026-10-07. Statut : P1 validée ; décisions prises le 2026-10-07 (§10) ; P2.0 (serveur) livrée (`docs/ESSAIS-API.md`, ARCHITECTURE §24) ; P2.1 à P2.8 (web) livrées et validées (§12) ; P3.0 (chaîne Android) validée ; **P3.1 à P3.7 (app Android) livrées, en attente des essais** (§13).
 > Référence visuelle : `docs/design/guide-de-style.html` (s'ouvre par double-clic, thème sombre/clair, trois accents, texte 100/130/200 %).
 > Données pour juger : catalogue de démonstration (§6), `scripts/demo-catalog.sh`.
 
@@ -322,3 +322,34 @@ Compte neuf sans historique : héros « Dernier ajout » (pas de « Continuer »
 | Figtree 5.3.0, sous-ensembles latin et latin-ext (woff2) | `web/public/fonts/` | SIL OFL 1.1 (`web/public/fonts/OFL.txt`) |
 | Material Symbols Rounded (tracés SVG recopiés) | `web/src/app/shared/icons.ts` | Apache 2.0 (`docs/design/Apache-2.0-MaterialSymbols.txt`) |
 | axe-core 4.14.0 (tests seulement, non livré) | `web/package.json` (devDependencies) | MPL 2.0 |
+
+## 13. P3 — Android livrée (2026-10-08) : bilan
+
+Commits P3.1 (fondations) à P3.7 (connexion, finitions), puis suppression du spike et de `/api/dev/stream` (commit séparé, annulable seul). Aucun changement serveur, API ni sécurité en P3.1–P3.7.
+
+### 13.1 Ce qui a été fait
+- **Fondations (P3.1)** : jetons du web dans `ui/theme/Tokens.kt` (sombre, clair, accent Lagune ; surfaces sur image toujours sombres), schéma Material 3 construit depuis ces jetons (§5.6), Figtree (5 graisses statiques), icônes Material Symbols copiées (`AppIcons`), thème Système / Sombre / Clair enregistré sur le téléphone (sombre par défaut, comme le web ; barres système accordées), `Modifier.focusRing()` (contour de 3 dp autour de l'élément, agrandissement 1,04 des cartes), boutons pilule de 48 dp, `StateBox`, squelettes, couvertures composées, icône du lanceur Lagune. Nom affiché : une seule constante dans `build.gradle.kts` (`BuildConfig.APP_NAME`, `@string/app_name`), un test interdit de l'écrire ailleurs.
+- **Navigation (P3.2)** : barre du bas Accueil / Rechercher / Bibliothèque / Compte ; écran Compte (thème, mot de passe S4 par `/api/auth/app/password`, À propos, déconnexion) ; À propos en écran.
+- **Accueil (P3.3)** : bandeau « À reprendre » / « À suivre » (S1) / « Dernier ajout », lecture directe ; rangées Continuer (cartes « Reprendre » / « Épisode suivant »), Récemment ajoutés, trois genres (S3, jamais Hentai ni Ecchi), À découvrir ; états chargement, vide, erreur.
+- **Bibliothèque et recherche (P3.4)** : filtres Non vus / En cours / Vus et période (S2), genre (S3), tri par année (S6), onglet Rechercher (champ focalisé), états vides dédiés ; le genre arrive aussi de l'accueil et de la fiche.
+- **Fiche et comédien (P3.5)** : bandeau avec bouton principal S5 (Reprendre / Épisode suivant / Commencer / Revoir depuis le début), genres cliquables, synopsis replié, saisons (boutons jusqu'à 3, liste au-delà), tranche de l'épisode à reprendre ouverte d'office, épisodes avec état (vu, en cours, prochain), distribution en portraits ronds ; page comédien.
+- **Lecteur (P3.6)** : surcouche Compose (retour, titres, ±10 s, lecture / pause, barre d'un seul tenant, temps), panneau « Audio et sous-titres » (choix mémorisé), touches de la télécommande, masquage automatique (délai allongé avec TalkBack), chargement / préparation / reconnexion / erreur restylés. Media3 reste en 1.5.1 (image, sous-titres, flux, reprise inchangés).
+- **Connexion et finitions (P3.7)** : adresse du serveur préremplie à la compilation (`plexwish.serverUrl`), modifiable ; « Afficher le mot de passe » ; aide ; ordre de focus vérifié au clavier (connexion, accueil).
+
+### 13.2 Vérifications sans téléphone
+Écrans rendus sur la JVM (Robolectric 4.17 + `ui-test-junit4`, dépendances de test seulement) : 61 captures (sombre / clair, texte 100 / 200 %, lecteur en paysage) relues et corrigées (titre coupé à 200 %, choix segmentés, rôles tronqués, logo, anneau de focus qui recouvrait le contenu…) ; vérifications automatiques : chaque élément cliquable a un libellé TalkBack et une zone de 48 dp, contrastes WCAG des deux thèmes (texte 7:1, accent et erreurs 4,5:1, focus 3:1), ordre de focus au clavier. Tests Android : 66 → 108.
+
+### 13.3 Déplacé ou retiré
+- Menu du compte en haut à droite → onglet **Compte** ; « À propos » : boîte de dialogue → écran.
+- Bibliothèque : puces « Titre / Récents » → filtres et menu de tri.
+- Fiche : puces de saisons avec nombre d'épisodes → choix segmenté ou liste ; grille de distribution → rangée de portraits ronds.
+- Lecteur : commandes et boutons « Sous-titres » / « Paramètres » de Media3 → surcouche Compose et panneau « Audio et sous-titres ».
+- Accueil : simple liste « Continuer » + « Récents » → bandeau et rangées.
+- Dépendance `material-icons-core` retirée (icônes copiées).
+
+### 13.4 Licences (ajouts P3)
+| Élément | Où | Licence |
+|---|---|---|
+| Figtree 2.002 (TTF statiques 400 à 800, via le paquet @expo-google-fonts/figtree 0.4.1) | `android/app/src/main/res/font/` | SIL OFL 1.1 (`android/app/licenses/OFL-Figtree.txt`) |
+| Material Symbols Rounded (tracés SVG recopiés) | `ui/theme/AppIcons.kt` | Apache 2.0 |
+| Robolectric 4.17, Compose ui-test (tests seulement, non livrés) | `build.gradle.kts` | MIT / Apache 2.0 |

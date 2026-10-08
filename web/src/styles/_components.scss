@@ -211,9 +211,16 @@ a.chip {
   padding-left: var(--space-4);
   background: var(--surface-1);
 }
+// Filtre actif : même fond (la liste déroulante du système hérite du fond du champ, un fond translucide la rendait
+// illisible en thème sombre), seulement un contour d'accent plus épais.
 .select-chip.selected {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+// Options de toutes les listes : couleurs opaques du thème (jamais héritées d'un fond translucide).
+select option {
+  background-color: var(--surface-1);
+  color: var(--text);
 }
 
 .segmented {

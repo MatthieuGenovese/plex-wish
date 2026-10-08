@@ -77,6 +77,9 @@ class AnimeDetailViewModelTest {
                 paths += url.encodedPath + (url.encodedQuery?.let { "?$it" } ?: "")
                 return when (url.encodedPath) {
                     "/api/anime/7" -> MockResponse().setBody(anime)
+                    "/api/anime/70" -> MockResponse().setBody(anime.replace(""""id":7,""", """"id":70,""").replace(
+                        """"seasons":[""", """"resume":{"kind":"RESUME","episodeId":1150,"seasonId":11,"seasonNumber":2,"episodeNumber":150,
+                        "positionSeconds":300,"durationSeconds":1440},"genres":[{"genre":"Fantasy","label":"Fantastique"}],"seasons":["""))
                     "/api/anime/8" -> MockResponse().setResponseCode(404).setBody("""{"status":404,"error":"ANIME_NOT_FOUND","message":"Animé introuvable"}""")
                     "/api/seasons/10/episodes" -> MockResponse().setBody(episodes(28))
                     "/api/seasons/11/episodes" -> MockResponse().setBody(episodes(250))
@@ -213,5 +216,16 @@ class AnimeDetailViewModelTest {
         Thread.sleep(200)
         assertEquals(600, vm.state.value.progress.getValue(1002).positionSeconds)
         assertEquals(before, paths.count { it.startsWith("/api/me/progress") })
+    }
+
+    @Test
+    fun detailOpensOnTheSeasonAndRangeOfTheEpisodeToResume() {
+        // S5 : le bouton principal vise l'épisode 150 de la saison 2 (250 épisodes) : saison 2, tranche 101–200.
+        val vm = AnimeDetailViewModel(api, session, SavedStateHandle(mapOf("id" to 70L)))
+        val s = wait(vm) { it.episodes.size == 250 }
+        assertEquals(11L, s.seasonId)
+        assertEquals("101–200", s.chunks[s.chunk].label)
+        assertEquals("RESUME", s.anime!!.resume!!.kind)
+        assertEquals(listOf("Fantastique"), s.anime!!.genres.map { it.label })
     }
 }

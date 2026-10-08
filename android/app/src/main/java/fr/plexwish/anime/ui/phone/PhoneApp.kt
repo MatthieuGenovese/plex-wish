@@ -131,8 +131,8 @@ fun PhoneApp(container: AppContainer) {
             }
             composable(Routes.ABOUT) { AboutScreen(padding) }
             composable(Routes.ANIME, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
-                AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) }, padding = padding,
-                    onEpisode = { nav.navigate(Routes.player(it.id)) })
+                AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) },
+                    onPlay = { nav.navigate(Routes.player(it)) }, onGenre = { nav.navigate(Routes.library(it)) }, padding = padding)
             }
             composable(Routes.PLAYER, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                 PlayerScreen(viewModel(factory = ViewModels.Factory), onBack = { nav.popBackStack() })

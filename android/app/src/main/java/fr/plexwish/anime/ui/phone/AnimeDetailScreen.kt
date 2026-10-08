@@ -1,43 +1,39 @@
 package fr.plexwish.anime.ui.phone
 
-import fr.plexwish.anime.ui.theme.AppIcons
-
-import fr.plexwish.anime.ui.theme.AppTheme
-
-import fr.plexwish.anime.ui.components.ProgressBar
-
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -47,233 +43,335 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import fr.plexwish.anime.data.api.CastEntry
 import fr.plexwish.anime.data.api.EpisodeSummary
 import fr.plexwish.anime.data.api.ProgressDto
+import fr.plexwish.anime.data.api.ResumeDto
+import fr.plexwish.anime.feature.common.Viewing
 import fr.plexwish.anime.feature.detail.AnimeDetailViewModel
 import fr.plexwish.anime.feature.detail.DetailState
-import fr.plexwish.anime.feature.detail.ROLE_LABELS
+import fr.plexwish.anime.ui.components.Backdrop
+import fr.plexwish.anime.ui.components.Choice
 import fr.plexwish.anime.ui.components.ErrorMessage
+import fr.plexwish.anime.ui.components.GhostButton
+import fr.plexwish.anime.ui.components.LinkButton
 import fr.plexwish.anime.ui.components.Loading
+import fr.plexwish.anime.ui.components.PersonAvatar
 import fr.plexwish.anime.ui.components.Poster
+import fr.plexwish.anime.ui.components.PrimaryButton
+import fr.plexwish.anime.ui.components.ProgressBar
+import fr.plexwish.anime.ui.components.Rail
+import fr.plexwish.anime.ui.components.SectionTitle
+import fr.plexwish.anime.ui.components.Segmented
+import fr.plexwish.anime.ui.components.Skeleton
+import fr.plexwish.anime.ui.components.StateBox
 import fr.plexwish.anime.ui.components.TMDB_NOTICE
+import fr.plexwish.anime.ui.components.focusRing
+import fr.plexwish.anime.ui.components.largeText
+import fr.plexwish.anime.ui.theme.AppIcons
+import fr.plexwish.anime.ui.theme.AppShapes
+import fr.plexwish.anime.ui.theme.AppTheme
+import fr.plexwish.anime.ui.theme.Dimens
+import fr.plexwish.anime.ui.theme.OnImagePalette
+import fr.plexwish.anime.ui.theme.PaletteTheme
+import fr.plexwish.anime.ui.theme.PillShape
+
+/** Actions de la fiche. */
+data class DetailActions(
+    val onPlay: (episodeId: Long) -> Unit = {},
+    val onPerson: (String) -> Unit = {},
+    val onGenre: (String) -> Unit = {},
+    val onSeason: (Long) -> Unit = {},
+    val onChunk: (Int) -> Unit = {},
+    val retry: () -> Unit = {},
+    val retryEpisodes: () -> Unit = {},
+)
 
 /**
- * Fiche d'un animé : affiche, titres, synopsis et sources ; saisons ; épisodes (par tranches de 100) avec la
- * progression ; distribution en grille qui passe à la ligne (photo et nom du comédien, nom du personnage, rôle ;
- * jamais d'image de personnage). {@code onEpisode} : lecture (bloc suivant), null tant qu'il n'y a pas de lecteur.
+ * Fiche d'un animé (comme le web) : bandeau (affiche, titres, genres, bouton principal S5 « Reprendre » /
+ * « Épisode suivant » / « Commencer » / « Revoir »), synopsis replié, sources, saisons et tranches, épisodes avec
+ * leur état (vu, en cours), distribution en portraits ronds. Lecture directe depuis le bouton ou un épisode.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AnimeDetailScreen(
-    vm: AnimeDetailViewModel,
-    onPerson: (String) -> Unit,
-    padding: PaddingValues,
-    onEpisode: ((EpisodeSummary) -> Unit)? = null,
+    vm: AnimeDetailViewModel, onPerson: (String) -> Unit, onPlay: (Long) -> Unit, onGenre: (String) -> Unit, padding: PaddingValues,
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
-    // Progression relue à chaque retour sur la fiche (après le lecteur), pas au premier affichage.
+    // Progression et bouton principal relus à chaque retour sur la fiche (après le lecteur), pas au premier affichage.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
         var first = true
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            if (!first) vm.refreshProgress() // la dernière position, envoyée à la sortie du lecteur, arrive par ProgressBus
+            if (!first) vm.refreshProgress()
             first = false
         }
     }
+    DetailContent(s, padding, DetailActions(onPlay, onPerson, onGenre, vm::selectSeason, vm::selectChunk, vm::load, vm::retryEpisodes))
+}
 
+@Composable
+fun DetailContent(s: DetailState, padding: PaddingValues, a: DetailActions) {
     val anime = s.anime
     when {
-        anime == null && s.loading -> Loading(Modifier.padding(padding))
-        anime == null -> ErrorMessage(
-            if (s.notFound) "Cet animé n'existe pas ou n'a plus d'épisode disponible." else s.error ?: "Erreur inconnue.",
-            if (s.notFound) null else vm::load, Modifier.padding(padding),
-        )
-        else -> BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
-            // Distribution : autant de colonnes que la largeur le permet (≥ 104 dp chacune), lignes ajoutées au besoin.
-            val columns = ((maxWidth.value - 32) / 112).toInt().coerceAtLeast(2)
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                item(key = "hero") { Hero(s) }
-                if (anime.seasons.size > 1) {
-                    item(key = "seasons") {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                            anime.seasons.forEach { season ->
-                                FilterChip(
-                                    selected = season.id == s.seasonId, onClick = { vm.selectSeason(season.id) },
-                                    label = { Text("${season.label} · ${season.episodeCount}") },
-                                )
-                            }
-                        }
+        anime == null && s.loading -> DetailSkeleton(padding)
+        anime == null -> Box(Modifier.padding(padding)) {
+            if (s.notFound) {
+                StateBox(AppIcons.Explore, "Animé introuvable", message = "Cet animé n'existe pas ou n'a plus d'épisode disponible.")
+            } else {
+                ErrorMessage(s.error ?: "Erreur inconnue.", a.retry, title = "Impossible de charger la fiche")
+            }
+        }
+        else -> LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(bottom = Dimens.s6),
+            verticalArrangement = Arrangement.spacedBy(Dimens.s3),
+        ) {
+            item("hero") { Hero(s, a) }
+            item("synopsis") { Synopsis(s) }
+            item("episodes-title") {
+                SectionTitle("Épisodes", Modifier.padding(start = Dimens.gutter, end = Dimens.gutter, top = Dimens.s4))
+            }
+            if (anime.seasons.size > 1) item("seasons") { Seasons(s, a) }
+            if (s.chunks.isNotEmpty()) item("chunks") { Chunks(s, a) }
+            s.season?.let { season ->
+                item("season-count") {
+                    Text("${season.label} · ${Viewing.count(season.episodeCount, "épisode")}", style = MaterialTheme.typography.bodyMedium,
+                        color = AppTheme.palette.text2, modifier = Modifier.padding(horizontal = Dimens.gutter))
+                }
+            }
+            when {
+                s.episodesLoading -> item("episodes-loading") { Loading() }
+                s.episodesError != null -> item("episodes-error") { ErrorMessage(s.episodesError, a.retryEpisodes) }
+                else -> items(s.visibleEpisodes, key = { "e" + it.id }) { e ->
+                    EpisodeRow(e, s.progress[e.id], next = anime.resume?.let { r -> r.kind != "REWATCH" && r.episodeId == e.id } == true, onPlay = { a.onPlay(e.id) })
+                }
+            }
+            if (s.cast.isNotEmpty()) item("cast") {
+                Column(Modifier.padding(top = Dimens.s4)) {
+                    Rail("Distribution · voix japonaises") {
+                        items(s.cast, key = { it.person?.id + "/" + it.character.name }) { e -> PersonAvatar(e, a.onPerson) }
+                    }
+                    s.castSource?.let {
+                        Text("Distribution : $it", style = MaterialTheme.typography.bodySmall, color = AppTheme.palette.text3,
+                            modifier = Modifier.padding(horizontal = Dimens.gutter))
                     }
                 }
-                s.season?.let { season ->
-                    item(key = "season-title") {
-                        Text(
-                            "${season.label} · ${season.episodeCount} épisode${if (season.episodeCount > 1) "s" else ""}",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = 12.dp).semantics { heading() },
-                        )
-                    }
-                }
-                if (s.chunks.isNotEmpty()) {
-                    item(key = "chunks") {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            s.chunks.forEach { c ->
-                                FilterChip(selected = c.index == s.chunk, onClick = { vm.selectChunk(c.index) }, label = { Text(c.label) })
-                            }
-                        }
-                    }
-                }
-                when {
-                    s.episodesLoading -> item(key = "episodes-loading") { Loading() }
-                    s.episodesError != null -> item(key = "episodes-error") { ErrorMessage(s.episodesError!!, vm::retryEpisodes) }
-                    else -> items(s.visibleEpisodes, key = { "e" + it.id }) { e ->
-                        EpisodeRow(e, s.progress[e.id], onEpisode)
-                    }
-                }
-                if (s.cast.isNotEmpty()) {
-                    item(key = "cast-title") {
-                        Text("Distribution · voix japonaises", style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = 20.dp).semantics { heading() })
-                    }
-                    itemsIndexed(s.cast.chunked(columns), key = { i, _ -> "c$i" }) { _, row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            row.forEach { e -> CastCard(e, onPerson, Modifier.weight(1f)) }
-                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
-                    s.castSource?.let { src ->
-                        item(key = "cast-source") { Muted("Distribution : $src") }
-                    }
-                }
-                if (anime.tmdbUrl != null || anime.synopsisSource == "TMDB") {
-                    item(key = "tmdb") { Muted(TMDB_NOTICE, Modifier.padding(top = 16.dp)) }
-                }
+            }
+            if (anime.tmdbUrl != null || anime.synopsisSource == "TMDB") item("tmdb") {
+                Text(TMDB_NOTICE, style = MaterialTheme.typography.bodySmall, color = AppTheme.palette.text3,
+                    modifier = Modifier.padding(horizontal = Dimens.gutter, vertical = Dimens.s4))
             }
         }
     }
 }
 
+/** Libellés du bouton principal (S5), comme le web. */
+private fun ResumeDto.title() = when (kind) {
+    "RESUME" -> "Vous en êtes à"
+    "NEXT" -> "Prochain épisode"
+    "REWATCH" -> "Vous avez tout vu"
+    else -> "Pour commencer"
+}
+
+private fun ResumeDto.action() = when (kind) {
+    "RESUME" -> "Reprendre"
+    "NEXT" -> "Épisode suivant"
+    "REWATCH" -> "Revoir depuis le début"
+    else -> "Commencer"
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Hero(s: DetailState) {
-    val a = s.anime ?: return
+private fun Hero(s: DetailState, a: DetailActions) {
+    val anime = s.anime ?: return
+    val large = largeText()
+    val episodes = anime.seasons.sumOf { it.episodeCount }
+    val normal = anime.seasons.count { it.seasonNumber > 0 }
+    val meta = listOfNotNull(anime.year?.toString(), if (normal > 1) "$normal saisons" else null, Viewing.count(episodes, "épisode"))
+        .joinToString(" · ")
+    PaletteTheme(OnImagePalette) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter).clip(AppShapes.large)) {
+            Backdrop(anime.title, anime.posterLargeUrl ?: anime.posterUrl)
+            Column(Modifier.padding(Dimens.s4), verticalArrangement = Arrangement.spacedBy(Dimens.s3)) {
+                val titles: @Composable () -> Unit = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(anime.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                            modifier = Modifier.semantics { heading() })
+                        s.subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f)) }
+                        Text(meta, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
+                    }
+                }
+                if (large) {
+                    Poster(anime.title, anime.posterLargeUrl ?: anime.posterUrl, Modifier.width(128.dp))
+                    titles()
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.s4), verticalAlignment = Alignment.Bottom) {
+                        Poster(anime.title, anime.posterLargeUrl ?: anime.posterUrl, Modifier.width(112.dp))
+                        Box(Modifier.weight(1f)) { titles() }
+                    }
+                }
+                if (anime.genres.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Dimens.s2), verticalArrangement = Arrangement.spacedBy(Dimens.s2)) {
+                        anime.genres.forEach { g ->
+                            Text(g.label, style = MaterialTheme.typography.labelMedium, color = Color.White,
+                                modifier = Modifier.focusRing(PillShape).clip(PillShape)
+                                    .border(1.dp, Color.White.copy(alpha = 0.5f), PillShape)
+                                    .clickable(role = Role.Button, onClickLabel = "Voir les animés de ce genre") { a.onGenre(g.genre) }
+                                    .heightIn(min = Dimens.target).padding(horizontal = 14.dp, vertical = 14.dp))
+                        }
+                    }
+                }
+                anime.resume?.let { r -> ResumeBox(r, a) }
+            }
+        }
+    }
+}
+
+/** Où l'on en est (S5) : épisode, progression, bouton principal. */
+@Composable
+private fun ResumeBox(r: ResumeDto, a: DetailActions) {
+    val left = if (r.kind == "RESUME") Viewing.remainingMinutes(r.positionSeconds, r.durationSeconds) else null
+    Column(
+        Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.35f), AppShapes.medium)
+            .border(1.dp, Color.White.copy(alpha = 0.15f), AppShapes.medium).padding(Dimens.s3),
+        verticalArrangement = Arrangement.spacedBy(Dimens.s2),
+    ) {
+        Text(r.title().uppercase(), style = MaterialTheme.typography.labelSmall, color = AppTheme.palette.accent)
+        Text(Viewing.longEpisode(r.seasonNumber, r.episodeNumber) + (r.episodeTitle?.let { " · $it" } ?: ""),
+            style = MaterialTheme.typography.titleSmall, color = Color.White)
+        if (r.kind == "RESUME" && r.durationSeconds > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.s3)) {
+                ProgressBar(Viewing.fraction(r.positionSeconds, r.durationSeconds), Modifier.weight(1f), trackColor = Color.White.copy(alpha = 0.3f))
+                left?.let { Text("reste $it min", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f)) }
+            }
+        }
+        PrimaryButton(r.action(), { a.onPlay(r.episodeId) }, Modifier.fillMaxWidth(),
+            icon = if (r.kind == "REWATCH") AppIcons.Refresh else AppIcons.PlayArrowFill)
+    }
+}
+
+@Composable
+private fun Synopsis(s: DetailState) {
+    val anime = s.anime ?: return
+    val p = AppTheme.palette
     val uri = LocalUriHandler.current
     var expanded by rememberSaveable { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Poster(a.title, a.posterLargeUrl ?: a.posterUrl, Modifier.width(120.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(a.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                s.subtitle?.let { Muted(it) }
-                a.year?.let { Muted(it.toString()) }
+    Column(Modifier.padding(horizontal = Dimens.gutter), verticalArrangement = Arrangement.spacedBy(Dimens.s1)) {
+        val text = anime.synopsis
+        if (text != null) {
+            Text(text, style = MaterialTheme.typography.bodyLarge, maxLines = if (expanded) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis)
+            if (text.length > 240) LinkButton(if (expanded) "Réduire" else "Lire la suite", { expanded = !expanded })
+            if (anime.synopsisLanguage == "en") {
+                Text("Synopsis en anglais (pas de traduction française).", style = MaterialTheme.typography.bodySmall, color = p.text3)
             }
+        } else {
+            Text("Pas de synopsis pour cet animé.", style = MaterialTheme.typography.bodyMedium, color = p.text2)
         }
-        a.synopsis?.let { text ->
-            Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = if (expanded) Int.MAX_VALUE else 6,
-                overflow = TextOverflow.Ellipsis)
-            if (text.length > 280) {
-                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Réduire" else "Lire la suite") }
-            }
-        }
-        val sources = listOfNotNull(a.metadataSource?.let { it to a.metadataUrl }, a.tmdbUrl?.let { "TMDB" to it })
+        val sources = listOfNotNull(anime.metadataSource?.let { it to anime.metadataUrl }, anime.tmdbUrl?.let { "TMDB" to it })
         if (sources.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                val hint = if (a.synopsis != null && a.synopsisLanguage == "en") "Synopsis en anglais (pas de traduction française) · " else ""
-                Muted("${hint}Sources :")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Sources :", style = MaterialTheme.typography.bodySmall, color = p.text2)
                 sources.forEach { (name, url) ->
-                    if (url != null) {
-                        TextButton(onClick = { uri.openUri(url) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(name) }
-                    } else Muted(name)
+                    if (url != null) LinkButton(name, { uri.openUri(url) })
+                    else Text(" $name", style = MaterialTheme.typography.bodySmall, color = p.text2)
                 }
             }
         }
     }
 }
 
+/** Saisons : boutons côte à côte jusqu'à 3, au-delà une liste (comme le web, avec la largeur d'un téléphone). */
 @Composable
-private fun EpisodeRow(e: EpisodeSummary, progress: ProgressDto?, onEpisode: ((EpisodeSummary) -> Unit)?) {
+private fun Seasons(s: DetailState, a: DetailActions) {
+    val seasons = s.anime?.seasons ?: return
+    Box(Modifier.padding(horizontal = Dimens.gutter)) {
+        if (seasons.size <= 3 && !largeText()) {
+            Segmented(seasons.map { Choice(it.id, it.label) }, s.seasonId ?: -1, a.onSeason)
+        } else {
+            SelectButton("Saison", s.season?.label ?: "", seasons.map { it.id to it.label }, s.seasonId, a.onSeason)
+        }
+    }
+}
+
+@Composable
+private fun Chunks(s: DetailState, a: DetailActions) {
+    Box(Modifier.padding(horizontal = Dimens.gutter)) {
+        SelectButton("Épisodes", "Épisodes ${s.chunks.getOrNull(s.chunk)?.label ?: ""}",
+            s.chunks.map { it.index to "Épisodes ${it.label}" }, s.chunk, a.onChunk)
+    }
+}
+
+/** Bouton qui ouvre une liste de choix (saison au-delà de 3, tranche d'épisodes). */
+@Composable
+private fun <T> SelectButton(name: String, label: String, options: List<Pair<T, String>>, current: T?, onSelect: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        GhostButton(label, { open = true }, Modifier.semantics { contentDescription = "$name : $label" }, icon = AppIcons.KeyboardArrowDown)
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { (value, text) ->
+                DropdownMenuItem(text = { Text(text) }, onClick = { open = false; onSelect(value) },
+                    leadingIcon = { if (value == current) Icon(AppIcons.Check, contentDescription = "choisi") },
+                    modifier = Modifier.focusRing())
+            }
+        }
+    }
+}
+
+/** Épisode : numéro, titre, durée, état (vu, en cours avec sa barre, prochain). Toucher = lecture. */
+@Composable
+private fun EpisodeRow(e: EpisodeSummary, progress: ProgressDto?, next: Boolean, onPlay: () -> Unit) {
+    val p = AppTheme.palette
     val title = e.title ?: "Épisode ${e.episodeNumber}"
-    val minutes = e.durationSeconds?.let { (it + 30) / 60 }
+    val minutes = Viewing.minutesLabel(e.durationSeconds)
+    val watching = progress != null && !progress.completed && progress.positionSeconds > 0
     val state = when {
-        progress == null -> null
-        progress.completed -> "vu"
-        progress.positionSeconds > 0 -> "en cours, ${progress.positionSeconds * 100 / progress.durationSeconds.coerceAtLeast(1)} %"
+        progress?.completed == true -> "vu"
+        watching -> "en cours, reste ${Viewing.remainingMinutes(progress!!.positionSeconds, progress.durationSeconds) ?: 0} min"
+        next -> "prochain épisode"
         else -> null
     }
-    val label = listOfNotNull("Épisode ${e.episodeNumber}", e.title, minutes?.let { "$it min" }, state).joinToString(", ")
-    Surface(
-        color = AppTheme.palette.surface1, shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            .then(if (onEpisode != null) Modifier.clickable(role = Role.Button) { onEpisode(e) } else Modifier)
-            .clearAndSetSemantics {
-                contentDescription = label
-                if (onEpisode != null) {
-                    role = Role.Button
-                    onClick("Lire") { onEpisode(e); true }
-                }
-            },
+    val label = listOfNotNull("Épisode ${e.episodeNumber}", e.title, minutes, state).joinToString(", ")
+    Column(
+        Modifier.padding(horizontal = Dimens.gutter).fillMaxWidth().focusRing(AppShapes.medium).clip(AppShapes.medium)
+            .background(if (next) p.accentSoft else p.surface1)
+            .border(1.dp, if (next) p.accent.copy(alpha = 0.5f) else p.outline, AppShapes.medium)
+            .clickable(role = Role.Button, onClick = onPlay)
+            .clearAndSetSemantics { contentDescription = label; role = Role.Button; onClick("Lire") { onPlay(); true } }
+            .heightIn(min = 56.dp).padding(horizontal = Dimens.s3, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${e.episodeNumber}", color = AppTheme.palette.accent, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    minutes?.let { Muted("$it min") }
-                }
-                if (progress?.completed == true) {
-                    Icon(AppIcons.CheckCircleFill, contentDescription = null, tint = AppTheme.palette.ok)
-                }
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.s3), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(if (progress?.completed == true) p.surface2 else p.accentSoft, AppShapes.small),
+                contentAlignment = Alignment.Center) {
+                Text("${e.episodeNumber}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                    color = if (progress?.completed == true) p.text2 else p.text, textAlign = TextAlign.Center, maxLines = 1)
             }
-            if (progress != null && !progress.completed && progress.positionSeconds > 0) {
-                ProgressBar(
-                    progress.positionSeconds.toFloat() / progress.durationSeconds.coerceAtLeast(1),
-                    Modifier.padding(top = 8.dp),
-                )
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = if (progress?.completed == true) p.text2 else p.text)
+                val sub = listOfNotNull(minutes, if (next && !watching) "prochain" else null).joinToString(" · ")
+                if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = p.text2)
+            }
+            when {
+                progress?.completed == true -> Icon(AppIcons.CheckCircleFill, contentDescription = null, tint = p.ok)
+                else -> Icon(AppIcons.PlayArrowFill, contentDescription = null, tint = if (next) p.accent else p.text3)
             }
         }
-    }
-}
-
-/** Carte de la distribution : photo et nom du comédien, nom du personnage, rôle. Lien vers la page du comédien. */
-@Composable
-private fun CastCard(e: CastEntry, onPerson: (String) -> Unit, modifier: Modifier) {
-    val roleLabel = ROLE_LABELS[e.role] ?: e.role
-    val p = e.person
-    val label = if (p != null) "${p.name}, voix de ${e.character.name} ($roleLabel)" else "Voix non renseignée, ${e.character.name} ($roleLabel)"
-    Column(
-        modifier
-            .then(if (p != null) Modifier.clickable(role = Role.Button) { onPerson(p.id) } else Modifier)
-            .clearAndSetSemantics {
-                contentDescription = label
-                if (p != null) {
-                    role = Role.Button
-                    onClick("Ouvrir la page du comédien") { onPerson(p.id); true }
-                }
-            },
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        // Sans comédien : visuel de remplacement (initiales du personnage), jamais d'image de personnage.
-        Poster(p?.name ?: e.character.name, p?.imageUrl)
-        Text(p?.name ?: "Voix non renseignée", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-            color = if (p != null) AppTheme.palette.text else AppTheme.palette.text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(e.character.name, style = MaterialTheme.typography.bodySmall, color = AppTheme.palette.text2, maxLines = 2,
-            overflow = TextOverflow.Ellipsis)
-        Text(roleLabel, style = MaterialTheme.typography.labelSmall,
-            color = if (e.role == "MAIN") AppTheme.palette.ok else AppTheme.palette.text2)
+        if (watching) ProgressBar(Viewing.fraction(progress!!.positionSeconds, progress.durationSeconds))
     }
 }
 
 @Composable
-internal fun Muted(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+private fun DetailSkeleton(padding: PaddingValues) {
+    Column(Modifier.padding(padding).padding(Dimens.gutter), verticalArrangement = Arrangement.spacedBy(Dimens.s4)) {
+        Skeleton(Modifier.fillMaxWidth().heightIn(min = 300.dp), AppShapes.large)
+        repeat(3) { Skeleton(Modifier.fillMaxWidth().heightIn(min = 18.dp)) }
+        repeat(4) { Skeleton(Modifier.fillMaxWidth().heightIn(min = 56.dp)) }
+    }
 }

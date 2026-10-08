@@ -94,7 +94,7 @@ class AnimeDetailViewModel(
                 if (e.animeId == null && _state.value.episodes.none { it.id == e.episodeId }) return@collect
                 _state.update { s ->
                     s.copy(progress = s.progress + (e.episodeId to ProgressDto(e.episodeId, e.positionSeconds, e.durationSeconds,
-                        completed = e.positionSeconds * 10L >= e.durationSeconds * 9L)))
+                        completed = e.positionSeconds * 10L > e.durationSeconds * 9L))) // « au-delà de 90 % », comme le serveur
                 }
                 refreshProgress()
             }
@@ -107,7 +107,8 @@ class AnimeDetailViewModel(
             try {
                 val a = api.anime(animeId)
                 val anime = a.copy(posterUrl = session.image(a.posterUrl), posterLargeUrl = session.image(a.posterLargeUrl))
-                val wanted = saved.get<Long>("season")
+                // Saison choisie (rotation, mort du processus), sinon celle de l'épisode à reprendre (S5), sinon la première.
+                val wanted = saved.get<Long>("season") ?: anime.resume?.seasonId
                 val season = anime.seasons.find { it.id == wanted } ?: anime.seasons.firstOrNull()
                 _state.update { it.copy(loading = false, anime = anime, seasonId = season?.id) }
                 season?.let { loadEpisodes(it.id) }
@@ -134,7 +135,10 @@ class AnimeDetailViewModel(
         _state.value.seasonId?.let(::loadEpisodes)
     }
 
-    /** Relu au retour sur la fiche (après le lecteur, au bloc suivant). Une erreur ici n'est pas affichée. */
+    /**
+     * Relu au retour sur la fiche (après le lecteur) et quand une position est enregistrée : progression des épisodes et
+     * bouton principal (S5). Une erreur ici n'est pas affichée.
+     */
     fun refreshProgress() {
         // Seule la dernière relecture compte : une réponse plus ancienne (partie avant l'enregistrement de la dernière
         // position) ne doit pas l'écraser.
@@ -143,6 +147,8 @@ class AnimeDetailViewModel(
             try {
                 val list = api.progress(animeId)
                 _state.update { s -> s.copy(progress = list.associateBy { it.episodeId }) }
+                val resume = runCatching { api.anime(animeId).resume }.getOrNull()
+                if (resume != null) _state.update { s -> s.copy(anime = s.anime?.copy(resume = resume)) }
             } catch (_: ApiException) {
                 // Sans progression, la fiche reste utilisable.
             }
@@ -155,7 +161,13 @@ class AnimeDetailViewModel(
         episodesJob = viewModelScope.launch {
             try {
                 val list = api.episodes(seasonId)
-                _state.update { if (it.seasonId == seasonId) it.copy(episodes = list, episodesLoading = false) else it }
+                _state.update {
+                    if (it.seasonId != seasonId) return@update it
+                    // Longue saison : la tranche de l'épisode à reprendre, au premier affichage de cette saison.
+                    val target = it.anime?.resume?.takeIf { r -> r.seasonId == seasonId }?.episodeId
+                    val index = target?.let { t -> list.indexOfFirst { e -> e.id == t } } ?: -1
+                    it.copy(episodes = list, episodesLoading = false, chunk = if (index >= 0) index / DetailState.CHUNK else it.chunk)
+                }
             } catch (e: ApiException) {
                 _state.update { if (it.seasonId == seasonId) it.copy(episodesLoading = false, episodesError = e.message) else it }
             }

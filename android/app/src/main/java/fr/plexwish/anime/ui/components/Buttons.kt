@@ -58,11 +58,12 @@ fun GhostButton(
     ) { Content(text, icon) }
 }
 
-/** Bouton texte (lien d'action). */
+/** Bouton texte (lien d'action), icône avant ou après le texte. */
 @Composable
-fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, trailing: ImageVector? = null) {
     TextButton(onClick = onClick, shape = PillShape, modifier = modifier.focusRing(PillShape).heightIn(min = Dimens.target)) {
         Content(text, icon)
+        if (trailing != null) Icon(trailing, contentDescription = null, modifier = Modifier.size(20.dp))
     }
 }
 

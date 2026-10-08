@@ -111,8 +111,11 @@ fun PhoneApp(container: AppContainer) {
             composable(Routes.LOGIN) { LoginScreen(viewModel(factory = ViewModels.Factory)) }
             composable(Routes.HOME) {
                 HomeScreen(viewModel(factory = ViewModels.Factory),
-                    onContinue = { nav.navigate(Routes.player(it.episodeId)) },
-                    onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding)
+                    onPlay = { nav.navigate(Routes.player(it.episodeId)) },
+                    onAnime = { nav.navigate(Routes.anime(it)) },
+                    onGenre = { nav.navigate(Routes.library(it)) { launchSingleTop = true } },
+                    onLibrary = { nav.navigate(Routes.library()) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                    padding = padding)
             }
             composable(Routes.SEARCH) {
                 LibraryScreen(viewModel(factory = ViewModels.Factory), onAnime = { nav.navigate(Routes.anime(it)) }, padding = padding,

@@ -34,9 +34,19 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
     suspend fun continueWatching(limit: Int = 20): List<ContinueWatching> =
         get(url("/api/me/continue-watching", "limit" to limit))
 
-    /** {@code sort} : « title » (bibliothèque) ou « recent » (derniers ajouts) ; {@code page} à partir de 0. */
-    suspend fun animes(sort: String, query: String?, page: Int, size: Int): Page<AnimeSummary> =
-        get(url("/api/anime", "sort" to sort, "q" to query?.trim(), "page" to page, "size" to size))
+    /**
+     * Bibliothèque. {@code sort} : « title », « recent » (derniers ajouts) ou « year » (S6) ; {@code page} à partir de 0.
+     * Filtres (S2, S3) : {@code watch} « unseen » / « inProgress » / « seen », {@code genre} (valeur anglaise d'AniList),
+     * années {@code yearFrom}–{@code yearTo} (bornes comprises).
+     */
+    suspend fun animes(
+        sort: String, query: String?, page: Int, size: Int,
+        watch: String? = null, genre: String? = null, yearFrom: Int? = null, yearTo: Int? = null,
+    ): Page<AnimeSummary> = get(url("/api/anime", "sort" to sort, "q" to query?.trim(), "page" to page, "size" to size,
+        "watch" to watch, "genre" to genre, "yearFrom" to yearFrom, "yearTo" to yearTo))
+
+    /** Genres présents dans la bibliothèque, libellés français (S3). */
+    suspend fun genres(): List<GenreCount> = get(url("/api/genres"))
 
     suspend fun anime(id: Long): AnimeDetail = get(url("/api/anime/$id"))
 

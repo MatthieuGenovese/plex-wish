@@ -89,4 +89,43 @@ class HomeViewModelTest {
         runBlocking { withTimeout(10_000) { vm.state.first { it.continueWatching.singleOrNull()?.positionSeconds == 900 } } }
         server.shutdown()
     }
+
+    @Test
+    fun rowsFollowTheWebHomeGenresDiscoverAndNextEpisode() {
+        val paths = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val server = MockWebServer().apply {
+            dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    val url = request.requestUrl!!
+                    paths += url.encodedPath + "?" + (url.encodedQuery ?: "")
+                    fun page(total: Int, vararg ids: Int) = okhttp3.mockwebserver.MockResponse().setBody(
+                        """{"total":$total,"page":0,"size":12,"items":[${ids.joinToString(",") { """{"id":$it,"title":"A$it","episodeCount":12}""" }}]}""")
+                    return when {
+                        url.encodedPath == "/api/me/continue-watching" -> okhttp3.mockwebserver.MockResponse().setBody(
+                            """[{"animeId":7,"animeTitle":"Frieren","episodeId":5,"seasonId":10,"seasonNumber":1,"seasonLabel":"Saison 1",
+                                "episodeNumber":4,"positionSeconds":0,"durationSeconds":1440,"kind":"NEXT"}]""")
+                        url.encodedPath == "/api/genres" -> okhttp3.mockwebserver.MockResponse().setBody(
+                            """[{"genre":"Hentai","label":"Hentai","animeCount":90},{"genre":"Comedy","label":"Comédie","animeCount":40},
+                                {"genre":"Drama","label":"Drame","animeCount":2}]""")
+                        url.queryParameter("genre") == "Comedy" -> page(40, 50, 51)
+                        url.queryParameter("sort") == "title" -> page(300, 90, 91)
+                        else -> page(300, 1, 2, 3)
+                    }
+                }
+            }
+            start()
+        }
+        val session = SessionStore(MemoryStore(), FakeCipher())
+        session.startSession(server.url("/"), AppJson.decodeFromString<AppTokens>(tokensJson("a", "r")))
+        val vm = HomeViewModel(AnimeApi(session, OkHttpClient()), session, random = kotlin.random.Random(1))
+        val s = runBlocking { withTimeout(10_000) { vm.state.first { !it.loading } } }
+        assertEquals(null, s.error)
+        assertTrue(s.continueWatching.single().isNext)
+        assertEquals(listOf("Comédie"), s.genres.map { it.genre.label }) // jamais Hentai, Drame trop petit
+        assertEquals(listOf(90L, 91L), s.discover.map { it.id })
+        assertEquals(300L, s.total)
+        assertTrue(paths.none { it.contains("genre=Hentai") })
+        assertTrue(paths.any { it.startsWith("/api/me/continue-watching?limit=13") })
+        server.shutdown()
+    }
 }

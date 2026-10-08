@@ -30,6 +30,8 @@ data class AnimeSummary(
     val year: Int? = null,
     val posterUrl: String? = null,
     val episodeCount: Long = 0,
+    /** Dernier fichier ajouté (ISO 8601) : badge « Nouveau » pendant 14 jours. */
+    val lastAddedAt: String? = null,
 )
 
 @Serializable
@@ -48,6 +50,33 @@ data class ContinueWatching(
     val positionSeconds: Int,
     val durationSeconds: Int,
     val posterUrl: String? = null,
+    /** « RESUME » (épisode commencé) ou « NEXT » (épisode suivant du dernier terminé), S1. */
+    val kind: String = "RESUME",
+) {
+    val isNext get() = kind == "NEXT"
+}
+
+/** Genre présent dans la bibliothèque (libellé français, S3). */
+@Serializable
+data class GenreCount(val genre: String, val label: String, val animeCount: Long = 0)
+
+@Serializable
+data class GenreDto(val genre: String, val label: String)
+
+/**
+ * Bouton principal de la fiche (S5) : {@code kind} RESUME (reprendre à {@code positionSeconds}), NEXT (épisode
+ * suivant), START (rien regardé), REWATCH (tout vu).
+ */
+@Serializable
+data class ResumeDto(
+    val kind: String,
+    val episodeId: Long,
+    val seasonId: Long,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val episodeTitle: String? = null,
+    val positionSeconds: Int = 0,
+    val durationSeconds: Int = 0,
 )
 
 @Serializable
@@ -70,6 +99,8 @@ data class AnimeDetail(
     val synopsisSource: String? = null,
     val frenchTitle: String? = null,
     val tmdbUrl: String? = null,
+    val resume: ResumeDto? = null,
+    val genres: List<GenreDto> = emptyList(),
 )
 
 @Serializable

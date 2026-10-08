@@ -1,5 +1,7 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.ui.components.AnimeCard
+
 import androidx.compose.ui.focus.focusRequester
 
 import fr.plexwish.anime.ui.theme.AppIcons

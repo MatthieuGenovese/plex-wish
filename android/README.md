@@ -2,7 +2,7 @@
 
 Application téléphone (Kotlin, Jetpack Compose, Media3) dans `android/app`. Même API REST que l'interface web, aucune logique métier dupliquée : l'app affiche ce que renvoie le serveur. Choix techniques : `docs/ARCHITECTURE.md` §20.
 
-`android/spike/` (phase 0) sera supprimé dès que le lecteur de l'app lira les vidéos par URL signée.
+`android/spike/` (phase 0) ne sert plus : il sera supprimé à la fin du Polish (P3), avec `/api/dev/stream`.
 
 ## Prérequis
 
@@ -40,7 +40,9 @@ La stack Docker du PC publie l'interface sur `127.0.0.1:8080` seulement (`WEB_BI
 adb reverse tcp:8080 tcp:8080
 ```
 
-Dans l'app **debug**, adresse du serveur : `http://localhost:8080`. Le HTTP en clair n'est accepté que dans la version debug. L'app n'utilise pas de cookie : la limitation du cookie `Secure` du navigateur (qui oblige à passer par `localhost` ou le HTTPS) ne la concerne pas. Il faut refaire `adb reverse` après chaque rebranchement.
+Dans l'app **debug**, adresse du serveur : `http://localhost:8080`.
+
+**Catalogue de démonstration** (1 300 animés inventés, README principal) : `adb reverse tcp:8090 tcp:8090`, puis l'adresse `http://localhost:8090` (compte admin du `.env`). Les épisodes de démonstration n'ont pas de fichier : la lecture y répond « Ce fichier n'est plus disponible sur le serveur », tout le reste (accueil, fiche, progression affichée, recherche) se teste. Le HTTP en clair n'est accepté que dans la version debug. L'app n'utilise pas de cookie : la limitation du cookie `Secure` du navigateur (qui oblige à passer par `localhost` ou le HTTPS) ne la concerne pas. Il faut refaire `adb reverse` après chaque rebranchement.
 
 ## Adresse du serveur
 
@@ -50,18 +52,22 @@ Au premier lancement : l'adresse publique (celle de `PUBLIC_URL`, ex. `https://a
 - Trop d'essais de mot de passe : le serveur bloque la connexion un moment ; l'app affiche le délai à attendre.
 - Session : l'app reste connectée (30 jours sans ouverture au plus) ; si le serveur révoque la session (mot de passe changé, compte désactivé), elle revient à l'écran de connexion avec un message.
 
-## Ce que fait l'app (à ce stade)
+## Ce que fait l'app
 
-- Connexion, accueil (reprendre, derniers ajouts), bibliothèque (recherche, tri).
-- Fiche d'un animé : synopsis, saisons, épisodes (par tranches de 100 pour les longues séries), épisodes vus ou en cours, distribution (photo et nom des doubleurs japonais, personnage joué, rôle) et page de chaque comédien.
+- **Connexion** : adresse du serveur, identifiant, mot de passe (voir ci-dessus).
+- **Accueil** : « Continuer à regarder » (épisode commencé ou épisode suivant, avec sa barre de progression), derniers ajouts. Tirer vers le bas pour actualiser.
+- **Bibliothèque** : recherche, tri.
+- **Fiche d'un animé** : synopsis (« Lire la suite »), sources, saisons, épisodes (par tranches de 100 pour les longues séries) avec leur état (barre « en cours », coche « vu »), distribution (doubleurs japonais, personnage, rôle) et page de chaque comédien.
+- **Lecture** depuis la fiche ou l'accueil, reprise à la position enregistrée ; la fiche et l'accueil suivent la dernière position dès qu'elle est enregistrée (voir « Progression »).
 - *Compte → À propos* : sources des données (AniList, TMDB) et mention TMDB.
-- Lecture (Media3) depuis la fiche (un épisode) ou l'accueil (« Continuer à regarder »), reprise à la position enregistrée. La page d'un comédien liste des animés, pas des épisodes : on passe par la fiche.
 
 Les images ne viennent que du serveur : une affiche ou une photo pas encore stockée sur le NAS s'affiche en initiales colorées.
 
+La refonte de l'interface (thème clair, bandeau d'accueil, filtres, changement de mot de passe…) est l'étape P3 du Polish (`docs/DESIGN.md`).
+
 ## Lecteur
 
-Plein écran en paysage. Commandes de Media3 : lecture / pause, avance et recul, barre de progression, bouton **Sous-titres** et bouton **Paramètres** (piste audio). Tous sont lus par TalkBack, en français.
+Plein écran en paysage. Commandes de Media3 : lecture / pause, avance et recul, barre de progression, bouton **Sous-titres** et bouton **Paramètres** (piste audio). Tous sont lus par TalkBack, en français. Chargement et reconnexion : un indicateur qui tourne au centre de l'image.
 
 ### Pistes par défaut
 
@@ -69,17 +75,9 @@ Plein écran en paysage. Commandes de Media3 : lecture / pause, avance et recul,
 - Un changement fait dans le lecteur est **mémorisé** sur le téléphone (langue de l'audio, langue des sous-titres, ou sous-titres désactivés) et s'applique aux épisodes suivants.
 - Taille et style des sous-titres : ceux du fichier, ajustés par *Paramètres Android → Accessibilité → Sous-titres* (taille, police, fond).
 
-### Ce que Media3 fait des sous-titres
+### Sous-titres
 
-| Format | Ce qui s'affiche | Ce qui est ignoré |
-|---|---|---|
-| **ASS/SSA** (texte, MKV) | Le texte ; par **style** (section `[V4+ Styles]`) : couleur principale, gras, italique, souligné, barré, taille de police, alignement (`Alignment`), fond en encadré (`BorderStyle=3`) ; dans une ligne : **position** `\pos`, point de départ de `\move`, alignement `\an`. | Polices du fichier (police d'Android à la place), contour et ombre, **toutes les autres balises dans la ligne** (`{\i1}`, `{\c&H…&}`, `{\fs…}`, karaoké, fondus `\fad`, animations `\t`, rotation, flou, découpe). Les panneaux dessinés (`\p1`) peuvent apparaître comme du texte parasite. Résultat : lisible, mais les « signs » et effets typographiques des fansubs sont perdus. |
-| **SRT, WebVTT** | Texte, italique / gras simples. | — |
-| **VobSub, PGS** (images, MKV) | Affichés **tels quels, en images** (rendu fidèle du disque d'origine). | Taille et style non réglables ; pas de choix de police. |
-| **ASS dans un MP4** | Rien : Android ne voit pas la piste. | Toute la piste. |
-| **Sous-titres dans un AVI** (VobSub…) | Rien : l'extracteur AVI de Media3 ne lit que la vidéo et l'audio. | Toute la piste. |
-
-Le lecteur le signale par un bandeau (« Aucun sous-titre lisible… ») avec un bouton **Détails**.
+Ceux du fichier : piste de sous-titres (MKV, MP4, copies préparées des AVI et OGM) ou sous-titres incrustés dans l'image (fréquent dans les AVI). Vérifié sur le S24 pour les quatre formats. L'app n'affiche aucun message à leur sujet : l'absence de piste ne veut pas dire qu'il n'y a pas de sous-titres. Pour les sous-titres ASS, le texte et sa position sont respectés, les effets typographiques avancés des fansubs (karaoké, animations) sont simplifiés par Media3.
 
 ### Quand un fichier ne se lit pas
 
@@ -89,24 +87,23 @@ Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, r�
 |---|---|
 | Lecture bloquée au chargement (tout fichier) | Détectée par Media3 (« stuck buffering ») ou par l'app (20 s de mise en tampon sans que les données chargées n'avancent de 2 s) : même message ; **Détails** indique la durée de mise en tampon, la position chargée et les pistes actives. Une connexion lente, qui fait avancer le chargement, n'est pas prise pour un blocage. |
 | AVI, OGM | Convertis par le serveur (voir « Préparation de l'épisode »). Si une copie posait encore problème, le filet de sécurité reste : lecture bloquée → message avec **Réessayer** et **Lire sans le son**. |
-| AVI (H.264 + HE-AAC + VobSub) | Lu si Android reconnaît l'audio ; sinon bandeau « Pas de son : aucune piste audio reconnue… (HE-AAC dans un AVI) », et « pas de sous-titres ». |
-| MKV HEVC 10 bits + ASS | Lu si le téléphone a le décodeur (le S24 l'a) ; sinon « Ce téléphone ne sait pas décoder la vidéo (HEVC (H.265) 10 bits) ». |
-| MP4 H.264 + ASS | Lu ; bandeau « ASS mis dans un MP4 : ignorés par Android ». |
+| Son illisible | Bandeau « Pas de son : … » (piste audio absente ou dans un format que le téléphone ne lit pas) ; la vidéo continue. |
+| MKV HEVC 10 bits | Lu si le téléphone a le décodeur (le S24 l'a) ; sinon « Ce téléphone ne sait pas décoder la vidéo (HEVC (H.265) 10 bits) ». |
 | Réseau coupé | « Connexion au serveur perdue », après les nouveaux essais automatiques. |
 | 403 qui persiste | « Le serveur refuse la lecture (lien expiré, ou compte désactivé) ». |
 | Fichier retiré du NAS | « Ce fichier n'est plus disponible sur le serveur ». |
 
 ### Préparation de l'épisode (AVI, OGM)
 
-Pour un AVI ou un OGM, le serveur prépare d'abord une copie lisible (remux sans ré-encodage, ARCHITECTURE §23) : l'app affiche **« Préparation de l'épisode… »** avec une barre de progression, la place dans la file (« Un autre épisode est préparé avant celui-ci. ») et l'**attente estimée**, redemande toute seule au rythme indiqué par le serveur, puis lance la lecture. **Annuler** revient à la fiche. Ensuite, la copie est gardée : les lectures suivantes démarrent tout de suite. Cas d'erreur (message du serveur) : « Ce fichier n'a pas pu être converti pour Android… » (remux impossible, l'admin le voit et peut relancer) ; « Le serveur n'a plus de place… Réessayez dans quelques minutes. » (cache plein de copies en cours de lecture).
+Pour un AVI ou un OGM, le serveur prépare d'abord une copie lisible (remux sans ré-encodage, ARCHITECTURE §23). L'app affiche un indicateur qui tourne et **« Préparation de l'épisode… »**, directement sur l'image, sans cadre ; elle redemande toute seule au rythme indiqué par le serveur, puis lance la lecture. Pour annuler : retour (bouton ou geste, touche Retour de la télécommande). Ensuite, la copie est gardée : les lectures suivantes démarrent tout de suite. Cas d'erreur (message du serveur) : « Ce fichier n'a pas pu être converti pour Android… » (remux impossible, l'admin le voit et peut relancer) ; « Le serveur n'a plus de place… Réessayez dans quelques minutes. » (cache plein de copies en cours de lecture).
 
 #### Scénario de test (Air Gear AVI)
 1. Serveur à jour, dossier `REMUX_CACHE_PATH` inscriptible (README racine, « Remux à la demande ») ; *Médias → Remux à la demande* vide.
-2. Lancer l'épisode AVI : écran « Préparation de l'épisode… » quelques secondes, puis lecture **avec le son** (sous-titres incrustés dans l'image pour Air Gear : rien à activer), seek à 80 % puis retour.
+2. Lancer l'épisode AVI : indicateur et « Préparation de l'épisode… » quelques secondes, puis lecture **avec le son et les sous-titres**, seek à 80 % puis retour.
 3. Regarder 1 minute, quitter : la position est enregistrée (barre « en cours » sur la fiche), relancer : reprise immédiate (copie déjà prête, pas d'écran de préparation).
 4. Admin : copie « prête », variante utilisée, taille.
 5. Un OGM : même chose (avec ses sous-titres s'il en a).
-6. Deux épisodes AVI non préparés lancés depuis deux téléphones : le second voit « Un autre épisode est préparé avant celui-ci. » et une attente plus longue.
+6. Deux épisodes AVI non préparés lancés depuis deux téléphones : le second attend plus longtemps (même indicateur), puis lit.
 
 ### Reprise de connexion
 
@@ -129,9 +126,10 @@ Pour un AVI ou un OGM, le serveur prépare d'abord une copie lisible (remux sans
 - **Terminé** au-delà de 90 % (décidé par le serveur) : coche sur la fiche, l'épisode repart du début à la prochaine lecture.
 - Rien n'est envoyé si la position est incohérente (durée inconnue, position négative ou au-delà de la fin, moins d'une seconde, pendant une reconnexion).
 - Sans réseau, la lecture continue ; la position est renvoyée à la prochaine occasion (envoi suivant, pause, sortie).
-- Au retour sur la fiche ou l'accueil, la progression et « Continuer à regarder » sont relues.
+- La fiche et l'accueil se mettent à jour **dès qu'une position est enregistrée** (la dernière part à la sortie du lecteur, souvent après le retour sur la fiche) : la barre de l'épisode suit, y compris après un retour en arrière dans l'épisode ; au-delà de 90 %, la coche « vu » apparaît. Ils relisent aussi la progression à chaque retour à l'écran.
+- Barre de progression : une seule barre pleine (comme le web).
 
-À vérifier : regarder 2 minutes, revenir à la fiche (barre « en cours »), relancer (reprise au même endroit) ; avancer à 95 %, quitter (coche « vu ») ; même chose en mode avion pendant 30 s au milieu (la position finale arrive quand même).
+À vérifier : regarder 2 minutes, revenir à la fiche (barre « en cours », à la bonne longueur) ; relancer, **reculer** de 1 minute, revenir : la barre raccourcit ; relancer (reprise au même endroit) ; avancer à 95 %, quitter (coche « vu ») ; même chose en mode avion pendant 30 s au milieu (la position finale arrive quand même).
 
 ## APK de release (sans Play Store)
 

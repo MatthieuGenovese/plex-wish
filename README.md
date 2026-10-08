@@ -5,9 +5,10 @@ Backend Quarkus + PostgreSQL, interface web Angular servie par nginx.
 
 - Architecture et décisions : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Avancement : [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- Application Android : [`android/README.md`](android/README.md)
 - Spike vidéo (phase 0) : [`docs/SPIKE.md`](docs/SPIKE.md)
 
-> État (2026-10-03) : **phases 0 à 6.2 terminées**. Connexion, bibliothèque, fiche anime et administration (phases 1 à 4) ; streaming par URL signée avec Range et progression par utilisateur, testables avec `curl` (phase 5) ; métadonnées AniList : affiches, synopsis anglais, année (phase 6) ; synopsis en français via TMDB (6.1) ; affiches stockées sur le NAS (6.2). Pas encore de lecteur vidéo web ni d'application Android complète.
+> État (2026-10-08) : serveur (bibliothèque, comptes, streaming par URL signée, progression, métadonnées AniList / TMDB, analyse ffprobe, remux à la demande des AVI et OGM), interface web refaite (Polish P2 : accueil, recherche et filtres, fiche, compte, thème clair) et **application Android** avec lecteur (`android/README.md`), validée sur un Galaxy S24. En cours : refonte de l'app Android (Polish P3). Pas encore de lecteur dans le navigateur (phase 10) : sur le web, « Voir l'épisode » ouvre la fiche, la lecture se fait dans l'app.
 
 ## Prérequis
 
@@ -170,7 +171,7 @@ Un scan abandonné (dossier média absent, vide ou illisible) ne marque rien com
 
 ## Lecture (API)
 
-Pas encore de lecteur web : la lecture se teste avec `curl` (ou VLC, qui accepte une URL).
+La lecture se fait dans l'application Android (`android/README.md`) ; pas encore de lecteur dans le navigateur (phase 10). Pour tester l'API à la main : `curl` (ou VLC, qui accepte une URL).
 
 ```sh
 TOKEN=$(curl -s -H 'Content-Type: application/json' -d '{"login":"admin","password":"…"}' http://localhost:8080/api/auth/login | jq -r .accessToken)

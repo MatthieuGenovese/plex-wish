@@ -10,6 +10,8 @@ import fr.plexwish.anime.feature.player.PlayerState
 import fr.plexwish.anime.feature.player.TrackInfo
 import fr.plexwish.anime.feature.player.TrackType
 import fr.plexwish.anime.ui.phone.ErrorPanel
+import fr.plexwish.anime.ui.phone.LeavingScreen
+import fr.plexwish.anime.ui.phone.awaitRotationBack
 import fr.plexwish.anime.ui.phone.PlayerActions
 import fr.plexwish.anime.ui.phone.PlayerOverlay
 import fr.plexwish.anime.ui.phone.Playhead
@@ -22,6 +24,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.content.res.Configuration
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.assertIsDisplayed
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.robolectric.annotation.Config
@@ -86,5 +98,40 @@ class PlayerScreenTest : ScreenTest() {
             }
         }
         assertAccessible()
+    }
+
+    /** Sortie du lecteur : écran noir et indicateur, sans image figée de la vidéo. */
+    @Test
+    fun leaving() {
+        shoot("p36-sortie", listOf(ScreenTest.ALL[0])) { LeavingScreen() }
+        compose.onNodeWithContentDescription("Fermeture du lecteur").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun leavingWaitsForTheRotationBack() = runTest {
+        val landscape = Configuration.ORIENTATION_LANDSCAPE
+        val portrait = Configuration.ORIENTATION_PORTRAIT
+        // Déjà en portrait, ou écran d'avant lui aussi en paysage : pas d'attente.
+        awaitRotationBack(portrait, rotates = true) { portrait }
+        awaitRotationBack(landscape, rotates = false) { landscape }
+        assertEquals(0L, currentTime)
+
+        // Rotation au bout de 300 ms : la fiche s'affiche juste après (une image de marge).
+        val orientation = mutableIntStateOf(landscape)
+        val start = currentTime
+        val wait = async { awaitRotationBack(landscape, rotates = true) { orientation.intValue } }
+        launch {
+            delay(300)
+            Snapshot.withMutableSnapshot { orientation.intValue = portrait }
+            Snapshot.sendApplyNotifications()
+        }
+        wait.await()
+        assertEquals(420L, currentTime - start)
+
+        // Téléphone à plat : la rotation ne vient pas, on sort quand même au bout du délai.
+        val flat = currentTime
+        awaitRotationBack(landscape, rotates = true) { landscape }
+        assertEquals(1_320L, currentTime - flat)
     }
 }

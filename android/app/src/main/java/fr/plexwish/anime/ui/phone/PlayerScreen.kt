@@ -6,6 +6,13 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.annotation.OptIn
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -135,19 +142,45 @@ data class PlayerActions(
 fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val host = remember { context.findActivity() }
+    val insets = remember { host?.let { WindowCompat.getInsetsController(it.window, it.window.decorView) } }
+    // Orientation d'avant le lecteur (portrait d'habitude), rétablie en sortant.
+    val previousOrientation = remember { host?.requestedOrientation }
+    val restoreWindow = {
+        insets?.show(WindowInsetsCompat.Type.systemBars())
+        if (previousOrientation != null) host?.requestedOrientation = previousOrientation
+    }
 
-    // Plein écran paysage pendant la lecture, rétabli en sortant.
+    // Plein écran paysage pendant la lecture.
     DisposableEffect(Unit) {
-        val activity = context.findActivity()
-        val old = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        val insets = activity?.let { WindowCompat.getInsetsController(it.window, it.window.decorView) }
+        host?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         insets?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         insets?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose {
-            insets?.show(WindowInsetsCompat.Type.systemBars())
-            if (old != null) activity.requestedOrientation = old
+        onDispose { restoreWindow() }
+    }
+
+    // Sortie du lecteur (retour, geste, bouton, touche de la télécommande) : écran noir et indicateur tout de suite,
+    // lecture arrêtée, puis retour au portrait ; la fiche ne s'affiche qu'une fois la rotation faite (au plus ~1 s),
+    // pour ne jamais voir l'image figée de la vidéo par-dessus l'application.
+    var leaving by remember { mutableStateOf(false) }
+    val orientation by rememberUpdatedState(LocalConfiguration.current.orientation)
+    val leave = {
+        if (!leaving) {
+            leaving = true
+            vm.engine.pause()
         }
+    }
+    BackHandler(enabled = !leaving) { leave() }
+    LaunchedEffect(leaving) {
+        if (!leaving) return@LaunchedEffect
+        val before = orientation
+        restoreWindow()
+        awaitRotationBack(before, previousOrientation != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) { orientation }
+        onBack()
+    }
+    if (leaving) {
+        LeavingScreen()
+        return
     }
     // Arrière-plan : position envoyée, puis pause.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -229,7 +262,7 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
                 // Annuler = retour (bouton, geste, touche Retour de la télécommande).
                 PlayerPhase.PREPARING -> BusyIndicator("Préparation de l'épisode…", Modifier.align(Alignment.Center))
                 PlayerPhase.ERROR -> s.error?.let {
-                    ErrorPanel(it, vm::retry, { vm.showDetails(it) }, onBack, Modifier.align(Alignment.Center),
+                    ErrorPanel(it, vm::retry, { vm.showDetails(it) }, leave, Modifier.align(Alignment.Center),
                         onWithoutSound = if (s.canPlayWithoutSound) vm::playWithoutSound else null)
                 }
                 else -> {}
@@ -238,13 +271,13 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
             AnimatedVisibility(showControls && s.phase != PlayerPhase.ERROR, enter = fadeIn(), exit = fadeOut()) {
                 PlayerOverlay(
                     s, head, firstControl,
-                    PlayerActions(onBack, { vm.togglePlay(); activity++ }, { vm.seekBy(it); activity++ }, { vm.seekTo(it); activity++ },
+                    PlayerActions(leave, { vm.togglePlay(); activity++ }, { vm.seekBy(it); activity++ }, { vm.seekTo(it); activity++ },
                         { tracks = true }),
                 )
             }
             // Pendant le chargement ou la préparation, retour toujours accessible.
             if (!showControls && s.phase != PlayerPhase.PLAYING && s.phase != PlayerPhase.ERROR) {
-                AppIconButton(AppIcons.ArrowBack, "Retour", onBack, Modifier.safeDrawingPadding().padding(4.dp), tint = Color.White)
+                AppIconButton(AppIcons.ArrowBack, "Retour", leave, Modifier.safeDrawingPadding().padding(4.dp), tint = Color.White)
             }
 
             if (s.warnings.isNotEmpty() && s.phase != PlayerPhase.ERROR) {
@@ -498,4 +531,23 @@ private fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/** Écran noir et indicateur pendant la sortie du lecteur. */
+@Composable
+internal fun LeavingScreen() {
+    Box(Modifier.fillMaxSize().background(Color.Black).semantics { contentDescription = "Fermeture du lecteur" },
+        contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = Color.White)
+    }
+}
+
+/**
+ * Attend que l'écran ait quitté le paysage forcé du lecteur. Rien à attendre si on n'y était pas, ou si l'écran d'avant
+ * était lui aussi en paysage ; au plus [timeoutMs] si la rotation ne vient pas (téléphone à plat, rotation bloquée).
+ */
+internal suspend fun awaitRotationBack(before: Int, rotates: Boolean, timeoutMs: Long = 1_200, orientation: () -> Int) {
+    if (before != Configuration.ORIENTATION_LANDSCAPE || !rotates) return
+    withTimeoutOrNull(timeoutMs) { snapshotFlow(orientation).first { it != before } }
+    delay(120) // une image dans la nouvelle orientation avant d'afficher la fiche
 }

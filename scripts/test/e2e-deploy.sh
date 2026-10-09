@@ -166,7 +166,41 @@ step_invitation() {
     grep -qF "$jeton" <<< "$(dc logs 2>&1)" && fail "jeton d'invitation dans les journaux" || ok "jeton jamais dans les journaux (nginx, Caddy, serveur)"
 }
 
-steps=${*:-"first_start secrets_lost wizard invitation"}
+sql() { dc exec -T postgres psql -tAq -U anime -d anime -c "$1"; }
+
+step_backup() {
+    echo "== Sauvegarde vérifiée, rotation, restauration de bout en bout"
+    dc exec -T backup sh /app-scripts/backup-loop.sh once > "$E2E/backup.log" 2>&1 || { cat "$E2E/backup.log"; fail "sauvegarde"; }
+    st=$(cat "$DATA/backups/status.json")
+    [ "$(json "d['ok'] and d['verified']" <<< "$st")" = True ] && ok "sauvegarde faite et vérifiée par une restauration d'essai" || fail "état : $st"
+    dump=$(json "d['file']" <<< "$st")
+    [ "$(stat -c '%a %u' "$DATA/backups/$dump")" = "600 0" ] && ok "fichier de sauvegarde lisible par root seulement" || fail "droits $(stat -c '%a %u' "$DATA/backups/$dump")"
+    [ "$(sql "SELECT count(*) FROM pg_database WHERE datname LIKE 'anime_verify%'")" = 0 ] && ok "base d'essai supprimée" || fail "base d'essai restante"
+    pw=$(docker run --rm -v anime-server_secrets_pg:/p:ro alpine:3 cat /p/db_password)
+    grep -qF "$pw" "$E2E/backup.log" "$DATA/backups/status.json" && fail "mot de passe affiché" || ok "mot de passe de la base jamais affiché"
+    # Changements après la sauvegarde, puis restauration : on doit retrouver l'état sauvegardé.
+    sql "UPDATE app_user SET enabled = false WHERE username = 'alice'; INSERT INTO app_user (username, password_hash, role) VALUES ('bob', NULL, 'USER');" > /dev/null
+    (cd "$DATA" && sh app/restore.sh "backups/$dump" --yes) > "$E2E/restore.log" 2>&1 || { tail -20 "$E2E/restore.log"; fail "restauration"; }
+    [ "$(sql "SELECT count(*) FROM app_user WHERE username = 'bob'")" = 0 ] && [ "$(sql "SELECT enabled FROM app_user WHERE username = 'alice'")" = t ] \
+        && ok "base restaurée : état de la sauvegarde retrouvé" || fail "contenu après restauration"
+    [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d '{"login":"alice","password":"le-mot-de-passe-d-alice"}' "$PUB/api/auth/login")" = 200 ] && ok "alice se reconnecte après restauration" || fail "connexion"
+    ls "$DATA/backups" | grep -q '^avant-restauration-' && ok "sauvegarde de sécurité faite avant la restauration" || fail "pas de sauvegarde de sécurité"
+    # Rotation : 200 jours de sauvegardes fictives (deux par jour certains jours).
+    for i in $(seq 0 199); do
+        d=$(date -d "2026-10-09 -$i days" +%Y%m%d)
+        touch "$DATA/backups/anime-db-$d-030000.dump"
+        [ $((i % 10)) = 0 ] && touch "$DATA/backups/anime-db-$d-150000.dump"
+    done
+    dc exec -T backup sh /app-scripts/backup-loop.sh rotate > /dev/null
+    kept=$(ls "$DATA/backups" | grep -E '^anime-db-2026' | sort -r)
+    n=$(echo "$kept" | wc -l)
+    newest7=$(echo "$kept" | head -7 | cut -c10-17 | tr '\n' ' ')
+    [ "$n" = 17 ] && [ "$newest7" = "20261009 20261008 20261007 20261006 20261005 20261004 20261003 " ] \
+        && ok "rotation : 7 jours, puis semaines et mois ($n gardées sur 220)" || fail "rotation : $n gardées ; $newest7"
+}
+
+steps=${*:-"first_start secrets_lost wizard invitation backup"}
 setup
 for s in $steps; do "step_$s"; done
 [ "${KEEP:-0}" = 1 ] || clean

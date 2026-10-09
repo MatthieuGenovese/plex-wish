@@ -28,7 +28,7 @@ import java.io.IOException;
 public class SettingsAdminResource {
 
     public record Overview(String version, String publicUrl, InstallationSettings.TmdbView tmdb, DdnsService.Status ddns,
-                           InstallationSettings.DiskView disk) {
+                           InstallationSettings.DiskView disk, InstallationSettings.BackupStatus backup) {
     }
 
     @Inject
@@ -42,7 +42,8 @@ public class SettingsAdminResource {
 
     @GET
     public Overview overview() {
-        return new Overview(version, auth.publicUrl().orElse(null), installation.tmdb(), ddns.status(), installation.disk());
+        return new Overview(version, auth.publicUrl().orElse(null), installation.tmdb(), ddns.status(), installation.disk(),
+                installation.backup().orElse(null));
     }
 
     @PUT

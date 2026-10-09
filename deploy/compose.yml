@@ -53,6 +53,27 @@ services:
       init:
         condition: service_completed_successfully
 
+  # Sauvegarde de la base chaque nuit, vérifiée par une restauration d'essai, avec rotation (deploy/backup-loop.sh).
+  # Dossier « backups » du projet : visible dans le DSM, à inclure dans Hyper Backup pour une copie hors du NAS.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["sh", "/app-scripts/backup-loop.sh"]
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      PGHOST: postgres
+      PGUSER: anime
+      PGDATABASE: anime
+    volumes:
+      - ./app:/app-scripts:ro
+      - ./backups:/backups
+      - secrets_pg:/run/secrets/pg:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     image: *backend-image
     restart: unless-stopped
@@ -87,6 +108,8 @@ services:
       - secrets_app:/run/anime/secrets
       - ./posters:/data/posters
       - ./remux-cache:/data/remux-cache
+      # État des sauvegardes (status.json), en lecture seule : affiché dans Administration > Réglages.
+      - ./backups:/data/backups:ro
     depends_on:
       init:
         condition: service_completed_successfully

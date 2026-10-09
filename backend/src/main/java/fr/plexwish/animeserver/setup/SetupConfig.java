@@ -19,6 +19,10 @@ public interface SetupConfig {
     /** Dossier des secrets saisis dans l'interface (clé TMDB, jeton du DNS dynamique) : un fichier 600 chacun. */
     String secretsDir();
 
+    /** Dossier des sauvegardes (lecture seule) : le serveur y lit status.json, écrit par le conteneur backup. */
+    @WithDefault("/data/backups")
+    String backupsDir();
+
     Ddns ddns();
 
     interface Ddns {

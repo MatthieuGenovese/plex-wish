@@ -42,6 +42,10 @@ public class InstallationSettings {
     public record TmdbView(boolean configured, String source) {
     }
 
+    /** Dernière sauvegarde automatique (status.json du conteneur backup). */
+    public record BackupStatus(String lastRun, boolean ok, boolean verified, String file, long sizeBytes, String message) {
+    }
+
     /** Une vérification : OK, WARN (fonctionne, mais à regarder) ou FAIL (à corriger). */
     public record Check(String id, String label, String state, String detail, String fix) {
     }
@@ -66,6 +70,20 @@ public class InstallationSettings {
     LibraryConfig library;
     @Inject
     fr.plexwish.animeserver.media.MediaConfig mediaConfig;
+    @Inject
+    SetupConfig setupConfig;
+    @Inject
+    com.fasterxml.jackson.databind.ObjectMapper json;
+
+    /** Vide si aucune sauvegarde n'a encore eu lieu (ou pile de développement, sans conteneur backup). */
+    public java.util.Optional<BackupStatus> backup() {
+        Path f = Path.of(setupConfig.backupsDir(), "status.json");
+        try {
+            return Files.isReadable(f) ? java.util.Optional.of(json.readValue(f.toFile(), BackupStatus.class)) : java.util.Optional.empty();
+        } catch (IOException e) {
+            return java.util.Optional.empty();
+        }
+    }
 
     // --- TMDB --------------------------------------------------------------------------------------------------
 

@@ -13,6 +13,7 @@ interface Overview {
   tmdb: TmdbView;
   ddns: DdnsStatus;
   disk: DiskView;
+  backup: { lastRun: string; ok: boolean; verified: boolean; file: string; sizeBytes: number; message: string } | null;
 }
 
 /**
@@ -33,6 +34,22 @@ interface Overview {
       <div class="alert alert-error" role="alert"><p>{{ o.error }}</p></div>
     } @else if (o.data; as v) {
       <p class="muted">Version {{ v.version }} · adresse du site : {{ v.publicUrl ?? '—' }}</p>
+
+      <section class="card" aria-labelledby="s-backup">
+        <h2 id="s-backup">Sauvegardes de la base</h2>
+        @if (v.backup; as b) {
+          @if (b.ok) {
+            <p><span class="badge badge-success">OK</span> Dernière sauvegarde le {{ date(b.lastRun) }} : {{ b.file }}
+              ({{ mb(b.sizeBytes) }} Mo), {{ b.message }}.</p>
+          } @else {
+            <p><span class="badge badge-danger">Échec</span> Dernière tentative le {{ date(b.lastRun) }} : {{ b.message }}.</p>
+          }
+        } @else {
+          <p>Aucune sauvegarde pour l’instant (la première a lieu peu après l’installation, puis chaque nuit à 3 h).</p>
+        }
+        <p class="hint">Chaque nuit, vérifiée par une restauration d’essai ; 7 quotidiennes, 4 hebdomadaires et 6 mensuelles sont gardées
+          dans le dossier « backups » du projet sur le NAS.</p>
+      </section>
 
       <section class="card" aria-labelledby="s-tmdb">
         <h2 id="s-tmdb">Synopsis en français (TMDB)</h2>
@@ -141,6 +158,10 @@ export class SettingsPage {
         this.diskFilled = true;
       }
     });
+  }
+
+  protected mb(bytes: number): string {
+    return (bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
   }
 
   protected gb(bytes: number): string {

@@ -43,8 +43,8 @@ public class LoginService {
     /** Renvoie l'utilisateur si identifiants valides ET compte actif ; sinon null (réponse neutre). */
     User checkCredentials(String login, String password) {
         User user = User.findByLogin(login).orElse(null);
-        if (user == null) {
-            passwords.burnTime(password); // même durée que si le compte existait
+        if (user == null || user.passwordHash == null) {
+            passwords.burnTime(password); // même durée que si le compte existait (ou avait un mot de passe)
             return null;
         }
         boolean ok = passwords.matches(password, user.passwordHash);

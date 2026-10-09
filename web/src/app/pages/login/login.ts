@@ -34,7 +34,7 @@ import { Icon } from '../../shared/icon';
           {{ pending() ? 'Connexion…' : 'Se connecter' }}
         </button>
       </form>
-      <p class="hint login-help">Mot de passe oublié ? Demandez à l’administrateur de le réinitialiser.</p>
+      <p class="hint login-help">Mot de passe oublié ? Demandez à l’administrateur un lien pour en choisir un nouveau.</p>
     </section>
   `,
 })

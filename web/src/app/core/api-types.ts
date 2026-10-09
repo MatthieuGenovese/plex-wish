@@ -9,6 +9,21 @@ export interface User {
   role: Role;
   enabled: boolean;
   createdAt: string;
+  /** Faux : compte invité qui n'a pas encore choisi son mot de passe (D1.4). */
+  passwordSet?: boolean;
+  /** Lien d'invitation ou de réinitialisation en attente : sa date d'expiration. */
+  invitationExpiresAt?: string | null;
+}
+
+/** Lien à usage unique à transmettre à la personne (le jeton est après le #). */
+export interface InvitationLink {
+  url: string;
+  expiresAt: string;
+  purpose: 'INVITE' | 'RESET';
+}
+
+export interface CreatedUser extends User {
+  invitation: InvitationLink | null;
 }
 
 export interface TokenResponse {

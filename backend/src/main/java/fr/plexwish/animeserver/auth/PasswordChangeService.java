@@ -43,13 +43,13 @@ public class PasswordChangeService {
             throw new ApiException(429, "TOO_MANY_ATTEMPTS", "Trop de tentatives. Réessayez dans "
                     + minutes + (minutes > 1 ? " minutes." : " minute."));
         }
-        if (!passwords.matches(currentPassword, user.passwordHash)) {
+        if (user.passwordHash == null || !passwords.matches(currentPassword, user.passwordHash)) {
             limiter.recordFailure(ip, user.username);
             LOG.infof("Changement de mot de passe refusé (mot de passe actuel incorrect) : '%s' depuis %s", user.username, ip);
             // 400 et non 401 : un 401 ferait rafraîchir la session et rejouer la requête par les clients.
             throw new ApiException(400, "WRONG_PASSWORD", "Le mot de passe actuel est incorrect");
         }
-        if (passwords.matches(newPassword, user.passwordHash)) {
+        if (user.passwordHash != null && passwords.matches(newPassword, user.passwordHash)) {
             throw new ApiException(400, "SAME_PASSWORD", "Le nouveau mot de passe doit être différent de l'actuel");
         }
         user.passwordHash = passwords.hash(newPassword); // valide aussi la longueur (400 WEAK_PASSWORD / PASSWORD_TOO_LONG)

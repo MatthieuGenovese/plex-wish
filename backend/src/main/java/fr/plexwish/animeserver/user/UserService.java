@@ -19,6 +19,8 @@ public class UserService {
     PasswordService passwords;
     @Inject
     RefreshTokenService refreshTokens;
+    @Inject
+    InvitationService invitations;
 
     @Transactional
     public User create(String username, String email, String password, Role role) {
@@ -33,7 +35,8 @@ public class UserService {
         User user = new User();
         user.username = name;
         user.email = mail;
-        user.passwordHash = passwords.hash(password);
+        // Sans mot de passe : compte invité (D1.4), qui choisira le sien par le lien d'invitation.
+        user.passwordHash = password == null ? null : passwords.hash(password);
         user.role = role;
         user.enabled = true;
         user.persist();
@@ -64,6 +67,7 @@ public class UserService {
             LOG.infof("Utilisateur '%s' %s", user.username, enabled ? "réactivé" : "désactivé");
             if (!enabled) {
                 refreshTokens.revokeAll(user.id, RevokedReason.USER_DISABLED);
+                invitations.revokeAll(user.id);
             }
         }
         if (newPassword != null) {

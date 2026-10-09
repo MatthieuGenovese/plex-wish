@@ -31,7 +31,8 @@ public class UserAdminResource {
             @NotNull @Pattern(regexp = "[A-Za-z0-9._-]{3,50}",
                     message = "3 à 50 caractères : lettres, chiffres, point, tiret, underscore") String username,
             @Email @Size(max = 255) String email,
-            @NotNull String password,
+            /** Facultatif (D1.4) : sans mot de passe, la réponse contient un lien d'invitation à transmettre. */
+            @Size(max = 200) String password,
             @NotNull Role role) {
         @Override
         public String toString() {
@@ -52,15 +53,43 @@ public class UserAdminResource {
     @Inject
     JsonWebToken jwt;
 
+    /** Compte créé, et son lien d'invitation s'il a été créé sans mot de passe. */
+    public record Created(Long id, String username, String email, Role role, boolean enabled, java.time.Instant createdAt,
+                          boolean passwordSet, java.time.Instant invitationExpiresAt, InvitationService.Link invitation) {
+    }
+
+    @Inject
+    InvitationService invitations;
+
     @GET
+    @jakarta.transaction.Transactional
     public List<UserDto> list() {
-        return User.listByUsername().stream().map(UserDto::of).toList();
+        return User.listByUsername().stream().map(UserDto::withInvitation).toList();
     }
 
     @POST
     public Response create(@Valid @NotNull CreateUserRequest request) {
         User user = users.create(request.username(), request.email(), request.password(), request.role());
-        return Response.created(URI.create("/api/admin/users/" + user.id)).entity(UserDto.of(user)).build();
+        InvitationService.Link link = user.passwordHash == null ? invitations.create(user.id, jwt.getName()) : null;
+        return Response.created(URI.create("/api/admin/users/" + user.id))
+                .entity(new Created(user.id, user.username, user.email, user.role, user.enabled, user.createdAt,
+                        user.passwordHash != null, link == null ? null : link.expiresAt(), link))
+                .build();
+    }
+
+    /** Nouveau lien : invitation (pas encore de mot de passe) ou réinitialisation (mot de passe oublié). */
+    @POST
+    @Path("/{id}/invitation")
+    @Consumes(MediaType.WILDCARD)
+    public InvitationService.Link newLink(@PathParam("id") Long id) {
+        return invitations.create(id, jwt.getName());
+    }
+
+    @jakarta.ws.rs.DELETE
+    @Path("/{id}/invitation")
+    public Response revokeLink(@PathParam("id") Long id) {
+        invitations.revokeAll(id);
+        return Response.noContent().build();
     }
 
     @PATCH

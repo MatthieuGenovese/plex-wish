@@ -145,7 +145,28 @@ step_wizard() {
     [ "$leaks" = 0 ] && ok "aucun secret (clé TMDB comprise) dans les journaux" || fail "$leaks secret(s) dans les journaux"
 }
 
-steps=${*:-"first_start secrets_lost wizard"}
+step_invitation() {
+    echo "== Invitation : lien à usage unique, la personne choisit son mot de passe"
+    token=$(pub -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" -d '{"login":"chef","password":"mot-de-passe-du-chef"}' \
+        "$PUB/api/auth/login" | json "d['accessToken']")
+    url=$(pub -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d '{"username":"alice","role":"USER"}' "$PUB/api/admin/users" | json "d['invitation']['url']")
+    case "$url" in "https://$DOMAIN/invitation#"*) ok "lien d'invitation : $DOMAIN/invitation#…" ;; *) fail "lien : $url" ;; esac
+    jeton=${url#*#}
+    [ "$(pub -H 'Content-Type: application/json' -d "{\"token\":\"$jeton\"}" "$PUB/api/invitation/check" | json "d['username']")" = alice ] \
+        && ok "le lien montre à qui il est destiné" || fail "check"
+    [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d "{\"token\":\"$jeton\",\"password\":\"le-mot-de-passe-d-alice\"}" "$PUB/api/invitation/accept")" = 200 ] \
+        && ok "mot de passe choisi par la personne" || fail "accept"
+    [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d "{\"token\":\"$jeton\",\"password\":\"un-autre-mot-de-passe\"}" "$PUB/api/invitation/accept")" = 410 ] \
+        && ok "lien inutilisable une seconde fois" || fail "réutilisation"
+    [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d '{"login":"alice","password":"le-mot-de-passe-d-alice"}' "$PUB/api/auth/login")" = 200 ] && ok "alice se connecte" || fail "connexion alice"
+    grep -qF "$jeton" <<< "$(dc logs 2>&1)" && fail "jeton d'invitation dans les journaux" || ok "jeton jamais dans les journaux (nginx, Caddy, serveur)"
+}
+
+steps=${*:-"first_start secrets_lost wizard invitation"}
 setup
 for s in $steps; do "step_$s"; done
 [ "${KEEP:-0}" = 1 ] || clean

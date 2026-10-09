@@ -32,7 +32,8 @@ public class User extends PanacheEntityBase {
     @Column(length = 255)
     public String email;
 
-    @Column(name = "password_hash", nullable = false, length = 100)
+    /** Null : compte invité dont le lien d'invitation n'a pas encore servi (aucune connexion possible). */
+    @Column(name = "password_hash", length = 100)
     public String passwordHash;
 
     @Enumerated(EnumType.STRING)

@@ -1,6 +1,6 @@
 import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Role, User } from '../../core/api-types';
+import { InvitationLink, Role, User } from '../../core/api-types';
 import { AdminApi, UpdateUser } from '../../core/admin-api';
 import { AuthService } from '../../core/auth.service';
 import { errorMessage } from '../../core/errors';
@@ -8,9 +8,10 @@ import { closeModal, openModal } from '../../shared/dialog';
 import { formatDateTime } from '../../shared/format';
 import { loadOn } from '../../shared/load-state';
 
-const MIN_PASSWORD = 10;
-
-/** Utilisateurs : création, activation / désactivation, rôle, réinitialisation du mot de passe. */
+/**
+ * Utilisateurs : création par invitation (D1.4 : la personne choisit elle-même son mot de passe par un lien à usage
+ * unique, valable 72 h), activation / désactivation, rôle, lien de réinitialisation d'un mot de passe oublié.
+ */
 @Component({
   selector: 'app-admin-users',
   imports: [ReactiveFormsModule],
@@ -31,11 +32,6 @@ const MIN_PASSWORD = 10;
         </div>
         <div class="form-row form-top">
           <div class="field">
-            <label for="u-password">Mot de passe initial</label>
-            <input id="u-password" type="password" formControlName="password" autocomplete="new-password" />
-            <span class="hint">{{ minPassword }} caractères minimum. À transmettre à la personne.</span>
-          </div>
-          <div class="field">
             <label for="u-role">Rôle</label>
             <select id="u-role" formControlName="role">
               <option value="USER">Utilisateur</option>
@@ -43,7 +39,8 @@ const MIN_PASSWORD = 10;
             </select>
           </div>
         </div>
-        <button type="submit" class="btn-primary" [disabled]="busy()">Créer</button>
+        <p class="hint">Vous obtiendrez un lien d’invitation à envoyer à la personne : elle y choisira elle-même son mot de passe.</p>
+        <button type="submit" class="btn-primary" [disabled]="busy()">Créer et obtenir le lien</button>
       </form>
     </section>
 
@@ -82,7 +79,14 @@ const MIN_PASSWORD = 10;
                     </select>
                   </td>
                   <td>
-                    <span class="badge" [class.badge-success]="u.enabled" [class.badge-danger]="!u.enabled">{{ u.enabled ? 'Actif' : 'Désactivé' }}</span>
+                    @if (!u.enabled) {
+                      <span class="badge badge-danger">Désactivé</span>
+                    } @else if (u.passwordSet === false) {
+                      <span class="badge badge-warning">Invité</span>
+                    } @else {
+                      <span class="badge badge-success">Actif</span>
+                    }
+                    @if (u.invitationExpiresAt) { <span class="hint pending">Lien en attente, valable jusqu’au {{ date(u.invitationExpiresAt) }}</span> }
                   </td>
                   <td>{{ date(u.createdAt) }}</td>
                   <td class="actions">
@@ -90,74 +94,84 @@ const MIN_PASSWORD = 10;
                             [attr.aria-label]="(u.enabled ? 'Désactiver ' : 'Activer ') + u.username">
                       {{ u.enabled ? 'Désactiver' : 'Activer' }}
                     </button>
-                    <button type="button" class="btn-small" [disabled]="busy()" (click)="askPassword(u)"
-                            [attr.aria-label]="'Réinitialiser le mot de passe de ' + u.username">Nouveau mot de passe</button>
+                    <button type="button" class="btn-small" [disabled]="busy() || !u.enabled" (click)="newLink(u)"
+                            [attr.aria-label]="(u.passwordSet === false ? 'Nouveau lien d’invitation pour ' : 'Lien de nouveau mot de passe pour ') + u.username">
+                      {{ u.passwordSet === false ? 'Nouveau lien d’invitation' : 'Lien de nouveau mot de passe' }}
+                    </button>
+                    @if (u.invitationExpiresAt) {
+                      <button type="button" class="btn-small" [disabled]="busy()" (click)="revoke(u)"
+                              [attr.aria-label]="'Révoquer le lien de ' + u.username">Révoquer le lien</button>
+                    }
                   </td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-        <p class="hint">Vous ne pouvez ni vous désactiver ni retirer votre propre rôle d’administrateur. Désactiver un compte ou changer son mot de passe le déconnecte de tous ses appareils.</p>
+        <p class="hint">Vous ne pouvez ni vous désactiver ni retirer votre propre rôle d’administrateur. Désactiver un compte le déconnecte de tous ses appareils et annule son lien en attente. Un nouveau mot de passe choisi par lien ferme aussi toutes ses sessions.</p>
       } @else {
         <p class="muted" role="status">Chargement…</p>
       }
     </section>
 
-    <dialog #passwordDialog aria-labelledby="pw-title">
-      <form (ngSubmit)="submitPassword()" novalidate>
-        <h2 id="pw-title">Nouveau mot de passe pour {{ target()?.username }}</h2>
+    <dialog #linkDialog aria-labelledby="link-title">
+      @if (link(); as l) {
+        <h2 id="link-title">{{ l.purpose === 'INVITE' ? 'Lien d’invitation' : 'Lien de nouveau mot de passe' }} pour {{ target()?.username }}</h2>
+        <p>Envoyez ce lien à la personne, par un message privé. Il ne sert qu’une fois et reste valable jusqu’au {{ date(l.expiresAt) }}.
+          Il ne sera plus affiché ensuite : en cas de perte, créez-en un nouveau (l’ancien cessera de fonctionner).</p>
         <div class="field">
-          <label for="pw-new">Mot de passe</label>
-          <input id="pw-new" type="password" [formControl]="newPassword" autocomplete="new-password" />
-          <span class="hint">{{ minPassword }} caractères minimum.</span>
+          <label for="link-url">Lien</label>
+          <input id="link-url" readonly [value]="l.url" (focus)="$any($event.target).select()" />
         </div>
-        @if (dialogError(); as e) { <div class="alert alert-error" role="alert"><p>{{ e }}</p></div> }
+        @if (copied()) { <p class="hint" role="status">Lien copié.</p> }
         <div class="dialog-actions">
-          <button type="button" (click)="closePassword()">Annuler</button>
-          <button type="submit" class="btn-primary" [disabled]="busy()">Enregistrer</button>
+          <button type="button" (click)="copy(l.url)">Copier le lien</button>
+          <button type="button" class="btn-primary" (click)="closeLink()">Fermer</button>
         </div>
-      </form>
+      }
     </dialog>
   `,
   styles: `
     select.compact { min-height: 2.5rem; width: auto; }
     .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
     th[scope='row'] { background: none; font-weight: var(--font-weight-medium); }
+    .pending { display: block; margin-top: var(--space-1, 0.25rem); }
+    #link-url { font-family: monospace; }
   `,
 })
 export class UsersPage {
   private readonly api = inject(AdminApi);
   protected readonly auth = inject(AuthService);
-  private readonly passwordDialog = viewChild.required<ElementRef<HTMLDialogElement>>('passwordDialog');
+  private readonly linkDialog = viewChild.required<ElementRef<HTMLDialogElement>>('linkDialog');
 
-  protected readonly minPassword = MIN_PASSWORD;
   protected readonly date = formatDateTime;
   protected readonly users = loadOn(signal(null), () => this.api.users());
   protected readonly busy = signal(false);
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
   protected readonly target = signal<User | null>(null);
-  protected readonly dialogError = signal<string | null>(null);
-  protected readonly newPassword = new FormControl('', { nonNullable: true });
+  protected readonly link = signal<InvitationLink | null>(null);
+  protected readonly copied = signal(false);
 
   protected readonly create = new FormGroup({
     username: new FormControl('', { nonNullable: true }),
     email: new FormControl('', { nonNullable: true }),
-    password: new FormControl('', { nonNullable: true }),
     role: new FormControl<Role>('USER', { nonNullable: true }),
   });
 
   submitCreate(): void {
     const v = this.create.getRawValue();
-    if (!v.username.trim() || v.password.length < MIN_PASSWORD) {
-      this.message.set({ text: `Indiquez un nom d’utilisateur et un mot de passe d’au moins ${MIN_PASSWORD} caractères.`, error: true });
+    if (!v.username.trim()) {
+      this.message.set({ text: 'Indiquez un nom d’utilisateur.', error: true });
       return;
     }
     this.busy.set(true);
-    this.api.createUser({ username: v.username.trim(), email: v.email.trim() || null, password: v.password, role: v.role }).subscribe({
+    this.api.createUser({ username: v.username.trim(), email: v.email.trim() || null, role: v.role }).subscribe({
       next: (u) => {
         this.done(`Utilisateur ${u.username} créé.`);
         this.create.reset();
+        if (u.invitation) {
+          this.showLink(u, u.invitation);
+        }
       },
       error: (err: unknown) => this.failed(err),
     });
@@ -183,36 +197,39 @@ export class UsersPage {
     });
   }
 
-  askPassword(u: User): void {
-    this.target.set(u);
-    this.dialogError.set(null);
-    this.newPassword.reset();
-    openModal(this.passwordDialog().nativeElement);
-  }
-
-  closePassword(): void {
-    closeModal(this.passwordDialog().nativeElement);
-  }
-
-  submitPassword(): void {
-    const u = this.target();
-    const password = this.newPassword.value;
-    if (!u) return;
-    if (password.length < MIN_PASSWORD) {
-      this.dialogError.set(`${MIN_PASSWORD} caractères minimum.`);
-      return;
-    }
+  newLink(u: User): void {
     this.busy.set(true);
-    this.api.updateUser(u.id, { password }).subscribe({
-      next: () => {
-        this.closePassword();
-        this.done(`Mot de passe de ${u.username} changé. Ses sessions ouvertes sont fermées.`);
+    this.api.newInvitation(u.id).subscribe({
+      next: (l) => {
+        this.done(l.purpose === 'INVITE' ? `Nouveau lien d’invitation pour ${u.username}.` : `Lien de nouveau mot de passe pour ${u.username}.`);
+        this.showLink(u, l);
       },
-      error: (err: unknown) => {
-        this.busy.set(false);
-        this.dialogError.set(errorMessage(err));
-      },
+      error: (err: unknown) => this.failed(err),
     });
+  }
+
+  revoke(u: User): void {
+    this.busy.set(true);
+    this.api.revokeInvitation(u.id).subscribe({
+      next: () => this.done(`Lien de ${u.username} révoqué.`),
+      error: (err: unknown) => this.failed(err),
+    });
+  }
+
+  copy(url: string): void {
+    navigator.clipboard?.writeText(url).then(() => this.copied.set(true), () => this.copied.set(false));
+  }
+
+  closeLink(): void {
+    closeModal(this.linkDialog().nativeElement);
+    this.link.set(null); // le lien n'est plus gardé en mémoire
+  }
+
+  private showLink(u: User, l: InvitationLink): void {
+    this.target.set(u);
+    this.link.set(l);
+    this.copied.set(false);
+    openModal(this.linkDialog().nativeElement);
   }
 
   private done(text: string): void {

@@ -16,6 +16,12 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/login/login').then((m) => m.LoginPage),
   },
   {
+    path: 'invitation',
+    title: 'Invitation',
+    canActivate: [setupGuard],
+    loadComponent: () => import('./pages/invitation/invitation').then((m) => m.InvitationPage),
+  },
+  {
     path: 'a-propos',
     title: 'À propos',
     loadComponent: () => import('./pages/about/about').then((m) => m.AboutPage),

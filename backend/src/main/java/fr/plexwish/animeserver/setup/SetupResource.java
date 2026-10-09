@@ -204,6 +204,7 @@ public class SetupResource {
 
     @POST
     @Path("/scan")
+    @Consumes(MediaType.WILDCARD)
     @RolesAllowed("ADMIN")
     public ScanState startScan() {
         return new ScanState(scans.start(jwt.getName(), false), "RUNNING", null, null);
@@ -228,6 +229,7 @@ public class SetupResource {
     /** Fin de l'assistant : le site s'ouvre à son adresse publique, l'assistant se ferme définitivement. */
     @POST
     @Path("/finish")
+    @Consumes(MediaType.WILDCARD)
     @RolesAllowed("ADMIN")
     public Status finish(@HeaderParam(Entry.HEADER) String entryHeader) {
         setup.markCompleted("assistant terminé par " + jwt.getName());

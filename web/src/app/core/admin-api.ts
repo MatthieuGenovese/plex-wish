@@ -19,12 +19,13 @@ import {
   TmdbSheet,
   TmdbSummary,
   TmdbType,
-  User, MediaEntry, MediaSummary, RemuxJobEntry, RemuxSummary, RemuxTestStatus } from './api-types';
+  User, CreatedUser, InvitationLink, MediaEntry, MediaSummary, RemuxJobEntry, RemuxSummary, RemuxTestStatus } from './api-types';
 
 export interface CreateUser {
   username: string;
   email: string | null;
-  password: string;
+  /** Absent : compte invité, la réponse contient le lien d'invitation (D1.4). */
+  password?: string;
   role: Role;
 }
 
@@ -52,8 +53,17 @@ export class AdminApi {
     return this.http.get<User[]>('/api/admin/users');
   }
 
-  createUser(user: CreateUser): Observable<User> {
-    return this.http.post<User>('/api/admin/users', user);
+  createUser(user: CreateUser): Observable<CreatedUser> {
+    return this.http.post<CreatedUser>('/api/admin/users', user);
+  }
+
+  /** Nouveau lien : invitation (pas encore de mot de passe) ou réinitialisation ; l'ancien ne vaut plus. */
+  newInvitation(id: number): Observable<InvitationLink> {
+    return this.http.post<InvitationLink>(`/api/admin/users/${id}/invitation`, null);
+  }
+
+  revokeInvitation(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/users/${id}/invitation`);
   }
 
   updateUser(id: number, changes: UpdateUser): Observable<User> {

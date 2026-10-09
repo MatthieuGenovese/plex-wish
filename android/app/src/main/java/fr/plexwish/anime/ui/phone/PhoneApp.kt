@@ -1,5 +1,9 @@
 package fr.plexwish.anime.ui.phone
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -107,7 +111,10 @@ fun PhoneApp(container: AppContainer) {
         bottomBar = { if (tabRoute) BottomBar(nav, route) },
         contentWindowInsets = if (route == Routes.PLAYER) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
     ) { padding ->
-        NavHost(nav, startDestination = start) {
+        // Fondu par défaut de Navigation (700 ms), sauf en revenant du lecteur : l'écran noir de sortie a déjà attendu
+        // que la fiche soit prête en portrait, elle s'affiche d'un coup.
+        NavHost(nav, startDestination = start,
+            popEnterTransition = { if (initialState.destination.route == Routes.PLAYER) EnterTransition.None else fadeIn(tween(700)) }) {
             composable(Routes.LOGIN) { LoginScreen(viewModel(factory = ViewModels.Factory)) }
             composable(Routes.HOME) {
                 HomeScreen(viewModel(factory = ViewModels.Factory),
@@ -134,7 +141,8 @@ fun PhoneApp(container: AppContainer) {
                 AnimeDetailScreen(viewModel(factory = ViewModels.Factory), onPerson = { nav.navigate(Routes.person(it)) },
                     onPlay = { nav.navigate(Routes.player(it)) }, onGenre = { nav.navigate(Routes.library(it)) }, padding = padding)
             }
-            composable(Routes.PLAYER, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
+            composable(Routes.PLAYER, arguments = listOf(navArgument("id") { type = NavType.LongType }),
+                popExitTransition = { ExitTransition.None }) {
                 PlayerScreen(viewModel(factory = ViewModels.Factory), onBack = { nav.popBackStack() })
             }
             composable(Routes.PERSON, arguments = listOf(navArgument("id") { type = NavType.StringType })) {

@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import android.content.res.Configuration
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.assertIsDisplayed
@@ -107,9 +108,14 @@ class PlayerScreenTest : ScreenTest() {
         compose.onNodeWithContentDescription("Fermeture du lecteur").assertIsDisplayed()
     }
 
+    /** Horloge d'images à 60 Hz sur le temps virtuel du test. */
+    private object FrameClock : MonotonicFrameClock {
+        override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R { delay(16); return onFrame(0L) }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun leavingWaitsForTheRotationBack() = runTest {
+    fun leavingWaitsForTheRotationBack() = runTest(FrameClock) {
         val landscape = Configuration.ORIENTATION_LANDSCAPE
         val portrait = Configuration.ORIENTATION_PORTRAIT
         // Déjà en portrait, ou écran d'avant lui aussi en paysage : pas d'attente.
@@ -117,7 +123,7 @@ class PlayerScreenTest : ScreenTest() {
         awaitRotationBack(landscape, rotates = false) { landscape }
         assertEquals(0L, currentTime)
 
-        // Rotation au bout de 300 ms : la fiche s'affiche juste après (une image de marge).
+        // Rotation au bout de 300 ms : la fiche s'affiche deux images plus tard.
         val orientation = mutableIntStateOf(landscape)
         val start = currentTime
         val wait = async { awaitRotationBack(landscape, rotates = true) { orientation.intValue } }
@@ -127,11 +133,11 @@ class PlayerScreenTest : ScreenTest() {
             Snapshot.sendApplyNotifications()
         }
         wait.await()
-        assertEquals(420L, currentTime - start)
+        assertEquals(332L, currentTime - start)
 
         // Téléphone à plat : la rotation ne vient pas, on sort quand même au bout du délai.
         val flat = currentTime
         awaitRotationBack(landscape, rotates = true) { landscape }
-        assertEquals(1_320L, currentTime - flat)
+        assertEquals(1_232L, currentTime - flat)
     }
 }

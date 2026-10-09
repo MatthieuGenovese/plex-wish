@@ -10,6 +10,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
@@ -160,8 +161,9 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
     }
 
     // Sortie du lecteur (retour, geste, bouton, touche de la télécommande) : écran noir et indicateur tout de suite,
-    // lecture arrêtée, puis retour au portrait ; la fiche ne s'affiche qu'une fois la rotation faite (au plus ~1 s),
-    // pour ne jamais voir l'image figée de la vidéo par-dessus l'application.
+    // lecture arrêtée, puis retour au portrait ; on ne quitte l'écran qu'une fois la rotation faite et une image
+    // affichée en portrait (au plus ~1,2 s si elle ne vient pas), et la fiche remplace l'écran noir sans fondu
+    // (voir PhoneApp) : jamais d'image figée de la vidéo par-dessus l'application.
     var leaving by remember { mutableStateOf(false) }
     val orientation by rememberUpdatedState(LocalConfiguration.current.orientation)
     val leave = {
@@ -545,9 +547,11 @@ internal fun LeavingScreen() {
 /**
  * Attend que l'écran ait quitté le paysage forcé du lecteur. Rien à attendre si on n'y était pas, ou si l'écran d'avant
  * était lui aussi en paysage ; au plus [timeoutMs] si la rotation ne vient pas (téléphone à plat, rotation bloquée).
+ * Repose sur l'horloge d'images de Compose (fournie par LaunchedEffect).
  */
 internal suspend fun awaitRotationBack(before: Int, rotates: Boolean, timeoutMs: Long = 1_200, orientation: () -> Int) {
     if (before != Configuration.ORIENTATION_LANDSCAPE || !rotates) return
     withTimeoutOrNull(timeoutMs) { snapshotFlow(orientation).first { it != before } }
-    delay(120) // une image dans la nouvelle orientation avant d'afficher la fiche
+    // Deux images : la première met l'écran en page en portrait, la seconde garantit qu'elle est affichée.
+    repeat(2) { withFrameNanos { } }
 }

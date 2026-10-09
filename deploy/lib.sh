@@ -23,10 +23,22 @@ wait_healthy() {
         if [ -n "$_id" ]; then
             _st=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$_id" 2>/dev/null || echo "?")
             [ "$_st" = "healthy" ] && return 0
-            [ "$_st" = "exited" ] && return 1
+            [ "$_st" = "exited" ] || [ "$_st" = "unhealthy" ] && return 1
         fi
         sleep 3
         _left=$((_left - 3))
     done
     return 1
+}
+
+# Valeur d'une ligne CLE=valeur de nas.env.
+env_get() { sed -n "s/^$1=//p" nas.env | tail -n 1; }
+
+# Remplace (ou ajoute) CLE=valeur dans nas.env, sans toucher au reste.
+env_set() {
+    if grep -q "^$1=" nas.env; then
+        sed -i "s|^$1=.*|$1=$2|" nas.env
+    else
+        echo "$1=$2" >> nas.env
+    fi
 }

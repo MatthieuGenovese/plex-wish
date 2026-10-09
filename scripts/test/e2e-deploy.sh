@@ -48,7 +48,7 @@ setup() {
     cp "$root"/deploy/*.sh "$DATA/app/"
     cp "$root/deploy/compose.yml" "$DATA/compose.yml"
     # Essai : certificat interne de Caddy au lieu de Let's Encrypt (pas de vrai nom de domaine ici).
-    sed 's/issuer acme {/issuer internal {/; /disable_http_challenge/d' "$root/deploy/Caddyfile" > "$DATA/app/Caddyfile"
+    sed 's/issuer acme {/issuer internal {/; /disable_http_challenge/d' "$root/deploy/Caddyfile" > "$DATA/Caddyfile.e2e"
     cat > "$DATA/nas.env" <<ENV
 ANIME_VERSION=$VERSION
 IMAGE_PREFIX=$REGISTRY
@@ -59,6 +59,7 @@ PUBLIC_PORT=$PUBLIC_PORT
 LAN_PORT=$LAN_PORT
 TZ=Europe/Paris
 DOCKER_SUBNET=$SUBNET
+CADDYFILE=./Caddyfile.e2e
 ENV
 }
 
@@ -200,7 +201,58 @@ step_backup() {
         && ok "rotation : 7 jours, puis semaines et mois ($n gardées sur 220)" || fail "rotation : $n gardées ; $newest7"
 }
 
-steps=${*:-"first_start secrets_lost wizard invitation backup"}
+build_variant() { # build_variant <version> <migration en plus : oui|non> — version CASSÉE (santé toujours en échec)
+    v=$1
+    dir=$E2E/variant-$v
+    rm -rf "$dir" && mkdir -p "$dir"
+    if [ "$2" = oui ]; then
+        cp -r "${CTX_DIR:-/tmp/claude-0/ctx}/pkg-backend" "$dir/pkg"
+        echo "CREATE TABLE e2e_migration_v99 (id INT);" > "$dir/pkg/src/main/resources/db/migration/V99__e2e_test.sql"
+        (cd "$dir/pkg" && mvn -o -q package -DskipTests > /dev/null 2>&1)
+        mkdir -p "$dir/ctx/build/target" && cp -r "$dir/pkg/target/quarkus-app" "$dir/ctx/build/target/"
+        (cd "$root" && docker build -q -f backend/Dockerfile --build-arg APP_VERSION="$v" --build-context build="$dir/ctx" \
+            --build-context ffmpeg="${CTX_DIR:-/tmp/claude-0/ctx}/ffmpeg" -t "$REGISTRY/anime-server-backend:$v-base" . > /dev/null)
+        base="$REGISTRY/anime-server-backend:$v-base"
+    else
+        base="$REGISTRY/anime-server-backend:$VERSION"
+    fi
+    printf 'FROM %s\nHEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=2 CMD false\n' "$base" > "$dir/Dockerfile"
+    docker build -q -t "$REGISTRY/anime-server-backend:$v" "$dir" > /dev/null
+    docker tag "$REGISTRY/anime-server-web:$VERSION" "$REGISTRY/anime-server-web:$v"
+    docker push -q "$REGISTRY/anime-server-backend:$v" > /dev/null && docker push -q "$REGISTRY/anime-server-web:$v" > /dev/null
+}
+
+step_update() {
+    echo "== Mise à jour : réussie, puis ratée (retour arrière), puis ratée après migration (restauration)"
+    good=1.0.1
+    docker tag "$REGISTRY/anime-server-backend:$VERSION" "$REGISTRY/anime-server-backend:$good"
+    docker tag "$REGISTRY/anime-server-web:$VERSION" "$REGISTRY/anime-server-web:$good"
+    docker push -q "$REGISTRY/anime-server-backend:$good" > /dev/null && docker push -q "$REGISTRY/anime-server-web:$good" > /dev/null
+    users=$(sql "SELECT count(*) FROM app_user")
+    (cd "$DATA" && sh app/update.sh $good --yes) > "$E2E/update1.log" 2>&1 || { cat "$E2E/update1.log"; fail "mise à jour $good"; }
+    [ "$(grep '^ANIME_VERSION=' "$DATA/nas.env")" = "ANIME_VERSION=$good" ] && grep -q "OK : version $good en service" "$E2E/update1.log" \
+        && ok "mise à jour $VERSION -> $good réussie" || fail "version après mise à jour"
+    ls "$DATA/backups" | grep -q '^avant-maj-' && ok "sauvegarde faite avant la mise à jour" || fail "pas de sauvegarde avant-maj"
+    [ "$(sql "SELECT count(*) FROM app_user")" = "$users" ] && ok "données intactes" || fail "données"
+
+    build_variant 1.0.2 non
+    if (cd "$DATA" && sh app/update.sh 1.0.2 --yes) > "$E2E/update2.log" 2>&1; then cat "$E2E/update2.log"; fail "version cassée acceptée"; fi
+    grep -q "retour arrière terminé : version $good en service" "$E2E/update2.log" && [ "$(grep '^ANIME_VERSION=' "$DATA/nas.env")" = "ANIME_VERSION=$good" ] \
+        && ok "version cassée : retour automatique à $good" || { cat "$E2E/update2.log"; fail "retour arrière"; }
+    grep -q "restauration de" "$E2E/update2.log" && fail "restauration inutile" || ok "pas de migration : base laissée telle quelle"
+    wait_backend; ok "serveur $good en bonne santé après le retour arrière"
+
+    build_variant 1.0.3 oui
+    if (cd "$DATA" && sh app/update.sh 1.0.3 --yes) > "$E2E/update3.log" 2>&1; then cat "$E2E/update3.log"; fail "version cassée acceptée"; fi
+    grep -q "la base a été modifiée" "$E2E/update3.log" && ok "migration détectée : sauvegarde d'avant mise à jour restaurée" || { cat "$E2E/update3.log"; fail "restauration après migration"; }
+    [ "$(sql "SELECT count(*) FROM pg_tables WHERE tablename = 'e2e_migration_v99'")" = 0 ] && [ "$(sql "SELECT count(*) FROM app_user")" = "$users" ] \
+        && ok "base revenue à l'état d'avant (migration annulée, données intactes)" || fail "état de la base"
+    wait_backend
+    [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
+        -d '{"login":"alice","password":"le-mot-de-passe-d-alice"}' "$PUB/api/auth/login")" = 200 ] && ok "le site répond après le retour arrière" || fail "site"
+}
+
+steps=${*:-"first_start secrets_lost wizard invitation backup update"}
 setup
 for s in $steps; do "step_$s"; done
 [ "${KEEP:-0}" = 1 ] || clean

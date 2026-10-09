@@ -145,7 +145,7 @@ services:
     ports:
       - "${PUBLIC_PORT:-8443}:443"
     volumes:
-      - ./app/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CADDYFILE:-./app/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

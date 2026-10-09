@@ -1,0 +1,116 @@
+# Anime Server sur le NAS : images publiées, aucune compilation sur place (docs/DEPLOIEMENT.md).
+# Réglages : nas.env, à côté de ce fichier (écrit par l'installateur, aucun secret dedans).
+# Secrets : créés au premier démarrage par le conteneur init, dans des volumes Docker (jamais dans un fichier
+# à éditer, jamais affichés). Seul le port web est publié sur le réseau local.
+name: anime-server
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend-image: &backend-image ${IMAGE_PREFIX:?IMAGE_PREFIX manquant dans nas.env}/anime-server-backend:${ANIME_VERSION:?ANIME_VERSION manquant dans nas.env}
+
+services:
+  # Prépare secrets et dossiers, puis s'arrête (deploy/init.sh). Seul conteneur qui garde les droits root.
+  init:
+    image: *backend-image
+    user: "0:0"
+    entrypoint: ["/app/deploy/init.sh"]
+    restart: "no"
+    network_mode: none
+    logging: *logging
+    environment:
+      MEDIA_UID: ${MEDIA_UID:-}
+      MEDIA_GID: ${MEDIA_GID:-}
+    volumes:
+      - ${MEDIA_PATH:?MEDIA_PATH manquant dans nas.env}:/media:ro
+      - secrets_app:/secrets/app
+      - secrets_pg:/secrets/pg
+      - pgdata:/pgdata:ro
+      - ./posters:/data/posters
+      - ./remux-cache:/data/remux-cache
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: anime
+      POSTGRES_USER: anime
+      # Lu dans le fichier créé par init (jamais une valeur en clair dans ce fichier ni dans nas.env).
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg/db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - secrets_pg:/run/secrets/pg:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anime -d anime"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  backend:
+    image: *backend-image
+    restart: unless-stopped
+    logging: *logging
+    # Démarre en root le temps de lire l'utilisateur choisi par init, puis l'abandonne (entrypoint.sh).
+    # Aucun autre droit root : seulement changer d'utilisateur.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DB_HOST: postgres
+      POSTGRES_DB: anime
+      POSTGRES_USER: anime
+      ANIME_SECRETS_DIR: /run/anime/secrets
+      PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL manquant dans nas.env}
+      TZ: ${TZ:-Europe/Paris}
+      SWAGGER_ENABLED: "false"
+      METADATA_ENABLED: ${METADATA_ENABLED:-true}
+      POSTERS_PATH: /data/posters
+      POSTERS_ENABLED: ${POSTERS_ENABLED:-true}
+      CAST_ENABLED: ${CAST_ENABLED:-true}
+      MEDIA_PROBE_ENABLED: ${MEDIA_PROBE_ENABLED:-true}
+      REMUX_CACHE_PATH: /data/remux-cache
+      BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
+    volumes:
+      # Lecture seule : l'application ne modifie jamais les fichiers média.
+      - ${MEDIA_PATH}:/media:ro
+      # Secrets : le serveur y écrit aussi ceux saisis plus tard dans l'interface (clé TMDB, jeton DNS).
+      - secrets_app:/run/anime/secrets
+      - ./posters:/data/posters
+      - ./remux-cache:/data/remux-cache
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: ${IMAGE_PREFIX}/anime-server-web:${ANIME_VERSION}
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      # Réseau local seulement (la box ne redirige jamais ce port) : assistant de premier lancement.
+      - "${LAN_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  # Volumes Docker (et non des dossiers partagés du DSM) : leurs droits ne dépendent pas des ACL Synology.
+  secrets_app:
+  secrets_pg:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.30.64.0/24}

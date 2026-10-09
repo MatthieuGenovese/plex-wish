@@ -19,7 +19,7 @@ describe('Administration (P2.7)', () => {
     const router = TestBed.inject(Router);
     const harness = await RouterTestingHarness.create('/admin/users');
     const el = harness.routeNativeElement!;
-    expect(el.querySelectorAll('.admin-tabs a')).toHaveLength(9);
+    expect(el.querySelectorAll('.admin-tabs a')).toHaveLength(10);
     expect(el.querySelector('.admin-tabs a[aria-current=page]')?.textContent).toBe('Utilisateurs');
     const select = el.querySelector<HTMLSelectElement>('#admin-section')!;
     expect(select.value).toBe('users');

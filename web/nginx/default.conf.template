@@ -5,17 +5,19 @@
 log_format anime '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '
                  '$status $body_bytes_sent "$http_user_agent" $request_time';
 
+# Porte du RÉSEAU LOCAL (port publié sur le NAS, jamais redirigé par la box) : sur le NAS, l'assistant de premier
+# lancement seulement (LAN_ENTRY=lan) ; dans la pile de développement, tout le site (LAN_ENTRY=local).
 server {
     listen 80;
+    set $anime_entry ${LAN_ENTRY};
     server_name _;
     server_tokens off;
     access_log /var/log/nginx/access.log anime;
 
     # --- Vraie IP du client (ARCHITECTURE §5.4.1) ---------------------------------
-    # On ne croit X-Forwarded-For que s'il vient du reverse proxy (DSM) : liste générée
-    # au démarrage depuis TRUSTED_PROXY_IPS par /docker-entrypoint.d/15-real-ip.sh.
-    # real_ip_recursive : on garde l'adresse la plus à droite qui n'est pas un proxy de
-    # confiance, c'est-à-dire celle ajoutée par le DSM, pas une valeur inventée par le client.
+    # On ne croit X-Forwarded-For que s'il vient d'un proxy de confiance (Caddy, Funnel ou le reverse proxy du DSM) :
+    # liste générée au démarrage depuis TRUSTED_PROXY_IPS par /docker-entrypoint.d/15-real-ip.sh.
+    # real_ip_recursive : on garde l'adresse la plus à droite qui n'est pas un proxy de confiance.
     include /etc/nginx/real-ip.conf;
     real_ip_header X-Forwarded-For;
     real_ip_recursive on;
@@ -28,61 +30,33 @@ server {
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
 
-    # --- API -> backend ---------------------------------------------------------------------
-    location /api/ {
-        proxy_pass http://backend:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        # On REMPLACE l'en-tête : le backend ne voit que l'IP établie ci-dessus,
-        # jamais une valeur fournie (et potentiellement falsifiée) par le client.
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Real-IP $remote_addr;
-        client_max_body_size 1m;
-    }
+    include /etc/nginx/snippets/app-locations.conf;
+}
 
-    # --- Lecture vidéo (URL signée, ARCHITECTURE §6) -----------------------------------------
-    # Pas de mise en tampon : nginx relaie les octets au fil de l'eau au lieu de copier la vidéo
-    # dans un fichier temporaire. La query string (signature) n'apparaît pas dans le journal ($uri).
-    location /api/stream/ {
-        proxy_pass http://backend:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_buffering off;
-        proxy_read_timeout 1h;
-        proxy_send_timeout 1h;
-        # Demande au reverse proxy placé devant (DSM) de ne pas mettre la vidéo en tampon : sinon il la recopie
-        # dans un fichier temporaire sur son disque système (mesuré : 1 Go en 5 s pour un spectateur lent).
-        # nginx consomme cet en-tête sans le transmettre au navigateur.
-        add_header X-Accel-Buffering no always;
-        # Un add_header dans ce bloc annule ceux du serveur : on remet les en-têtes de sécurité.
-        include /etc/nginx/snippets/security-headers.conf;
-    }
+# Porte PUBLIQUE (D1.3) : seulement Caddy (HTTPS, Internet) ou Funnel, depuis le réseau Docker interne ; ce port
+# n'est jamais publié sur le NAS. Pendant l'installation, le serveur y répond « installation en cours ».
+server {
+    listen 8081;
+    set $anime_entry public;
+    server_name _;
+    server_tokens off;
+    access_log /var/log/nginx/access.log anime;
 
-    # --- Swagger (404 côté backend tant que SWAGGER_ENABLED=false) --------------------
-    # La page Swagger UI contient du JavaScript inline : CSP assouplie ici seulement.
-    location ~ ^/q/(swagger-ui|openapi) {
-        proxy_pass http://backend:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'" always;
-        add_header X-Content-Type-Options "nosniff" always;
-    }
+    # --- Vraie IP du client (ARCHITECTURE §5.4.1) ---------------------------------
+    # On ne croit X-Forwarded-For que s'il vient d'un proxy de confiance (Caddy, Funnel ou le reverse proxy du DSM) :
+    # liste générée au démarrage depuis TRUSTED_PROXY_IPS par /docker-entrypoint.d/15-real-ip.sh.
+    # real_ip_recursive : on garde l'adresse la plus à droite qui n'est pas un proxy de confiance.
+    include /etc/nginx/real-ip.conf;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
 
-    # --- Front Angular -----------------------------------------------------------------------
-    # Fichiers avec empreinte dans le nom : cache long.
-    location ~* \.(?:js|css|ico|png|svg|woff2?)$ {
-        try_files $uri =404;
-        add_header Cache-Control "public, max-age=31536000, immutable" always;
-        include /etc/nginx/snippets/security-headers.conf;
-    }
+    # --- En-têtes de sécurité (aussi sur les erreurs) --------------------------------
+    include /etc/nginx/snippets/security-headers.conf;
 
-    # Routes de la SPA (/anime/12, /admin…) : toujours index.html, jamais mis en cache.
-    location / {
-        try_files $uri $uri/ /index.html;
-        add_header Cache-Control "no-cache" always;
-        include /etc/nginx/snippets/security-headers.conf;
-    }
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    include /etc/nginx/snippets/app-locations.conf;
 }

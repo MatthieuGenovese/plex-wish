@@ -68,7 +68,8 @@ services:
       POSTGRES_DB: anime
       POSTGRES_USER: anime
       ANIME_SECRETS_DIR: /run/anime/secrets
-      PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL manquant dans nas.env}
+      # Adresse que tapent les utilisateurs (cookies, contrôle de l'origine des requêtes, DNS dynamique).
+      PUBLIC_URL: https://${PUBLIC_DOMAIN:?PUBLIC_DOMAIN manquant dans nas.env}
       TZ: ${TZ:-Europe/Paris}
       SWAGGER_ENABLED: "false"
       METADATA_ENABLED: ${METADATA_ENABLED:-true}
@@ -96,15 +97,42 @@ services:
     image: ${IMAGE_PREFIX}/anime-server-web:${ANIME_VERSION}
     restart: unless-stopped
     logging: *logging
+    environment:
+      # Port 80 du conteneur : porte du réseau local (assistant seulement). Port 8081 : porte publique (Caddy).
+      LAN_ENTRY: lan
+      # Seuls les conteneurs du réseau interne (Caddy, Funnel) peuvent fournir la vraie IP du visiteur.
+      TRUSTED_PROXY_IPS: ${DOCKER_SUBNET:-172.30.64.0/24}
     ports:
-      # Réseau local seulement (la box ne redirige jamais ce port) : assistant de premier lancement.
+      # Réseau local seulement (la box ne redirige JAMAIS ce port) : assistant de premier lancement.
       - "${LAN_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_healthy
 
+  # Porte d'entrée Internet : HTTPS avec certificat Let's Encrypt obtenu et renouvelé tout seul (défi TLS-ALPN sur
+  # le port 443 externe ; le port 80 n'est pas nécessaire). La box redirige 443 (externe) vers PUBLIC_PORT du NAS
+  # (8443 par défaut : le DSM occupe déjà 80 et 443). Profil « funnel » à la place si la box est derrière un CGNAT.
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    logging: *logging
+    profiles: ["caddy"]
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?PUBLIC_DOMAIN manquant dans nas.env}
+    ports:
+      - "${PUBLIC_PORT:-8443}:443"
+    volumes:
+      - ./app/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   pgdata:
+  # Certificats et clé du compte Let's Encrypt (Caddy).
+  caddy_data:
+  caddy_config:
   # Volumes Docker (et non des dossiers partagés du DSM) : leurs droits ne dépendent pas des ACL Synology.
   secrets_app:
   secrets_pg:

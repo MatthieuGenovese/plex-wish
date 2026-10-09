@@ -186,9 +186,17 @@ public class RemuxService {
         maxBytesOverride = bytes;
     }
 
+    @Inject
+    fr.plexwish.animeserver.setup.AppSettings settings;
+
+    /** Plafond du cache : réglage de l'installation (assistant, Administration > Réglages), sinon REMUX_CACHE_MAX_GB. */
     long maxBytes() {
         Long o = maxBytesOverride;
-        return o != null ? o : (long) (config.remuxCacheMaxGb() * 1e9);
+        if (o != null) {
+            return o;
+        }
+        return (long) (settings.getDouble(fr.plexwish.animeserver.setup.InstallationSettings.REMUX_CAP_GB)
+                .orElse(config.remuxCacheMaxGb()) * 1e9);
     }
 
     // --- Demande d'un utilisateur ---------------------------------------------------------------------------------

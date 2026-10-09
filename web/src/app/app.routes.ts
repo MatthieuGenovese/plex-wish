@@ -1,12 +1,18 @@
 import { Routes } from '@angular/router';
-import { adminGuard, authGuard, guestGuard } from './core/guards';
+import { adminGuard, authGuard, guestGuard, installationGuard, setupGuard } from './core/guards';
 
 // Chaque page est chargée à la demande (lazy loading).
 export const routes: Routes = [
   {
+    path: 'installation',
+    title: 'Installation',
+    canActivate: [installationGuard],
+    loadComponent: () => import('./pages/setup/setup').then((m) => m.SetupPage),
+  },
+  {
     path: 'login',
     title: 'Connexion',
-    canActivate: [guestGuard],
+    canActivate: [setupGuard, guestGuard],
     loadComponent: () => import('./pages/login/login').then((m) => m.LoginPage),
   },
   {
@@ -16,7 +22,8 @@ export const routes: Routes = [
   },
   {
     path: '',
-    canActivateChild: [authGuard],
+    canActivate: [setupGuard],
+    canActivateChild: [setupGuard, authGuard],
     children: [
       {
         path: '',

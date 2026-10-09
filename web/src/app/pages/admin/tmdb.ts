@@ -23,8 +23,8 @@ const PAGE_SIZE = 50;
     @if (sum.data; as s) {
       @if (!s.configured) {
         <div class="alert alert-warning" role="status">
-          <p>TMDB n’est pas configuré : les synopsis restent en anglais (AniList). Pour les avoir en français, renseigner
-            <code>TMDB_READ_TOKEN</code> dans <code>.env</code> puis redémarrer (voir le README).</p>
+          <p>TMDB n’est pas configuré : les synopsis restent en anglais (AniList). Pour les avoir en français, saisir une clé
+            TMDB dans <a routerLink="/admin/settings">Administration › Réglages</a>.</p>
         </div>
       } @else {
         <p class="muted" role="status">

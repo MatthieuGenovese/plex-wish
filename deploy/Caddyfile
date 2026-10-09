@@ -1,0 +1,22 @@
+# Porte d'entrée Internet d'Anime Server (D1.3). Caddy obtient et renouvelle seul le certificat HTTPS
+# (Let's Encrypt), puis transmet tout à nginx (porte publique, port 8081 du conteneur web).
+{
+	# Pas d'interface d'administration de Caddy (inutile ici, et une surface de moins).
+	admin off
+}
+
+{$PUBLIC_DOMAIN} {
+	tls {
+		issuer acme {
+			# Le port 80 n'est pas redirigé par la box : défi TLS-ALPN sur le 443 seulement.
+			disable_http_challenge
+		}
+	}
+	# HTTPS obligatoire pour un an (le navigateur refuse ensuite toute version non chiffrée du site).
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy web:8081 {
+		# Vidéo : les octets sont transmis au fil de l'eau, sans tampon.
+		flush_interval -1
+	}
+	# Aucun journal d'accès : les URL de lecture contiennent une signature (?sig=…).
+}

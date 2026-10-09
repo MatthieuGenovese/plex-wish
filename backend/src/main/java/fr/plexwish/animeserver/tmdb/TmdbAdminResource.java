@@ -88,6 +88,8 @@ public class TmdbAdminResource {
     @Inject
     TmdbConfig config;
     @Inject
+    TmdbCredentials credentials;
+    @Inject
     ObjectMapper json;
     @Inject
     JsonWebToken jwt;
@@ -116,7 +118,7 @@ public class TmdbAdminResource {
             due = count(c, "SELECT count(*) FROM anime_tmdb WHERE tmdb_id IS NOT NULL AND (fetched_at IS NULL"
                     + " OR fetched_at < now() - make_interval(secs => " + config.refreshAfter().toSeconds() + "))");
         }
-        return new Summary(config.configured(), counts, total, french, due, service.pausedUntil().orElse(null),
+        return new Summary(credentials.configured(), counts, total, french, due, service.pausedUntil().orElse(null),
                 service.lastUnavailable().orElse(null));
     }
 
@@ -306,7 +308,7 @@ public class TmdbAdminResource {
     }
 
     private Result fetch(String type, long id) {
-        if (!config.configured()) {
+        if (!credentials.configured()) {
             throw new ApiException(503, "TMDB_NOT_CONFIGURED", "TMDB n'est pas configuré (TMDB_READ_TOKEN absent)");
         }
         try {

@@ -46,6 +46,7 @@ public class TmdbClient {
     }
 
     private final TmdbConfig config;
+    private final TmdbCredentials credentials;
     private final ObjectMapper json;
     private final RateLimiter limiter;
     private final Clock clock;
@@ -53,13 +54,14 @@ public class TmdbClient {
             .proxy(ProxySelector.getDefault()).followRedirects(HttpClient.Redirect.NEVER).build();
 
     @Inject
-    public TmdbClient(TmdbConfig config, ObjectMapper json) {
-        this(config, json, new RateLimiter(config.minInterval(), Clock.systemUTC(), d -> Thread.sleep(d.toMillis())),
+    public TmdbClient(TmdbConfig config, TmdbCredentials credentials, ObjectMapper json) {
+        this(config, credentials, json, new RateLimiter(config.minInterval(), Clock.systemUTC(), d -> Thread.sleep(d.toMillis())),
                 Clock.systemUTC());
     }
 
-    TmdbClient(TmdbConfig config, ObjectMapper json, RateLimiter limiter, Clock clock) {
+    TmdbClient(TmdbConfig config, TmdbCredentials credentials, ObjectMapper json, RateLimiter limiter, Clock clock) {
         this.config = config;
+        this.credentials = credentials;
         this.json = json;
         this.limiter = limiter;
         this.clock = clock;
@@ -99,13 +101,12 @@ public class TmdbClient {
         StringBuilder url = new StringBuilder(config.apiUrl().replaceAll("/+$", "")).append(path).append('?');
         params.forEach((k, v) -> url.append(k).append('=').append(URLEncoder.encode(v, StandardCharsets.UTF_8)).append('&'));
         HttpRequest.Builder request;
-        Optional<String> token = config.readToken().filter(t -> !t.isBlank());
-        if (token.isPresent()) {
-            request = HttpRequest.newBuilder(URI.create(url.toString())).header("Authorization", "Bearer " + token.get());
+        TmdbCredentials.Credential credential = credentials.current().orElseThrow(
+                () -> new ProviderUnavailableException("TMDB non configuré (pas de clé)", null));
+        if (credential.bearer() != null) {
+            request = HttpRequest.newBuilder(URI.create(url.toString())).header("Authorization", "Bearer " + credential.bearer());
         } else {
-            String key = config.apiKey().filter(k -> !k.isBlank()).orElseThrow(
-                    () -> new ProviderUnavailableException("TMDB non configuré (pas de clé)", null));
-            request = HttpRequest.newBuilder(URI.create(url + "api_key=" + URLEncoder.encode(key, StandardCharsets.UTF_8)));
+            request = HttpRequest.newBuilder(URI.create(url + "api_key=" + URLEncoder.encode(credential.apiKey(), StandardCharsets.UTF_8)));
         }
         HttpResponse<String> response;
         try {

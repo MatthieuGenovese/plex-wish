@@ -47,6 +47,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () => import('./media').then((m) => m.MediaPage),
       },
       {
+        path: 'settings',
+        title: 'Réglages · Administration',
+        loadComponent: () => import('./settings').then((m) => m.SettingsPage),
+      },
+      {
         path: 'users',
         title: 'Utilisateurs · Administration',
         loadComponent: () => import('./users').then((m) => m.UsersPage),

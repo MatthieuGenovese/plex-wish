@@ -14,6 +14,7 @@ export const ADMIN_SECTIONS: { path: string; label: string }[] = [
   { path: 'cast', label: 'Distribution' },
   { path: 'media', label: 'Médias' },
   { path: 'users', label: 'Utilisateurs' },
+  { path: 'settings', label: 'Réglages' },
 ];
 
 /**

@@ -43,8 +43,26 @@ public class OriginCheck {
         if (origin == null || allowed.contains(origin.toLowerCase(Locale.ROOT))) {
             return null;
         }
+        // Assistant de premier lancement (D1.3), ouvert à l'adresse locale du NAS (http://192.168.x.y:8080), pas à
+        // PUBLIC_URL : on accepte la même origine que la requête (Origin = Host). Une page d'un autre site ne peut pas
+        // imiter son en-tête Origin ; EntryFilter limite déjà ces chemins au réseau local et à l'installation en cours.
+        if (ctx.getUriInfo().getPath().startsWith("/api/setup/") && sameOrigin(origin, ctx.getHeaderString("Host"))) {
+            return null;
+        }
         LOG.warnf("Requête %s %s refusée : Origin '%s' différent de PUBLIC_URL", ctx.getMethod(), ctx.getUriInfo().getPath(), origin);
         return ErrorResponse.of(403, "ORIGIN_NOT_ALLOWED", "Origine de la requête non autorisée");
+    }
+
+    static boolean sameOrigin(String origin, String host) {
+        if (host == null || host.isBlank()) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(origin.trim());
+            return uri.getRawAuthority() != null && uri.getRawAuthority().equalsIgnoreCase(host.trim());
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /** "https://Anime.Example.com:443/chemin" → "https://anime.example.com" ; vide si ce n'est pas une URL http(s). */

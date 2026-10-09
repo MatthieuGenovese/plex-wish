@@ -29,6 +29,8 @@ public class SecurityStartup {
     AuthConfig config;
     @Inject
     UserService users;
+    @Inject
+    fr.plexwish.animeserver.setup.SetupState setup;
 
     void onStart(@Observes StartupEvent event) {
         List<String> problems = configurationProblems(config.jwtSecret(), config.streamSigningSecret(), config.publicUrl(),
@@ -88,11 +90,14 @@ public class SecurityStartup {
         Optional<String> username = config.initialAdmin().username();
         Optional<String> password = config.initialAdmin().password();
         if (username.isEmpty() || password.isEmpty()) {
-            LOG.error("Aucun administrateur : définir INITIAL_ADMIN_USERNAME et INITIAL_ADMIN_PASSWORD puis redémarrer");
+            // Cas normal sur le NAS (D1.3) : l'administrateur est créé par l'assistant de premier lancement.
+            LOG.info("Aucun administrateur : il sera créé par l'assistant de premier lancement (réseau local)");
             return;
         }
         try {
             users.create(username.get(), null, password.get(), Role.ADMIN);
+            // Pile de développement ou de démonstration : l'admin vient de la configuration, pas d'assistant.
+            setup.markCompleted("administrateur initial créé depuis la configuration");
             LOG.infof("Administrateur initial '%s' créé. INITIAL_ADMIN_PASSWORD peut être retiré du .env", username.get());
         } catch (ApiException e) {
             LOG.errorf("Administrateur initial non créé : %s", e.getMessage());

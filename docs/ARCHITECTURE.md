@@ -898,3 +898,39 @@ Plus récents d'abord, animés sans année à la fin, puis par titre. Se combine
 - **Abandon** : annuler le commit S3 retire la colonne de l'API et le rattrapage ; la migration V15 resterait appliquée sur une base qui l'a déjà reçue (table et colonne inutilisées, sans effet).
 - Tests : `MetadataTest` (genres de la fiche, rattrapage en un appel), `AnimeFilterTest` (filtre, liste, libellés).
 
+
+## 25. Déploiement sur le NAS (D1, 2026-10-09)
+
+Mode d'emploi : [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Décisions :
+
+- **Images prébuildées** sur GHCR privé (jeton en lecture sur le NAS, compte dédié aux images recommandé). Le NAS ne
+  compile rien. Publication refusée si un secret est trouvé dans une couche, dans la configuration ou dans les jar de
+  l'application (`scripts/image-scan.sh`).
+- **Secrets** : créés par le conteneur `init` au premier démarrage (64 caractères, un fichier 600 par secret, dans des
+  volumes Docker, jamais dans un dossier partagé du DSM). PostgreSQL lit sa propre copie (`POSTGRES_PASSWORD_FILE`).
+  Le serveur démarre en root seulement pour passer à l'utilisateur qui lit le dossier des vidéos (`setpriv`,
+  `cap_drop: ALL` sauf SETUID/SETGID, `no-new-privileges`), puis lit ses secrets. Volume des secrets perdu alors que la
+  base existe : `init` refuse et explique ; `repair-db-password.sh` applique un nouveau mot de passe sans perte.
+- **Deux portes** dans nginx : port 80 du conteneur = réseau local (publié sur le NAS, 8080), port 8081 = Internet
+  (Caddy ou Funnel seulement). nginx **remplace** toujours `X-Anime-Entry`. `EntryFilter` (avant l'authentification) :
+  installation non terminée → seul `/api/setup/*` répond, depuis la porte locale et une adresse privée, tout le reste
+  503 ; terminée → assistant fermé (404), porte locale réduite à `/api/setup/status` (le site s'ouvre en HTTPS).
+  Pile de développement : `LAN_ENTRY=local` (tout le site, comme avant).
+- **Assistant** : compte administrateur créé par la personne (atomique : ligne `app_setting` insérée dans la même
+  transaction), seuils d'espace disque proposés d'après l'espace libre (`DiskAdvice`), jeton DuckDNS vérifié avant
+  d'être gardé, clé TMDB facultative. Secrets saisis dans l'interface : fichiers 600 (`SecretStore`), jamais renvoyés.
+  Réglages non secrets : table `app_setting` (V16). Origine : `/api/setup/*` accepte la même origine que la requête
+  (Origin = Host), car la page est ouverte à l'adresse locale et non à `PUBLIC_URL`.
+- **HTTPS** : Caddy, Let's Encrypt par le défi TLS-ALPN (port 443 de la box → 8443 du NAS ; port 80 inutile), HSTS,
+  pas de journal d'accès. DuckDNS mis à jour par le serveur (`DdnsService`, URL jamais journalisée). Plan B CGNAT :
+  Tailscale Funnel (profil `funnel`). Cloudflare Tunnel exclu (conditions : pas de vidéo sur les offres gratuites).
+- **Invitations** (V17) : compte créé sans mot de passe (`password_hash` NULL : aucune connexion possible) et lien
+  `<adresse>/invitation#<jeton>` : jeton après le `#` (jamais dans un journal), SHA-256 en base, usage unique, 72 h,
+  révoqué par un nouveau lien ou la désactivation ; même mécanisme pour un mot de passe oublié (sessions fermées).
+  Essais de liens invalides comptés dans l'anti brute force (clé `#invitation`).
+- **Sauvegardes** : conteneur `backup` (postgres:16-alpine, mêmes outils que la base) ; chaque nuit, vérifiée par une
+  restauration dans une base jetable et la comparaison de la version du schéma ; rotation 7/4/6. `restore.sh` en une
+  transaction après une sauvegarde de sécurité.
+- **Mises à jour** : `update.sh`, lancée par l'administrateur, jamais automatique (pas de socket Docker dans un
+  conteneur exposé ; une migration ne se défait que par une restauration). Sauvegarde, santé, retour arrière et
+  restauration si le schéma a changé.

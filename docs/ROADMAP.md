@@ -19,6 +19,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | 7 | Application Android (téléphone) | lecteur validé le 2026-10-06 sur MKV et MP4 (son, sous-titres) ; AVI et OGM → remux (phase 9) ; spike et `/api/dev/*` supprimés le 2026-10-08 |
 | 9 | Traitement média (ffprobe, remux) — **avant la phase 8** | 9.1 analyse du catalogue : livrée ; 9.2 remux à la demande : livrée le 2026-10-06, en attente de validation (S24, NAS) |
 | P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1, P2 (serveur et web), 9.2 et P3.0 (chaîne Android) validées ; P3.1–P3.7 (app Android) et suppression du spike livrées le 2026-10-08, en attente des essais sur le S24 (DESIGN §13) |
+| D1 | **Déploiement sur le NAS** (préparation, testée sur une pile Docker propre) | D1a (D1.1 à D1.7) livrée le 2026-10-09 : images, secrets, assistant, Caddy et DuckDNS, invitations, sauvegardes, mises à jour, installateur, docs ; puis installation d'essai sur le vrai NAS (D2), puis D1b (tâches de nuit, alertes ntfy, APK release et page d'installation, contrôles de sécurité) |
 | 8 | Android TV | à faire, après le Polish |
 | 10 | Lecteur web | à faire |
 
@@ -155,3 +156,19 @@ Lecteur `<video>` dans l'interface web, sur l'URL signée existante, avec repris
 - **(d) HEVC (H.265), surtout 10 bits** : lecture très variable selon le navigateur et le matériel (souvent impossible, Firefox en particulier). **Pas de transcodage dans le MVP** : le lecteur affiche un **message clair** (« Ce fichier n'est pas lisible dans le navigateur : utilisez l'application Android ») pour tout fichier classé « transcodage nécessaire » (vidéo HEVC non supportée, audio AC3/DTS, sous-titres image).
 
 **Sans l'extraction des sous-titres (b), un lecteur web serait peu utile** : la bibliothèque est entièrement en VOSTFR, et les sous-titres français sont presque toujours des pistes embarquées dans les MKV (souvent en ASS ; seuls 434 fichiers de sous-titres externes dans le relevé). Un lecteur qui n'afficherait que l'image et le son japonais ne servirait à presque personne ; (b) n'est donc pas une option mais le cœur de la phase.
+
+
+## Phase D1 — Déploiement sur le NAS (plan validé le 2026-10-09)
+
+Ami : 3 gestes (Container Manager, une commande dans le Planificateur de tâches, l'assistant) plus la redirection de
+port faite avec Matthieu. Détails : `docs/DEPLOIEMENT.md`, aide-mémoire `docs/AIDE-DEPLOIEMENT-AMI.md`.
+
+- **D1a** (livrée le 2026-10-09, essai de bout en bout `scripts/test/e2e-deploy.sh`, 55 vérifications) :
+  D1.1 images et publication sans secret · D1.2 secrets et utilisateur par init · D1.3 assistant, deux portes, Caddy,
+  DuckDNS, réglages · D1.4 invitations · D1.5 sauvegardes · D1.6 mises à jour avec retour arrière · D1.7 installateur,
+  plan B Funnel, vérification d'accès, documentation.
+- **D2** : installation d'essai sur le DS923+ (liste « Ce qui exige le vrai NAS », DEPLOIEMENT §12).
+- **D1b** (après D2) : planificateur interne (scan de nuit, remux préventif plafonné et en pause pendant les lectures),
+  alertes ntfy et conteneur de veille, export de diagnostic, APK release (R8, version, keystore avec confirmation des
+  deux copies), page « Installer l'application » avec QR code, proposition de mise à jour dans l'app, onglet Sécurité
+  et `check-exposure`.

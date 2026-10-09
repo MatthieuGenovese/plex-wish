@@ -41,26 +41,29 @@ clean() {
 
 setup() {
     clean
-    mkdir -p "$DATA/app" "$MEDIA/Frieren/Saison 1"
+    mkdir -p "$E2E" "$MEDIA/Frieren/Saison 1"
     # Médias appartenant à un utilisateur du NAS (1026:100, lisibles par lui et son groupe seulement).
     head -c 2048 /dev/urandom > "$MEDIA/Frieren/Saison 1/Frieren S01E01.mkv"
     chown -R 1026:100 "$MEDIA" && chmod -R u=rwX,g=rX,o= "$MEDIA"
-    cp "$root"/deploy/*.sh "$DATA/app/"
-    cp "$root/deploy/compose.yml" "$DATA/compose.yml"
+    # La commande de l'ami, telle que la génère make-install-command (sans « docker login » : registre local).
+    args="--version $VERSION --registry $REGISTRY --media $MEDIA --domain $DOMAIN --data $DATA --lan-port $LAN_PORT --public-port $PUBLIC_PORT"
+    docker run --rm --entrypoint cat "$REGISTRY/anime-server-backend:$VERSION" /app/deploy/install.sh > "$E2E/anime-install.sh"
+    # shellcheck disable=SC2086
+    sh "$E2E/anime-install.sh" $args --dry-run > "$E2E/dry.log" 2>&1 || { cat "$E2E/dry.log"; fail "simulation"; }
+    [ ! -e "$DATA" ] && grep -q "SIMULATION : rien ne sera modifié" "$E2E/dry.log" \
+        && ok "simulation (--dry-run) : étapes affichées, rien créé" || fail "la simulation a modifié quelque chose"
+    # shellcheck disable=SC2086
+    DOCKER_SUBNET=$SUBNET sh "$E2E/anime-install.sh" $args > "$E2E/install.log" 2>&1 || { tail -30 "$E2E/install.log"; fail "installation"; }
+    grep -q "Ouvrir dans un navigateur, depuis la maison : http://.*:$LAN_PORT" "$E2E/install.log" && ok "installation en une commande, adresse de l'assistant affichée" \
+        || { cat "$E2E/install.log"; fail "fin d'installation"; }
     # Essai : certificat interne de Caddy au lieu de Let's Encrypt (pas de vrai nom de domaine ici).
-    sed 's/issuer acme {/issuer internal {/; /disable_http_challenge/d' "$root/deploy/Caddyfile" > "$DATA/Caddyfile.e2e"
-    cat > "$DATA/nas.env" <<ENV
-ANIME_VERSION=$VERSION
-IMAGE_PREFIX=$REGISTRY
-MEDIA_PATH=$MEDIA
-PUBLIC_DOMAIN=$DOMAIN
-COMPOSE_PROFILES=caddy
-PUBLIC_PORT=$PUBLIC_PORT
-LAN_PORT=$LAN_PORT
-TZ=Europe/Paris
-DOCKER_SUBNET=$SUBNET
-CADDYFILE=./Caddyfile.e2e
-ENV
+    sed 's/issuer acme {/issuer internal {/; /disable_http_challenge/d' "$DATA/app/Caddyfile" > "$DATA/Caddyfile.e2e"
+    echo "CADDYFILE=./Caddyfile.e2e" >> "$DATA/nas.env"
+    dc up -d caddy > /dev/null 2>&1
+    # Relance de l'installation : rien ne casse, réglages gardés.
+    # shellcheck disable=SC2086
+    sh "$E2E/anime-install.sh" $args > "$E2E/install2.log" 2>&1 && grep -q "nas.env existe déjà : gardé tel quel" "$E2E/install2.log" \
+        && ok "relancer la commande ne casse rien (réglages gardés)" || { cat "$E2E/install2.log"; fail "relance"; }
 }
 
 step_first_start() {

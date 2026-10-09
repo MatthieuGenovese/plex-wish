@@ -151,6 +151,28 @@ services:
     depends_on:
       - web
 
+  # PLAN B (box derrière un CGNAT) : accès Internet par Tailscale Funnel au lieu de Caddy (COMPOSE_PROFILES=funnel).
+  # https://<nom>.<tailnet>.ts.net, certificat géré par Tailscale ; débit limité par Tailscale (docs/DEPLOIEMENT.md).
+  # La clé d'authentification est lue dans un fichier (volume secrets_ts, écrit par install.sh --funnel).
+  tailscale:
+    image: tailscale/tailscale:v1.102.5
+    restart: unless-stopped
+    logging: *logging
+    profiles: ["funnel"]
+    hostname: ${TS_HOSTNAME:-anime}
+    environment:
+      TS_AUTHKEY: file:/run/secrets/ts/authkey
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:anime
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - secrets_ts:/run/secrets/ts:ro
+      - ./app/tailscale:/config:ro
+    depends_on:
+      - web
+
 volumes:
   pgdata:
   # Certificats et clé du compte Let's Encrypt (Caddy).
@@ -159,6 +181,9 @@ volumes:
   # Volumes Docker (et non des dossiers partagés du DSM) : leurs droits ne dépendent pas des ACL Synology.
   secrets_app:
   secrets_pg:
+  # Plan B Funnel : clé d'authentification et identité de la machine Tailscale.
+  secrets_ts:
+  tailscale_state:
 
 networks:
   default:

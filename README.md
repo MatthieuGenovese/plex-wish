@@ -41,7 +41,9 @@ npm start                        # http://localhost:4200
 
 `/api` est redirigé vers `localhost:8080` (`proxy.conf.json`) : lancer le backend avant. Tests : `npm test`.
 
-## Lancer le tout avec Docker
+## Lancer le tout avec Docker (PC : développement et essais)
+
+> **Sur le NAS, ne pas utiliser cette méthode** : installation en une commande avec des images déjà compilées, secrets créés tout seuls, assistant dans le navigateur, sauvegardes et mises à jour automatisées. Tout est dans [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md).
 
 ```powershell
 copy .env.example .env           # Linux : cp .env.example .env
@@ -72,50 +74,30 @@ openssl rand -hex 32
 
 Les coller dans `.env` (jamais dans un fichier versionné). Changer `JWT_SECRET` invalide les jetons d'accès en cours (renouvelés automatiquement, sans reconnexion) ; changer `STREAM_SIGNING_SECRET` invalide les liens de lecture en cours. Même méthode pour `POSTGRES_PASSWORD` (avant le premier lancement : il est fixé à la création de la base).
 
-### Sur le Synology (Container Manager)
+### Sur le NAS
 
-1. Copier le dépôt sur le NAS (ex. `/volume1/docker/anime-server`) et créer `.env` à partir de `.env.example`.
-2. Container Manager → **Projet** → **Créer** → chemin du dossier → il détecte `docker-compose.yml`.
-3. Reverse proxy DSM (*Panneau de configuration → Portail de connexion → Avancé → Proxy inversé*) : `https://<nom public>` → `http://127.0.0.1:<WEB_PORT>`. Le HTTPS se termine au DSM. Voir « Accès depuis Internet » et la « Checklist de déploiement sur le DSM ».
+Voir [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) (installation, accès Internet, sauvegardes, mises à jour, dépannage) et, pour guider la personne qui héberge le NAS, [`docs/AIDE-DEPLOIEMENT-AMI.md`](docs/AIDE-DEPLOIEMENT-AMI.md). Le NAS ne compile rien : les images sont construites sur le PC et publiées (`scripts/publish-images.ps1`, refus si un secret est trouvé dans une image).
 
-### Construire les images sur un NAS à 4 Go de RAM ?
+Dans cette pile de développement, la porte web sert tout le site (`LAN_ENTRY=local`) et l'admin initial vient de `.env` ; sur le NAS, l'admin est créé par l'assistant de premier lancement et le site public passe par Caddy (HTTPS).
 
-Mesuré le 2026-10-03 (machine à 2 cœurs, 8 Go) : compilation du backend (Maven) **26 s, pic 660 Mo** ; interface web (Angular) **19 s, pic 940 Mo**. Premier build : environ **1,3 Go à télécharger** (images Maven 810 Mo et Node 240 Mo, dépendances ~220 Mo et ~300 Mo) et ~2,5 Go de disque pour les images de build et leur cache.
+## Dossier média (pile de développement)
 
-Sur un DS923+ (Ryzen R1600, 2 cœurs, 4 Go) : faisable, mais `docker compose up -d --build` construit les deux images **en parallèle** (~1,6 Go) pendant que la stack tourne (backend ~0,7 Go, PostgreSQL ~0,2 Go) et que le DSM occupe 1 à 1,5 Go : le NAS risque de passer en swap, lent mais sans casse. Compter 10 à 20 min la première fois (téléchargements, disques durs), quelques minutes ensuite. Pour limiter la mémoire, construire l'une après l'autre :
-
-```sh
-docker compose build backend && docker compose build web && docker compose up -d
-docker image prune -f        # enlève les anciennes images remplacées
-```
-
-**ffmpeg / ffprobe (phase 9)** : l'image du backend compile en plus FFmpeg 7.1.5 réduit au nécessaire (étape `ffmpeg` du Dockerfile, ARCHITECTURE §22.1) : **+18 Mo** dans l'image (582 Mo au lieu de 555), environ **11 Mo de source** et ~250 Mo d'outils de compilation à télécharger, **~2 min 30 sur un PC, 10 à 15 min estimées sur le DS923+**, une seule fois (en cache ensuite tant que la version ne change pas). Raison de plus pour le repli ci-dessous si le NAS peine.
-
-**Repli si le NAS peine** (non outillé, à faire à la main) : construire sur le PC, exporter, importer sur le NAS.
-
-```powershell
-docker compose build                                            # sur le PC
-docker save anime-server-backend anime-server-web -o anime-images.tar   # ~180 Mo (mesuré)
-```
-```sh
-docker load -i anime-images.tar          # sur le NAS, après copie du fichier (accepte aussi un .tar.gz)
-docker compose up -d --no-build
-```
-
-Le DS923+ et un PC Windows classique sont tous deux en `amd64` : les images sont compatibles. Depuis un Mac à puce Apple, ajouter `--platform linux/amd64` au build. Avec ce repli, Maven et Node ne sont jamais téléchargés sur le NAS.
-
-## Dossier média
+Sur le NAS, l'utilisateur qui lit les vidéos est trouvé tout seul au démarrage (conteneur `init`, [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md)).
 
 - `MEDIA_PATH` (dans `.env`) = dossier des vidéos **sur l'hôte**, par ex. `/volume1/animes` sur le NAS, `./dev-media` en local.
 - Il est monté **en lecture seule** dans le backend (`/media`). L'application ne modifie, ne déplace et ne supprime jamais un fichier.
 - Droits : le backend tourne avec l'utilisateur `PUID:PGID` (`.env`). Il doit avoir le droit de **lire** le dossier. Sur Synology, trouver ces numéros en SSH avec `id <utilisateur>` (un utilisateur DSM qui a accès en lecture au dossier partagé).
 - `dev-media/` sert aux tests locaux : son contenu n'est jamais versionné.
 
-## Administrateur initial
+## Administrateur initial (pile de développement)
+
+Sur le NAS, pas de mot de passe par défaut : l'administrateur est créé par l'assistant de premier lancement, et les autres comptes par des liens d'invitation à usage unique.
 
 Renseigner `INITIAL_ADMIN_USERNAME` et `INITIAL_ADMIN_PASSWORD` (10 caractères minimum) dans `.env` avant le premier lancement : le compte est créé au démarrage **s'il n'existe aucun admin**. Ensuite les deux variables sont ignorées et peuvent être retirées. L'admin crée les autres comptes (`POST /api/admin/users`) ; il n'y a pas d'inscription publique.
 
-## Sécurité : ce qu'il faut régler
+## Sécurité : ce qu'il faut régler (pile de développement)
+
+Sur le NAS, les secrets sont créés au premier démarrage et `PUBLIC_URL` vient du nom de domaine : rien à régler à la main ([`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md)). Le reste de cette section concerne `docker-compose.yml`.
 
 Le backend **refuse de démarrer** en prod si `JWT_SECRET` ou `STREAM_SIGNING_SECRET` manquent, font moins de 32 caractères ou sont identiques, ou si `PUBLIC_URL` est absent ou invalide. Le message d'erreur (`docker compose logs backend`) dit quoi corriger.
 
@@ -249,115 +231,11 @@ Les AVI et OGM ne se lisent pas tels quels sur Android. À la première lecture 
 
 Une demande de lecture passe avant les tâches de fond (analyse, test à blanc), qui se mettent en pause le temps du remux.
 
-## Accès depuis Internet
+## Accès depuis Internet, sauvegardes, mises à jour
 
-L'application doit être servie en **HTTPS** (cookie de session `Secure`) sous **une seule adresse**, celle de `PUBLIC_URL`. Trois façons de faire, vérifiées le 2026-10-03 :
+Sur le NAS : [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md). En résumé : HTTPS par Caddy (Let's Encrypt) derrière une redirection du port 443 de la box vers le port 8443 du NAS, nom DuckDNS mis à jour par le serveur ; plan B Tailscale Funnel si la box est derrière un CGNAT ; Cloudflare Tunnel exclu (ses conditions interdisent la vidéo sur les offres gratuites). Sauvegarde vérifiée chaque nuit par le conteneur `backup`, mise à jour par `update.sh` avec retour arrière automatique.
 
-### Option A : DDNS Synology + certificat Let's Encrypt + reverse proxy du DSM (recommandée)
-
-1. *Panneau de configuration → Accès externe → DDNS → Ajouter* : fournisseur **Synology**, nom `monnas.synology.me` (gratuit, compte Synology), cocher l'obtention du certificat **Let's Encrypt**. Le DSM le renouvelle seul (validité 90 jours).
-2. Reverse proxy (*Portail de connexion → Avancé → Proxy inversé*) : source `HTTPS`, nom d'hôte `monnas.synology.me`, port `443` → destination `HTTP`, `127.0.0.1`, port `WEB_PORT` (voir « Port publié : `WEB_BIND` »). Puis `PUBLIC_URL=https://monnas.synology.me`. L'application est à la racine de ce nom ; le DSM lui-même reste sur ses ports 5000/5001.
-3. Box : rediriger le port **443** (TCP) vers le NAS. Ne **pas** rediriger 5000/5001 (interface du DSM).
-
-Limites :
-- **Il faut une IPv4 publique joignable.** Certains fournisseurs partagent une IPv4 entre plusieurs clients (CGNAT) : aucune connexion entrante possible. Vérifier : si l'adresse WAN affichée par la box (10.x, 100.64–127.x…) diffère de celle d'un site comme « quel est mon IP », la ligne est en CGNAT. Free : demander une « adresse IPv4 fixe full-stack » dans l'espace abonné (irréversible, à redemander après un déménagement). SFR : IPv4 partagée sur certaines lignes, une « IPv4 full stack » s'obtient en appelant l'assistance. Orange fibre : pas de partage d'IPv4 à ce jour d'après Orange (été 2025), prévu plus tard avec une option pour s'en sortir. Autres : à vérifier.
-- **Port 80** : pas nécessaire pour le certificat d'un nom `synology.me` (le DSM le valide par le DNS de Synology). Port 443 : nécessaire (sinon il faut un port non standard dans `PUBLIC_URL`, que certains réseaux d'entreprise ou de wifi publics bloquent).
-- Le NAS est exposé sur Internet (port 443) : DSM à jour, blocage automatique des IP activé, 2FA sur les comptes DSM.
-- Depuis le réseau local, `monnas.synology.me` doit aussi répondre : la plupart des box gèrent ce « retour » (NAT loopback) ; sinon, ajouter le nom dans le DNS local.
-
-### Option B : nom de domaine personnel
-
-Même chose avec `anime.mondomaine.fr` (environ 10 € par an) : un enregistrement DNS `CNAME` vers `monnas.synology.me` suit l'IP dynamique, puis certificat Let's Encrypt pour ce nom dans *Sécurité → Certificat*. Limites : les mêmes que A, plus le **port 80** à rediriger vers le NAS pour la validation Let's Encrypt (défi HTTP-01, uniquement sur le port 80) à chaque renouvellement. Un certificat générique (`*.mondomaine.fr`) demande la validation par DNS (API du registraire), pas gérée simplement par le DSM.
-
-### Option C : Tailscale (réseau privé, sans ouvrir de port)
-
-Paquet Tailscale pour le DSM ; chaque spectateur installe Tailscale et rejoint le réseau. Aucun port ouvert, **fonctionne derrière un CGNAT** (connexions sortantes ; si la connexion directe est impossible, le trafic passe par les relais Tailscale, plus lents). HTTPS : certificat fourni par Tailscale pour le nom en `.ts.net` (fonction HTTPS à activer).
-
-Limites :
-- Formule gratuite « Personal » : **6 utilisateurs** au plus (3 avant avril 2026), appareils illimités. Pour ~10 amis, il faut la formule payante ou les faire passer par le partage d'appareil (à vérifier avant).
-- Clients officiels : Windows, macOS, Linux, iOS, Android, Apple TV, Amazon Fire. **Pas de Samsung (Tizen) ni de LG (webOS)** : ces TV n'y ont pas accès (sauf un routeur de sous-réseau Tailscale chez le spectateur, peu réaliste).
-- Chaque ami doit installer et laisser actif un client VPN : bonne option pour l'admin ou un dépannage, contraignante pour tout le groupe.
-
-### En résumé
-
-| | A : DDNS Synology | B : domaine perso | C : Tailscale |
-|---|---|---|---|
-| IPv4 publique (pas de CGNAT) | requise | requise | non |
-| Ports à rediriger | 443 | 443 et 80 | aucun |
-| Coût | gratuit | ~10 €/an | gratuit jusqu'à 6 utilisateurs |
-| Installation chez les amis | rien (navigateur, app) | rien | client Tailscale |
-| TV Samsung / LG (plus tard) | oui | oui | non |
-
-## Checklist de déploiement sur le DSM
-
-À dérouler au premier déploiement, puis après tout changement réseau (box, reverse proxy, `DOCKER_SUBNET`). Commandes en SSH sur le NAS, depuis le dossier du dépôt, avec `sudo` si nécessaire.
-
-1. **Droits PUID/PGID.** `id <utilisateur>` donne les numéros à mettre dans `.env`. Vérifier depuis le conteneur :
-   ```sh
-   docker compose exec backend sh -c 'id; ls /media | head -3'                       # lecture du dossier média
-   docker compose exec backend sh -c 'touch /data/posters/.t && rm /data/posters/.t && echo écriture OK'
-   docker compose exec backend sh -c 'touch /data/remux-cache/.t && rm /data/remux-cache/.t && echo écriture OK'
-   ```
-   Le dossier média doit être **lisible** (jamais besoin d'écriture : il est monté en lecture seule) ; les dossiers des affiches et du cache de remux doivent être **inscriptibles** (*Administration → Affiches* ne doit pas afficher d'avertissement).
-2. **Démarrage.** `docker compose ps` : trois conteneurs `healthy`. Sinon `docker compose logs backend` dit quoi corriger (secrets, `PUBLIC_URL`).
-3. **Reverse proxy.** Destination `http://127.0.0.1:<WEB_PORT>` : écrire `127.0.0.1`, **pas** `localhost` (qui peut désigner l'adresse IPv6 `::1`, sur laquelle le port n'écoute pas).
-4. **IP des clients.** `ADMIN_USER=admin ADMIN_PASSWORD='…' scripts/check-client-ip.sh` → trois lignes `OK`.
-5. **Test depuis la 4G.** Wifi coupé sur un téléphone : ouvrir `https://<nom public>`, se connecter, recharger la page (F5 : la session doit tenir). Puis `docker compose logs backend | grep Connexion` : l'IP affichée est celle de l'opérateur mobile, pas `172.30.64.1`.
-6. **Lecture et seek d'un gros fichier à travers le reverse proxy.** Prendre un des plus gros fichiers (`find /volume1/animes -size +2G | head`), le lire sur le téléphone en 4G :
-   - aller à 80 % puis revenir au début : l'image doit repartir en quelques secondes ;
-   - mettre en pause **plus d'une minute**, puis reprendre : la connexion est fermée au bout d'environ 60 s de pause (délai par défaut de nginx, côté DSM comme côté application, mesuré) et le lecteur doit la rouvrir seul à la bonne position. S'il reste bloqué, le noter (à traiter avec le lecteur Android) ;
-   - **mise en tampon côté DSM** : un nginx réglé par défaut, comme le reverse proxy du DSM, recopie la vidéo dans un fichier temporaire sur le disque système quand le spectateur lit moins vite que le NAS n'envoie (mesuré : **1 Go écrit en 5 secondes pour un seul spectateur** lent). Corrigé : le nginx de l'application envoie `X-Accel-Buffering: no` sur `/api/stream/`, que le nginx du DSM respecte (vérifié avec un nginx réglé comme le DSM : plus de fichier temporaire, seek inchangé). Pendant la lecture, `df -h /` sur le NAS ne doit pas bouger.
-   - les délais d'attente du reverse proxy (*Paramètres avancés* de la règle, 60 s par défaut) n'ont pas besoin d'être changés pour la lecture : la vidéo arrive en continu.
-7. **Sauvegarde.** Tâche planifiée créée et exécutée une fois (voir « Sauvegarde de la base ») ; le fichier `.dump` existe, sur un autre disque ou copié ailleurs.
-8. **Métadonnées et affiches.** *Administration → Métadonnées*, *Synopsis français*, *Affiches* : la récupération avance (premier passage ~1 h pour AniList, puis TMDB et affiches).
-
-## Sauvegarde de la base
-
-Toutes les données de l'application sont dans PostgreSQL (volume Docker `pgdata`) ; les vidéos ne sont jamais modifiées et ne font pas partie de la sauvegarde.
-
-| Perdu sans sauvegarde (à sauvegarder) | Régénérable (pas besoin de sauvegarde) |
-|---|---|
-| Comptes, rôles, mots de passe (empreintes) | Bibliothèque (animés, saisons, épisodes) : nouveau scan de `/media` |
-| Progressions de lecture (« Continuer à regarder ») | Métadonnées AniList et TMDB : retéléchargées par les tâches de fond (~1 h pour AniList) |
-| **Corrections manuelles** : fichiers rattachés à la main, appariements AniList / TMDB verrouillés | Affiches du dossier `POSTERS_HOST_PATH` : retéléchargées ; copies du cache de remux : refaites à la demande |
-| Historique des scans (rapports) | Sessions : il suffit de se reconnecter |
-
-Attention : les progressions et les corrections pointent vers les fichiers de la base. Après une perte de la base, un nouveau scan recrée la bibliothèque, mais **pas** les progressions ni les corrections. D'où la sauvegarde.
-
-### Sauvegarder : `scripts/backup-db.sh`
-
-```sh
-scripts/backup-db.sh                                     # depuis la racine du dépôt, stack démarrée
-BACKUP_DIR=/volume1/backups/anime-server BACKUP_KEEP=30 scripts/backup-db.sh
-```
-
-- Un fichier par exécution, `anime-db-AAAAMMJJ-HHMMSS.dump` (format compressé de `pg_dump`, quelques dizaines de Ko à quelques Mo), vérifié avec `pg_restore --list` avant d'être gardé.
-- Rotation : seules les `BACKUP_KEEP` dernières (14 par défaut) sont conservées. Dossier : `BACKUP_DIR` (défaut `<dépôt>/backups`, ignoré par git).
-- Aucun mot de passe : le dump est fait dans le conteneur `postgres` (connexion locale). Le fichier est lisible par son seul propriétaire (il contient les empreintes des mots de passe).
-- Mettre le dossier de sauvegarde **sur un autre volume ou un autre appareil** (Hyper Backup, Synology Drive, disque USB) : une sauvegarde sur le même disque ne protège pas d'une panne de ce disque.
-
-### Planifier avec le Planificateur de tâches du DSM
-
-*Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur* :
-
-1. **Général** : nom « Sauvegarde anime-server », utilisateur **root** (nécessaire pour Docker).
-2. **Programmer** : tous les jours, par exemple à 4 h.
-3. **Paramètres de tâche** : cocher « Envoyer les détails de l'exécution par e-mail » et « uniquement si le script se termine de manière anormale » (le script sort en erreur si la sauvegarde échoue). Script :
-
-   ```sh
-   BACKUP_DIR=/volume1/backups/anime-server BACKUP_KEEP=30 /volume1/docker/anime-server/scripts/backup-db.sh
-   ```
-4. Clic droit sur la tâche → **Exécuter**, puis vérifier qu'un fichier `.dump` est apparu dans le dossier.
-
-### Restaurer : `scripts/restore-db.sh`
-
-```sh
-scripts/restore-db.sh /volume1/backups/anime-server/anime-db-20261003-040000.dump
-```
-
-Le script vérifie le fichier, demande de taper `RESTAURER`, fait une **sauvegarde de sécurité** de la base actuelle (`avant-restauration-….dump`, 5 gardées), arrête le backend et le web, recrée la base vide, restaure en une seule transaction et redémarre. Une sauvegarde d'une version plus ancienne de l'application est mise à niveau au démarrage (migrations Flyway). En cas d'échec, il affiche la commande pour revenir à l'état d'avant. `RESTORE_YES=1` évite la question (script).
-
-Testé sur la stack Docker : base abîmée (utilisateur, bibliothèque et progressions supprimés), restauration, puis connexion avec l'utilisateur supprimé ; fichier tronqué refusé sans rien toucher ; rotation à 2 fichiers.
+Pile de développement : `scripts/backup-db.sh` et `scripts/restore-db.sh` sauvegardent et restaurent la base de `docker-compose.yml` (à la main).
 
 ## Tester le scan complet (bibliothèque factice)
 

@@ -43,3 +43,14 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Saut automatique à l'épisode suivant (voir « Lecture ») : en fin d'épisode, carte « Épisode suivant » avec un compte à rebours de 10 s annulable, et bouton dans la surcouche du lecteur (proposé en P3, pas encore validé).
 - « Vu » plus juste qu'au-delà de 90 % : temps restant (ex. moins de 3 min, plancher à 95 % pour les épisodes courts) ou chapitre « ED / Ending » des MKV lu par ffprobe (changement serveur).
 - Mise à jour de Media3 (1.5.1 → récente) et commandes du lecteur en Compose (`media3-ui-compose`), avec un nouveau test complet sur le S24 (AVI, OGM, sous-titres).
+
+
+## Déploiement (D1, 2026-10-09)
+
+- Accès direct à la maison sans passer par Internet ni par la boucle locale de la box (HTTPS local : DNS local ou
+  certificat pour l'adresse locale).
+- IPv6 dans DuckDNS (paramètre `ipv6`) pour les box qui ont une IPv6 publique ; aujourd'hui IPv4 seulement.
+- Autres DNS dynamiques au choix (deSEC, dynv6) si DuckDNS devient indisponible.
+- Vraie adresse des visiteurs derrière Funnel (en-tête à vérifier) pour l'anti brute force.
+- QR code du lien d'invitation (avec la bibliothèque QR de la page « Installer l'application », D1b).
+- Copie automatique des sauvegardes hors du NAS (aujourd'hui : Hyper Backup de l'ami ou récupération manuelle).

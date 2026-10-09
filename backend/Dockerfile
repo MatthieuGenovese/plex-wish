@@ -1,12 +1,15 @@
+# Contexte de construction : la RACINE du dépôt (docker build -f backend/Dockerfile .), filtré par la liste
+# blanche de /.dockerignore. L'image embarque l'application déjà compilée : rien n'est compilé au démarrage.
+
 # --- Build : Maven + JDK 21 -------------------------------------------------------
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
 # Dépendances d'abord : cette couche reste en cache tant que pom.xml ne change pas.
-COPY pom.xml .
+COPY backend/pom.xml .
 RUN mvn -B -q dependency:go-offline
 
-COPY src ./src
+COPY backend/src/main ./src/main
 # Les tests ont besoin de Docker (Dev Services) : ils se lancent hors image (mvnw test).
 RUN mvn -B -q package -DskipTests
 
@@ -40,17 +43,30 @@ RUN ./configure --prefix=/opt/ffmpeg --disable-everything --disable-autodetect -
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# Fichiers copiés en 644/755 : lisibles par l'utilisateur non-root PUID:PGID
-# (défini dans docker-compose.yml).
+# Fichiers copiés en 644/755 : lisibles par l'utilisateur non-root qui fait tourner le serveur.
 COPY --from=build /build/target/quarkus-app/ /app/
 COPY --from=ffmpeg /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe /usr/local/bin/
+COPY --chmod=755 backend/docker/entrypoint.sh /app/entrypoint.sh
+# Fichiers de déploiement (compose, scripts d'installation et de maintenance) : l'installateur les recopie sur le NAS,
+# qui n'a pas le dépôt. Aucun secret dedans.
+COPY --chmod=755 deploy/ /app/deploy/
+COPY VERSION /app/VERSION
+
+ARG APP_VERSION=dev
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.title="anime-server-backend" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}"
 
 ENV JAVA_OPTS="-Xmx512m" \
-    QUARKUS_PROFILE=prod
+    QUARKUS_PROFILE=prod \
+    ANIME_APP_VERSION=${APP_VERSION}
 EXPOSE 8080
+# Utilisateur par défaut non-root. Le déploiement sur le NAS démarre le conteneur en root : entrypoint.sh lit alors
+# les secrets puis abandonne root pour l'utilisateur qui peut lire le dossier média (choisi par le conteneur init).
 USER 1000:1000
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
     CMD curl -fsS http://localhost:8080/q/health/ready > /dev/null || exit 1
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/quarkus-run.jar"]
+ENTRYPOINT ["/app/entrypoint.sh"]

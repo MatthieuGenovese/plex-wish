@@ -1,11 +1,20 @@
 # Anime Server : postgres + backend (Quarkus) + web (nginx + Angular).
 # Toute la configuration vient du fichier .env (copier .env.example).
 # Seul le service web publie un port sur l'hôte.
+# Stack de DÉVELOPPEMENT et d'essai (construite depuis le dépôt). Sur le NAS : deploy/compose.yml (images publiées).
+
+# Journaux Docker : 3 fichiers de 10 Mo au plus par conteneur (sinon ils grossissent sans limite).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-anime}
       POSTGRES_USER: ${POSTGRES_USER:-anime}
@@ -19,9 +28,12 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: anime-server-backend
     restart: unless-stopped
+    logging: *logging
     # Utilisateur qui a le droit de LIRE le dossier média sur le NAS (voir README).
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
@@ -69,6 +81,7 @@ services:
     build: ./web
     image: anime-server-web
     restart: unless-stopped
+    logging: *logging
     ports:
       # Par défaut, joignable seulement depuis le NAS lui-même (le reverse proxy DSM) : pas d'accès HTTP
       # direct depuis le réseau local. WEB_BIND=0.0.0.0 pour l'ouvrir (essai sans reverse proxy).

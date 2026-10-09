@@ -1,0 +1,9 @@
+# Contexte de construction de l'image du serveur (racine du dépôt) : liste blanche.
+# Tout est exclu, puis seuls les fichiers nécessaires sont réintégrés. Jamais : .env, keystore,
+# local.properties, docs/private, sauvegardes, vidéos (scripts/check-image-secrets.sh le vérifie).
+*
+!VERSION
+!backend/pom.xml
+!backend/src/main
+!backend/docker
+!deploy

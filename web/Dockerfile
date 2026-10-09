@@ -12,6 +12,11 @@ RUN npm run build
 
 # --- Exécution : nginx ----------------------------------------------------------------------
 FROM nginx:alpine
+ARG APP_VERSION=dev
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.title="anime-server-web" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}"
 # Adresses (ou plages CIDR) autorisées à fournir X-Forwarded-For, séparées par des virgules.
 # Vide par défaut : aucune confiance. docker-compose.yml fournit la valeur réelle.
 ENV TRUSTED_PROXY_IPS=""

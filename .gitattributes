@@ -11,3 +11,7 @@ gradlew   text eol=lf
 *.mkv  binary
 *.mp4  binary
 *.webm binary
+
+# Fichiers recopiés sur le NAS (Linux)
+deploy/** text eol=lf
+VERSION   text eol=lf

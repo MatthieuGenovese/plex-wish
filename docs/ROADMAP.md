@@ -21,7 +21,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1, P2 (serveur et web), 9.2 et P3.0 (chaîne Android) validées ; P3.1–P3.7 (app Android) et suppression du spike livrées le 2026-10-08, en attente des essais sur le S24 (DESIGN §13) |
 | D1 | **Déploiement sur le NAS** (préparation, testée sur une pile Docker propre) | D1a (D1.1 à D1.7) livrée le 2026-10-09 : images, secrets, assistant, Caddy et DuckDNS, invitations, sauvegardes, mises à jour, installateur, docs ; puis installation d'essai sur le vrai NAS (D2), puis D1b (tâches de nuit, alertes ntfy, APK release et page d'installation, contrôles de sécurité) |
 | 8 | Android TV | à faire, après le Polish |
-| 10 | Lecteur web | à faire |
+| 10 | **Lecteur web et préparation des médias pour le navigateur** | 10.1 conception livrée le 2026-10-10 (`docs/WEB-PLAYER.md`), en attente des décisions ; 10.2 lecteur ; 10.3 conversion et file |
 
 ---
 
@@ -133,7 +133,7 @@ Constat (2026-10-06, ARCHITECTURE §20.3 et §21) : AVI et OGM réels non lisibl
 8. Tests : faux ffmpeg (succès, échec, délai, avertissement), concurrence, purge, atomicité, cache plein, signature sur la copie, path traversal, vrai ffmpeg sur petits fichiers.
 9. README, ARCHITECTURE (volume, droits, taille conseillée), FUTURE (transcodage, remux préventif planifié).
 
-### 9.3 Extraction des sous-titres (pour le lecteur web, avec la phase 10)
+### 9.3 Extraction des sous-titres (pour le lecteur web) — intégrée à la phase 10 (bloc 10.2.2)
 - Sous-titres texte muxés (ASS/SSA/SRT) extraits dans le cache : WebVTT (lu nativement par le navigateur, sans les styles ASS) et ASS d'origine conservé pour un éventuel moteur de rendu ASS côté navigateur (décision en phase 10, avec les polices jointes).
 - Sous-titres image (PGS, VobSub) : non extractibles en texte ; les afficher dans un navigateur demanderait de les incruster, donc du transcodage → hors périmètre, signalés dans le rapport.
 - À la demande, mêmes limites (délai, mémoire, cache borné) : l'extraction lit tout le fichier, son coût disque est proche de celui d'un remux.
@@ -147,16 +147,27 @@ Objectif : une interface évidente au premier regard, au niveau des meilleures a
 ## Phase 8 — Android TV (après le Polish)
 - Périmètre à préciser au démarrage de la phase. Base prévue : un paquet `ui/tv` (écrans et navigation propres) sur les mêmes ViewModels et la même couche `data` que le téléphone (ARCHITECTURE §20).
 
-## Phase 10 — Lecteur web
-Lecteur `<video>` dans l'interface web, sur l'URL signée existante, avec reprise et progression comme sur Android. Après la phase 9, dont il dépend. Périmètre réel :
+## Phase 10 — Lecteur web et préparation des médias pour le navigateur
+Objectif : un utilisateur clique sur un épisode dans son navigateur et ça joue, avec un message clair quand une
+préparation est nécessaire. Android ne change pas (original ou copie remux 9.2). Conception complète, mesures et
+décisions : **`docs/WEB-PLAYER.md`**. Contraintes : aucune conversion en direct ; conversions à l'avance ou en tâche de
+fond, une tâche lourde à la fois, fils plafonnés, priorité basse, pause pendant les lectures ; aucun changement de
+sécurité (CSP, jetons, URL signées) sans accord ; aucune ressource externe.
 
-- **(a) Lecture directe** des fichiers que le navigateur sait lire tels quels : MP4 avec vidéo H.264 et audio AAC (ou MP3). C'est le seul cas sûr partout (Chrome, Firefox, Edge).
-- **(b) Sous-titres.** Un navigateur **ne lit pas les pistes de sous-titres embarquées dans un MKV** (ni dans un MP4) et **ne sait pas rendre l'ASS** (styles, positions, polices). Il faut donc **extraire les pistes côté serveur avec ffmpeg** (phase 9.3) et les servir à part : en **WebVTT** (piste `<track>`, lue nativement, styles ASS perdus) ou en **ASS d'origine** rendu côté navigateur par **JASSUB** (libass compilé en WebAssembly, avec les polices jointes du MKV ; à vérifier avec la CSP, qui devra autoriser le WebAssembly). Cela suppose **ffmpeg et ffprobe dans le conteneur backend**. Sous-titres image (PGS, VobSub) : non affichables sans incrustation, donc sans transcodage → message.
-- **(c) Remux sans ré-encodage** des MKV (et AVI, OGM) dont les codecs conviennent, vers **MP4** (fichier en cache, phase 9.2) ou **HLS** (segments produits à la volée par ffmpeg en `-c copy`, lus par hls.js ; lecture possible avant la fin du remux, au prix de plus de travail côté serveur). Choix entre les deux au démarrage de la phase, selon le rapport ffprobe.
-- **(d) HEVC (H.265), surtout 10 bits** : lecture très variable selon le navigateur et le matériel (souvent impossible, Firefox en particulier). **Pas de transcodage dans le MVP** : le lecteur affiche un **message clair** (« Ce fichier n'est pas lisible dans le navigateur : utilisez l'application Android ») pour tout fichier classé « transcodage nécessaire » (vidéo HEVC non supportée, audio AC3/DTS, sous-titres image).
-
-**Sans l'extraction des sous-titres (b), un lecteur web serait peu utile** : la bibliothèque est entièrement en VOSTFR, et les sous-titres français sont presque toujours des pistes embarquées dans les MKV (souvent en ASS ; seuls 434 fichiers de sous-titres externes dans le relevé). Un lecteur qui n'afficherait que l'image et le son japonais ne servirait à presque personne ; (b) n'est donc pas une option mais le cœur de la phase.
-
+- **10.1 Conception** (livrée le 2026-10-10, aucun code de production) : ce que lisent les navigateurs (vérifié /
+  supposé), pistes audio multiples et seek (HLS fMP4 + hls.js recommandé), sous-titres (WebVTT, ASS via JASSUB,
+  images → message), classes W0 direct / W1 remux / W2 son / W3 vidéo, commandes ffmpeg, cache web plafonné et
+  nettoyé la nuit, reprise après redémarrage, déclenchement à la demande et préventif, mesures et extrapolation pour le
+  DS923+, interface du lecteur, changements de sécurité demandés. **Arrêt : décisions D1 à D11.**
+- **10.2 Lecteur web** (après feu vert) : lecture directe et remux (HLS fMP4), pistes audio, sous-titres WebVTT et
+  ASS, reprise et progression, raccourcis, plein écran, épisode suivant, accessibilité ; tests unitaires et de bout en
+  bout sur un fichier généré, captures. Blocs 10.2.1 à 10.2.5. Arrêt.
+- **10.3 Conversion et file d'attente** (après feu vert) : ffmpeg avec asm, AAC et libx264 ; file persistante, plafonds
+  de charge et de disque, nettoyage de nuit, déclenchement à la demande et préventif (planificateur interne minimal),
+  états dans le lecteur et l'onglet Médias, alerte ntfy ; tests d'arrêt en pleine conversion et de disque presque
+  plein. Blocs 10.3.1 à 10.3.6. Arrêt.
+- Remplace l'ancien périmètre « pas de transcodage dans le MVP » et la phase 9.3 (l'extraction des sous-titres est
+  faite en 10.2.2). La pré-conversion décidée pour D1b est intégrée ici (10.3) ; D1b garde le reste.
 
 ## Phase D1 — Déploiement sur le NAS (plan validé le 2026-10-09)
 

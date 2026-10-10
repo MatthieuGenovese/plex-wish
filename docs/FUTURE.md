@@ -11,12 +11,14 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 ## Lecture
 - Épisode suivant enchaîné automatiquement à la fin d'un épisode (avec compte à rebours et « Annuler ») sur Android, puis sur le web.
 - Rendu ASS fidèle sur Android (polices jointes, balises en ligne, « signs ») : libass via une extension native de Media3, ou sous-titres convertis côté serveur ; aujourd'hui rendu simplifié de Media3 (voir `android/README.md`).
-- Transcodage (vidéo, ou audio seul AC3/DTS → AAC, bien moins coûteux) pour les fichiers classés « transcodage nécessaire » par la phase 9 (traitement média). Hors périmètre tant que le rapport n'a pas montré combien de fichiers sont concernés.
+- ~~Transcodage (vidéo, ou audio seul AC3/DTS → AAC)~~ : repris dans la phase 10 (préparation pour le navigateur, `docs/WEB-PLAYER.md`).
+- Incrustation des sous-titres image (PGS/VobSub) pour le navigateur, sur demande de l'admin par animé (phase 10, après 10.3).
 - Remux préventif planifié (la nuit) des AVI/OGM d'un animé en cours de visionnage, ou des épisodes suivants ; aujourd'hui à la demande, ou « Préparer l'animé » à la main.
 - Lecture pendant le remux (sortie fragmentée lue au fil de l'eau) si l'attente de préparation gêne sur le NAS.
 - ~~Extension ffmpeg de Media3 côté Android~~ : fait le 2026-10-10 avec NextLib (décodage logiciel en repli, `android/README.md`).
 - Règles du serveur (`MediaRules`) pour le son : DTS et TrueHD sont désormais lus par l'app (FFmpeg), AC3/E-AC3 ne « dépendent » plus du téléphone ; à refléter dans la classification (aujourd'hui « transcodage nécessaire » / « dépend du téléphone ») après l'essai sur le S24. Changement de règle serveur : à valider.
-- Décodage logiciel sur le web (phase 10) : les navigateurs n'ont pas d'équivalent simple (WebAssembly FFmpeg trop lourd) ; la conversion côté serveur reste la voie prévue.
+- Décodage logiciel sur le web : écarté (FFmpeg en WebAssembly trop lourd et trop lent) ; la phase 10 prépare les fichiers côté serveur (`docs/WEB-PLAYER.md`).
+- Mini-lecteur web (lecture pendant la navigation) : écarté en 10.1 (progression, focus), à revoir si demandé.
 - FFmpeg de NextLib compilé sans assembleur (`--disable-asm`) : si la fluidité déçoit en 1080p, compiler NextLib nous-mêmes avec les optimisations NEON (même licence).
 - R8 (réduction du code) désactivé en release : s'il est activé un jour, les règles de NextLib suffisent pour les classes JNI (vérifié le 2026-10-10 dans `seeds.txt` : méthodes natives, `VideoDecoderOutputBuffer`, `growOutputBuffer` conservés).
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.

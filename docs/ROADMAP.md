@@ -167,6 +167,11 @@ port faite avec Matthieu. Détails : `docs/DEPLOIEMENT.md`, aide-mémoire `docs/
   D1.1 images et publication sans secret · D1.2 secrets et utilisateur par init · D1.3 assistant, deux portes, Caddy,
   DuckDNS, réglages · D1.4 invitations · D1.5 sauvegardes · D1.6 mises à jour avec retour arrière · D1.7 installateur,
   plan B Funnel, vérification d'accès, documentation.
+- **1.0.1** (2026-10-10, après la répétition sur le PC de Matthieu) : installateur (plage réseau libre, accès au
+  registre vérifié dès la simulation, `localhost` sous WSL, `--pull always`), affiche qui suit tout de suite une
+  correction manuelle, recherche TMDB refaite après une correction AniList (sauf fiche TMDB verrouillée), distribution
+  réveillée à la fin des métadonnées, une ligne de journal par animé traité, « en attente » expliqué dans
+  l'administration, version affichée en bas à droite du site (ordinateur), section « Répétition sur ton PC ».
 - **D2** : installation d'essai sur le DS923+ (liste « Ce qui exige le vrai NAS », DEPLOIEMENT §12).
 - **D1b** (après D2) : planificateur interne (scan de nuit, remux préventif plafonné et en pause pendant les lectures),
   alertes ntfy et conteneur de veille, export de diagnostic, APK release (R8, version, keystore avec confirmation des

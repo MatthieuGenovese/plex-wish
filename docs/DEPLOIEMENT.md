@@ -68,7 +68,7 @@ Tu peux la relire avant de l'exécuter. Elle ressemble à ceci :
 set -e
 export PATH=/usr/local/bin:$PATH
 echo 'ghp_…' | docker login ghcr.io -u compte-images --password-stdin
-docker run --rm --entrypoint cat ghcr.io/compte-images/anime-server-backend:1.0.0 /app/deploy/install.sh > /tmp/anime-install.sh
+docker run --rm --pull always --entrypoint cat ghcr.io/compte-images/anime-server-backend:1.0.0 /app/deploy/install.sh > /tmp/anime-install.sh
 sh /tmp/anime-install.sh --version 1.0.0 --registry ghcr.io/compte-images --media '/volume1/animes' --domain mon-anime.duckdns.org
 ```
 
@@ -76,16 +76,18 @@ sh /tmp/anime-install.sh --version 1.0.0 --registry ghcr.io/compte-images --medi
 2. `export PATH=…` : indiquer où se trouve le programme `docker` installé par Container Manager.
 3. `docker login …` : donner à Docker le droit de **télécharger** les images d'Anime Server, qui sont privées.
    `ghp_…` est un jeton en **lecture seule** : il ne donne accès à rien d'autre sur ton NAS ni chez Matthieu.
-4. `docker run … cat … install.sh` : extraire de l'image le script d'installation et le poser dans `/tmp`.
+4. `docker run … cat … install.sh` : télécharger l'image (`--pull always` : toujours depuis le registre, ce qui
+   vérifie aussi le jeton), en extraire le script d'installation et le poser dans `/tmp`.
 5. `sh /tmp/anime-install.sh …` : lancer l'installation, avec le dossier de tes vidéos (`--media`) et l'adresse du
    site (`--domain`).
 
 Le script d'installation :
 
-1. vérifie le dossier des vidéos et la présence de Container Manager ;
+1. vérifie le dossier des vidéos, la présence de Container Manager et l'accès aux images (même en simulation) ;
 2. télécharge la version demandée ;
 3. crée le dossier `docker/anime-server` ;
-4. y écrit la configuration (`nas.env`, sans aucun secret) ;
+4. y écrit la configuration (`nas.env`, sans aucun secret), avec une plage d'adresses interne libre sur ce NAS
+   (choisie seule, pour ne gêner aucun autre projet Docker) ;
 5. démarre le site et affiche l'adresse de l'assistant.
 
 Il ne touche à rien d'autre. Pour **voir ce qu'il ferait sans rien modifier**, Matthieu peut t'envoyer la même
@@ -179,6 +181,28 @@ Les images contiennent l'application et les scripts de `deploy/`, aucun secret.
    et l'envoyer.
 
 Relancer la commande d'installation ne casse rien : `nas.env` et les données sont gardés.
+
+### Répétition sur ton PC (Windows), avant le NAS
+
+Faite le 2026-10-10 avec la version 1.0.0 : installation, assistant, HTTPS public par Caddy et DuckDNS. Ce qu'il faut
+savoir :
+
+- **Un vrai Linux** : le script d'installation tourne en root, comme sur le NAS. Utiliser **WSL** (Ubuntu), pas Git
+  Bash : Git Bash réécrit les chemins (`/app/deploy/install.sh` devient `C:/Program Files/Git/app/…`).
+- **Docker Desktop** : *Settings › Resources › WSL integration*, activer Ubuntu, puis rouvrir le terminal
+  (sinon « The command 'docker' could not be found in this WSL 2 distro »). Vérifier `sudo docker version`.
+- **Dossiers** : `sudo mkdir -p /srv/essai/media`, y copier quelques vidéos (`dev-media`), puis `sudo -i` et coller
+  la commande générée avec `-Media /srv/essai/media`. Le projet s'installe dans `/volume1/docker/anime-server`,
+  comme sur un NAS.
+- **Assistant** : `http://localhost:8080` dans le navigateur Windows (l'installateur affiche `localhost` sous WSL).
+  L'adresse publique répond « installation en cours » tant que l'assistant n'est pas fini : c'est voulu.
+- **HTTPS réel** (facultatif) : redirection 443 → 8443 du PC sur ta box, port 8443 autorisé dans le pare-feu
+  Windows, jeton DuckDNS dans l'assistant (le nom pointe alors chez toi ; il sera repointé vers le NAS à son
+  installation).
+- **Plage réseau** : depuis la 1.0.1, l'installateur en choisit une libre (ta pile de démonstration occupe
+  `172.30.65.0/24`).
+- **Nettoyage** : `cd /volume1/docker/anime-server && docker compose --env-file nas.env -f compose.yml down -v`,
+  puis `rm -rf /volume1 /srv/essai`, `docker logout ghcr.io`, et retirer la redirection de la box.
 
 ## 5. Accès depuis Internet
 
@@ -304,6 +328,10 @@ Ce que ça implique :
 
 | Symptôme | Piste |
 | --- | --- |
+| « accès refusé à … : jeton de lecture absent, invalide ou révoqué » | Refaire `docker login ghcr.io` avec le jeton `read:packages` (un jeton supprimé sur GitHub ne marche plus) |
+| « Pool overlaps with other one on this address space » | Une installation antérieure à la 1.0.1 : mettre une plage libre dans `DOCKER_SUBNET` (`nas.env`), puis `sh app/restart.sh` |
+| Affiche ancienne après une correction manuelle | Depuis la 1.0.1, la nouvelle s'affiche tout de suite ; sinon *Affiches › retélécharger* |
+| Distribution « en attente » | *Distribution* dit pourquoi : métadonnées en cours (prioritaires), ou heure du prochain passage |
 | La tâche d'installation échoue | Activer « Enregistrer les résultats » dans la tâche (à vérifier sur place), relancer avec `--dry-run`, lire les messages « ÉCHEC : … » |
 | L'assistant signale « Dossier des vidéos » | Droits du dossier partagé pour l'utilisateur indiqué, ou `MEDIA_UID` / `MEDIA_GID` dans `nas.env`, puis `sh app/restart.sh` |
 | `init` refuse : « les secrets ont disparu, mais la base existe encore » | `sh app/repair-db-password.sh` (aucune donnée effacée) |

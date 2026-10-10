@@ -1,14 +1,15 @@
 # Phase 10 — Lecteur web et préparation des médias pour le navigateur
 
-Conception (10.1, 2026-10-10). Aucun code de production dans cette étape. Les décisions à prendre sont regroupées en
-§0 ; tout changement de sécurité demandé est listé en §9 et **attend ton accord**.
+Conception (10.1, 2026-10-10), **décisions prises le 2026-10-10** (§0) ; changements de sécurité S1 à S7 **acceptés**
+(§9), rien d'autre ne change dans la CSP sans accord. Réalisation : 10.2 (lecteur, sans conversion lourde), puis 10.3
+(conversion et file d'attente).
 
 Rappel du point de départ : Android lit déjà tout (décodeur du téléphone, repli FFmpeg logiciel depuis le
 2026-10-10) et ne change pas : il continue de lire l'original ou la copie remux existante (§23 d'ARCHITECTURE). Tout
 ce qui suit est **à part** : un nouveau cache « web », une nouvelle file, une nouvelle route de lecture pour le
 navigateur.
 
-## 0. Résumé et décisions à prendre
+## 0. Résumé et décisions (prises le 2026-10-10)
 
 Principe : **le navigateur dit ce qu'il sait décoder, le serveur choisit la source la moins chère** :
 
@@ -22,19 +23,26 @@ fichier unique par piste**, lu par hls.js : la vidéo en un fichier, chaque pist
 format donne le choix de la langue, un seek fiable et une lecture possible avant la fin de la préparation. Les
 sous-titres sont extraits à part : ASS rendu par JASSUB, SRT en WebVTT natif.
 
-| # | Décision | Ma proposition |
+| # | Décision | Retenu |
 |---|---|---|
-| D1 | Format des copies web (§2) | **HLS fMP4 (fichier unique par piste) + hls.js 1.7.3** (Apache 2.0, ~120 Ko gzip). Repli refusé : une copie MP4 par langue |
-| D2 | Sous-titres ASS (§3) | **JASSUB 2.5.18** (libass en WebAssembly, ~0,9 Mo gzip chargé seulement si l'épisode a de l'ASS), polices jointes du MKV extraites ; WebVTT en secours |
-| D3 | Sous-titres image PGS/VobSub (§3) | **Message clair** par défaut ; incrustation seulement sur demande de l'admin, par animé (10.3, conversion vidéo complète) |
-| D4 | ffmpeg de l'image (§4.5) | Recompiler avec l'**assembleur** (nasm), l'encodeur **AAC** natif, **libx264** (GPL 2+) et le muxer HLS. Image +~4 Mo ; le binaire ffmpeg devient GPL : sources à fournir sur demande, comme pour l'APK |
-| D5 | Réglages de conversion (§4.2, §6) | x264 `veryfast`, CRF 21, `-tune animation`, 2 fils (`-threads 2`), `nice 19` + `ionice` classe 3 ; AAC 160 kb/s stéréo. **Plafond : 1080p** (≈ temps réel sur le NAS, estimé) **ou 720p** (~1,5× plus rapide, lecture pendant la préparation fiable) : à toi de choisir |
-| D6 | Pause pendant les lectures (§4.6) | Tâches **préventives** suspendues (SIGSTOP) dès qu'une lecture est en cours ; tâche **à la demande** (quelqu'un attend) poursuivie mais bridée (2 fils, priorité basse) |
-| D7 | Cache web (§4.3) | Dossier persistant `/data/web` (nouveau volume), plafond par défaut **15 % du volume, 200 Go au plus**, réglable ; nettoyage la nuit (le moins lu en premier) + à la demande quand il faut de la place |
-| D8 | Préventif (§5) | La nuit (1 h–7 h, réglable) : **les 2 épisodes suivants** de chaque animé en cours (tous comptes), puis les ajouts récents ; conversions vidéo préventives **désactivées par défaut** (remux et son seulement) |
-| D9 | Prévenir l'utilisateur (§5) | Dans le lecteur (progression, temps restant), lecture dès que les premières minutes sont prêtes ; sinon pastille « Prêt » sur la fiche et l'accueil. Pas de notification du navigateur (permission, service worker) |
-| D10 | Changements de sécurité (§9) | `script-src 'wasm-unsafe-eval'`, `media-src blob:`, nouvelles URL signées (copie web, pistes, sous-titres, polices). **À valider** |
-| D11 | Planificateur interne | N'existe pas encore (prévu en D1b). 10.3 en crée un minimal (un fil Java, sans dépendance), réutilisé ensuite par D1b |
+| D1 | Format des copies web (§2) | ✅ **HLS fMP4 (fichier unique par piste) + hls.js 1.7.3** (Apache 2.0) |
+| D2 | Sous-titres ASS (§3) | ✅ **JASSUB 2.5.18** (libass en WebAssembly, chargé seulement si l'épisode a de l'ASS), polices jointes du MKV extraites ; WebVTT en secours |
+| D3 | Sous-titres image PGS/VobSub (§3) | ✅ **Message clair** (incrustation : plus tard, FUTURE) |
+| D4 | ffmpeg de l'image (§4.5) | ✅ Recompilé avec l'**assembleur**, l'encodeur **AAC**, **libx264** et le muxer HLS (10.3.1 ; le muxer HLS seul dès 10.2.2). Binaire ffmpeg GPL : **sources fournies sur demande**, noté dans la doc de déploiement et dans « À propos » |
+| D5 | Réglages de conversion (§4.2, §6) | ✅ x264 `veryfast`, CRF 21, `-tune animation`, 2 fils, `nice 19` + `ionice` classe 3 ; AAC 160 kb/s stéréo. **Plafond 720p par défaut, réglable en 1080p** dans Administration > Réglages (10.3) |
+| D6 | Pause pendant les lectures (§4.6) | ✅ Préventif suspendu pendant les lectures ; à la demande poursuivi mais bridé |
+| D7 | Cache web (§4.3) | ✅ Plafond **15 % du volume, 200 Go au plus**, réglable ; nettoyage la nuit + à la demande. **Dossier configurable** : `WEB_CACHE_PATH` dans `nas.env` (un volume qui a de la place), montré par l'assistant, la doc de déploiement, créé par l'installateur et ajouté par la mise à jour (§4.3) |
+| D8 | Préventif (§5) | ✅ La nuit : 2 épisodes suivants de chaque animé en cours, puis les ajouts récents ; conversions vidéo préventives désactivées par défaut |
+| D9 | Prévenir l'utilisateur (§5) | ✅ Dans le lecteur, lecture dès que possible ; pastille « Prêt » sur la fiche et l'accueil ; pas de notification du navigateur |
+| D10 | Sécurité (§9) | ✅ **S1 à S7 acceptés tels que décrits** ; aucun autre changement de CSP sans accord |
+| D11 | Planificateur interne | ✅ Minimal, en 10.3 |
+| — | Tests de bout en bout | ✅ `@playwright/test` en dépendance de **développement** seulement (Chrome automatisé) |
+
+Ajouts du 2026-10-10 :
+
+- **HEVC en fMP4** : la piste vidéo est marquée `hvc1` (`-tag:v hvc1`), sinon Chrome (et Safari) la refusent.
+- Chaque étape dit précisément **quels navigateurs ont été testés automatiquement** (Chrome via Playwright) et
+  lesquels sont **à tester à la main** (Firefox, Chrome Android, S24).
 
 ## 1. Ce que les navigateurs lisent (Chrome, Edge, Firefox récents ; pas d'Apple)
 
@@ -156,6 +164,7 @@ Remux (W1) et son seul (W2), une playlist par piste et une playlist maîtresse :
 nice -n 19 ionice -c 3 ffmpeg -nostdin -y -i SRC \
   -map 0:v:0 -map 0:a:0 -map 0:a:1 \
   -c:v copy  -c:a copy                       # W2 : -c:a aac -b:a 160k -ac 2
+  -tag:v hvc1                                # HEVC seulement (sinon Chrome refuse la piste)
   -f hls -hls_segment_type fmp4 -hls_flags single_file+independent_segments \
   -hls_playlist_type event -hls_time 6 \
   -master_pl_name master.m3u8 \
@@ -185,7 +194,10 @@ Conversion (W3) : même chose, avec :
 
 ### 4.3 Dossier, plafond, nettoyage
 
-- **Dossier** : `/data/web/<clé>/`, sur un nouveau volume `web-cache` (comme le cache de remux).
+- **Dossier** : `/data/web/<clé>/` dans le conteneur. Sur le NAS : **`WEB_CACHE_PATH` dans `nas.env`**
+  (défaut : `<dossier du projet>/web-cache` ; à mettre sur un volume qui a de la place). L'installateur le crée
+  (`--web-cache DOSSIER`), la mise à jour l'ajoute aux installations existantes, l'assistant et Administration >
+  Réglages l'affichent avec l'espace libre, la doc de déploiement explique comment le déplacer.
   - Clé = id du fichier + taille + date de la source : une source remplacée invalide la copie.
   - Écriture dans `<clé>.part/`, renommé à la fin : jamais une copie à moitié servie comme prête, sauf la lecture
     pendant préparation, qui passe par la playlist `EVENT`.
@@ -224,7 +236,8 @@ L'ffmpeg actuel (7.1.5, ARCHITECTURE §22.1) n'a **aucun encodeur audio/vidéo**
 - `--enable-encoder=aac` : encodeur natif d'ffmpeg, LGPL.
 - `--enable-libx264 --enable-gpl --enable-encoder=libx264` : x264 compilé depuis sa source officielle (empreinte
   vérifiée), statique. Le binaire `ffmpeg` devient GPL 2+ : l'image est distribuée à l'ami, donc on fournit les
-  sources (versions et URL) sur demande, comme pour l'APK (GPL 3).
+  sources (versions et URL) sur demande, comme pour l'APK (GPL 3). **Décidé** : noté dans `docs/DEPLOIEMENT.md` et
+  dans « À propos » du site.
 - `--enable-muxer=hls` et les filtres `scale`, `format`, `aresample`.
 - **Impact** :
   - image +~4 Mo ;
@@ -417,17 +430,17 @@ automatiquement.
 - **Firefox** : HEVC seulement sous Windows ; JASSUB en un seul fil.
 - **Navigateurs mobiles** : le plein écran en paysage dépend du navigateur. Firefox Android n'est pas testable ici.
 
-## 9. Changements de sécurité demandés (rien n'est fait sans ton accord)
+## 9. Changements de sécurité (S1 à S7 acceptés le 2026-10-10 ; rien d'autre sans accord)
 
 | # | Changement | Pourquoi | Ce que ça ouvre |
 |---|---|---|---|
-| S1 | `script-src 'self' 'wasm-unsafe-eval'` | JASSUB instancie du WebAssembly | Autorise **la compilation de WebAssembly** par nos scripts ; pas d'`eval` JavaScript, pas de script externe. Un attaquant qui injecterait déjà du script pourrait aussi lancer du WASM (pas de nouveau point d'entrée) |
-| S2 | `media-src 'self' blob:` | hls.js donne au `<video>` une source MediaSource (`blob:`) | Les `blob:` sont créés par nos scripts dans la page ; aucun contenu distant nouveau |
-| S3 | Pas de `worker-src blob:` : workers de hls.js (`workerPath`) et de JASSUB chargés comme fichiers de notre origine | Éviter les workers `blob:` | Rien de plus (`'self'` suffit) |
-| S4 | Pas d'en-têtes COOP/COEP | Ils casseraient les images distantes ; JASSUB s'en passe (un fil) | — |
-| S5 | Nouvelles URL signées : `/api/stream/{fileId}/web/{clé}/{fichier}` (playlists `.m3u8`, fichiers `.m4s` de chaque piste), `/…/subs/{n}.ass|vtt`, `/…/fonts/{n}` | Copies web et sous-titres | Même signature HMAC et même durée que l'existant ; **liée au fichier et au nom de la ressource** (une signature n'ouvre pas une autre copie) ; noms de fichiers générés par le serveur seulement (aucun chemin client) |
-| S6 | Playlists `.m3u8` réécrites à la volée avec une signature par ressource | hls.js redemande chaque ressource | Les playlists contiennent des signatures : `Cache-Control: no-store`, jamais journalisées (`sig=` masqué, comme aujourd'hui) |
-| S7 | ffmpeg avec encodeurs (libx264, AAC) | Conversion | Plus de code exécuté sur des fichiers : processus non root, sans shell, sans réseau (`--disable-network` conservé), délai maximal |
+| S1 ✅ | `script-src 'self' 'wasm-unsafe-eval'` | JASSUB instancie du WebAssembly | Autorise **la compilation de WebAssembly** par nos scripts ; pas d'`eval` JavaScript, pas de script externe. Un attaquant qui injecterait déjà du script pourrait aussi lancer du WASM (pas de nouveau point d'entrée) |
+| S2 ✅ | `media-src 'self' blob:` | hls.js donne au `<video>` une source MediaSource (`blob:`) | Les `blob:` sont créés par nos scripts dans la page ; aucun contenu distant nouveau |
+| S3 ✅ | Pas de `worker-src blob:` : workers de hls.js (`workerPath`) et de JASSUB chargés comme fichiers de notre origine | Éviter les workers `blob:` | Rien de plus (`'self'` suffit) |
+| S4 ✅ | Pas d'en-têtes COOP/COEP | Ils casseraient les images distantes ; JASSUB s'en passe (un fil) | — |
+| S5 ✅ | Nouvelles URL signées : `/api/stream/{fileId}/web/{clé}/{fichier}` (playlists `.m3u8`, fichiers `.m4s` de chaque piste), `/…/subs/{n}.ass|vtt`, `/…/fonts/{n}` | Copies web et sous-titres | Même signature HMAC et même durée que l'existant ; **liée au fichier et au nom de la ressource** (une signature n'ouvre pas une autre copie) ; noms de fichiers générés par le serveur seulement (aucun chemin client) |
+| S6 ✅ | Playlists `.m3u8` réécrites à la volée avec une signature par ressource | hls.js redemande chaque ressource | Les playlists contiennent des signatures : `Cache-Control: no-store`, jamais journalisées (`sig=` masqué, comme aujourd'hui) |
+| S7 ✅ | ffmpeg avec encodeurs (libx264, AAC) | Conversion | Plus de code exécuté sur des fichiers : processus non root, sans shell, sans réseau (`--disable-network` conservé), délai maximal |
 
 ## 10. Sources (lues le 2026-10-10)
 

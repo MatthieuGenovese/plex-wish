@@ -300,6 +300,25 @@ class PosterTest {
     }
 
     @Test
+    void manuallyChosenAniListSheetBringsItsOwnPosterUnlessTmdbWasChosenAfter() throws Exception {
+        processAll();
+        assertEquals("TMDB", column("Alpha", "provider"));
+        // L'admin choisit la fiche AniList à la main (correction verrouillée) : c'est son affiche qu'il attend,
+        // même si TMDB a une affiche (TMDB reste prioritaire pour les fiches automatiques).
+        sql("INSERT INTO anime_metadata_match (anime_id, status, provider, provider_id, locked, updated_at, updated_by)"
+                + " VALUES (" + id("Alpha") + ", 'MANUAL', 'ANILIST', '1', TRUE, now(), 'admin')");
+        assertEquals(fake.url("/anilist/a.jpg"), posterUrl("Alpha"), "affiche AniList tout de suite");
+        processAll();
+        assertEquals("ANILIST", column("Alpha", "provider"));
+        assertArrayEquals(ANILIST_A, given().get(posterUrl("Alpha")).asByteArray());
+        // Fiche TMDB choisie à la main ensuite : elle repasse devant.
+        sql("UPDATE anime_tmdb SET locked = TRUE, status = 'MANUAL', updated_at = now() + interval '1 second' WHERE anime_id = " + id("Alpha"));
+        processAll();
+        assertEquals("TMDB", column("Alpha", "provider"));
+        assertArrayEquals(TMDB_A, given().get(posterUrl("Alpha")).asByteArray());
+    }
+
+    @Test
     void missingLocalFileFallsBackToRemoteThenIsDownloadedAgain() throws Exception {
         processAll();
         String oldUrl = posterUrl("Alpha");

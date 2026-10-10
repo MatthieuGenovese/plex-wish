@@ -77,14 +77,26 @@ public class PosterService {
         return p != null && p.isAfter(Instant.now()) ? Optional.of(p) : Optional.empty();
     }
 
+    /**
+     * TMDB passe avant AniList pour l'affiche, sauf si l'admin a choisi la fiche AniList à la main (correction
+     * verrouillée) : il a choisi cette fiche en voyant son affiche, c'est elle qu'il attend. Une fiche TMDB choisie à la
+     * main plus récemment repasse devant. Un paramètre : âge maximal d'une fiche TMDB (secondes).
+     */
+    static final String TMDB_WINS = """
+            (t.poster_path IS NOT NULL AND t.fetched_at > now() - make_interval(secs => ?)
+             AND (m.locked IS NOT TRUE OR (t.locked AND t.updated_at >= m.updated_at)))""";
+
     /** Source voulue par animé (fournisseur, URL) : TMDB récent d'abord, sinon AniList. Paramètres : base TMDB, âge max. */
     private static final String DESIRED = """
             SELECT a.id,
-                   CASE WHEN t.poster_path IS NOT NULL AND t.fetched_at > now() - make_interval(secs => ?) THEN 'TMDB'
+                   CASE WHEN """ + TMDB_WINS + """
+             THEN 'TMDB'
                         WHEN coalesce(a.poster_large_url, a.poster_url) IS NOT NULL THEN 'ANILIST' END AS provider,
-                   CASE WHEN t.poster_path IS NOT NULL AND t.fetched_at > now() - make_interval(secs => ?) THEN ? || t.poster_path
+                   CASE WHEN """ + TMDB_WINS + """
+             THEN ? || t.poster_path
                         ELSE coalesce(a.poster_large_url, a.poster_url) END AS src
-            FROM anime a LEFT JOIN anime_tmdb t ON t.anime_id = a.id""";
+            FROM anime a LEFT JOIN anime_tmdb t ON t.anime_id = a.id
+                 LEFT JOIN anime_metadata_match m ON m.anime_id = a.id""";
 
     private void bindDesired(PreparedStatement st) throws SQLException {
         st.setLong(1, config.tmdbMaxAge().toSeconds());
@@ -360,9 +372,11 @@ public class PosterService {
              PreparedStatement st = c.prepareStatement("""
                      SELECT a.id, p.public_id, p.relative_path,
                             p.provider <> 'TMDB' OR p.fetched_at > now() - make_interval(secs => ?),
-                            CASE WHEN t.poster_path IS NOT NULL AND t.fetched_at > now() - make_interval(secs => ?) THEN ? || t.poster_path END,
+                            CASE WHEN """ + TMDB_WINS + """
+                      THEN ? || t.poster_path END,
                             a.poster_url, a.poster_large_url, p.source_url
                      FROM anime a LEFT JOIN anime_poster p ON p.anime_id = a.id LEFT JOIN anime_tmdb t ON t.anime_id = a.id
+                          LEFT JOIN anime_metadata_match m ON m.anime_id = a.id
                      WHERE a.id = ANY(?)""")) {
             st.setLong(1, config.tmdbMaxAge().toSeconds());
             st.setLong(2, config.tmdbMaxAge().toSeconds());

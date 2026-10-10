@@ -69,7 +69,7 @@ public class WebPrepService {
     public record Failed(String reason, Instant retryAt, WebManifest manifest) implements Decision {
     }
 
-    public record CacheFull(int retryAfterSeconds) implements Decision {
+    public record CacheFull(int retryAfterSeconds, WebManifest manifest) implements Decision {
     }
 
     public record Unavailable(String reason) implements Decision {
@@ -279,7 +279,7 @@ public class WebPrepService {
             return new Ready(key, j.manifest()); // terminé entre-temps (fichier sans rien à extraire)
         }
         if ("CACHE_FULL".equals(j.blocked())) {
-            return new CacheFull(60);
+            return new CacheFull(60, j.manifest());
         }
         return preparing(j);
     }
@@ -510,7 +510,7 @@ public class WebPrepService {
             }
             phase(id, "PROBE", m);
             long needed = m.wantsHls() ? job.sourceSize() + job.sourceSize() / 20 + 16 * MB : 64 * MB;
-            switch (makeRoom(needed, job.key())) {
+            switch (makeRoom(needed, job.key(), m.wantsHls())) {
                 case TOO_BIG -> {
                     fail(job, "fichier trop gros pour le cache web (" + job.sourceSize() / MB + " Mo, cache de " + maxBytes() / MB + " Mo)", true);
                     return;
@@ -595,10 +595,14 @@ public class WebPrepService {
 
     enum Room { OK, FULL, TOO_BIG }
 
-    /** Fait de la place : préparations prêtes les moins récemment lues d'abord, jamais une lue récemment ni celle-ci. */
-    synchronized Room makeRoom(long needed, String exceptKey) throws SQLException {
+    /**
+     * Fait de la place : préparations prêtes les moins récemment lues d'abord, jamais une lue récemment ni celle-ci.
+     * La réserve d'espace libre du disque ne s'applique qu'aux copies HLS (taille de l'épisode) : sous-titres et
+     * polices seuls (quelques Mo, lecture de l'original) passent même sur un disque presque plein.
+     */
+    synchronized Room makeRoom(long needed, String exceptKey, boolean copy) throws SQLException {
         long max = maxBytes();
-        long reserve = (long) (config.webCacheReserveGb() * 1e9);
+        long reserve = copy ? (long) (config.webCacheReserveGb() * 1e9) : 0;
         if (needed > max) {
             return Room.TOO_BIG;
         }
@@ -634,7 +638,12 @@ public class WebPrepService {
             free = cache.usableSpace();
             LOG.infof("Préparation web : fichier %d effacé du cache (le moins récemment lu)", (Long) victim[0]);
         }
-        return used + needed <= max && (free < 0 || free - reserve >= needed) ? Room.OK : Room.FULL;
+        if (used + needed <= max && (free < 0 || free - reserve >= needed)) {
+            return Room.OK;
+        }
+        LOG.infof("Préparation web : pas assez de place (cache %d/%d Mo, disque libre %d Mo, réserve %d Mo, besoin %d Mo)",
+                used / MB, max / MB, free / MB, reserve / MB, needed / MB);
+        return Room.FULL;
     }
 
     /** {chemin relatif, extension} du fichier source, s'il est disponible. */

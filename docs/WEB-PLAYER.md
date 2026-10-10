@@ -210,9 +210,11 @@ Conversion (W3) : même chose, avec :
   - **la nuit**, les copies orphelines (source disparue, changée), puis les moins récemment lues jusqu'à repasser
     sous 85 % du plafond ;
   - **à la demande**, quand une nouvelle copie a besoin de place.
-  - Jamais une copie lue dans les 30 dernières minutes, jamais un travail en cours.
+  - Jamais une copie lue dans les 3 dernières heures (un épisode mis en pause puis repris), jamais un travail en cours.
   - Même mécanique que le cache de remux (9.2), qui garde son propre plafond.
-- **Disque presque plein** : rien ne démarre si la réserve n'est pas garantie. La demande répond « le serveur manque
+- **Disque presque plein** : aucune copie HLS ne démarre si la réserve n'est pas garantie (sous-titres et polices
+  seuls, quelques Mo pour lire l'original, passent quand même). Un fichier que le navigateur ne lirait pas de toute
+  façon reçoit sa vraie raison, pas « plus de place ». La demande répond « le serveur manque
   de place » (comme `REMUX_CACHE_FULL`) et l'admin le voit.
 
 ### 4.4 Reprise après redémarrage
@@ -409,6 +411,69 @@ lecteur vidéo, jsdom ne lit rien : **je propose `@playwright/test` en dépendan
 présent dans l'environnement de test). Il ne touche pas l'image de production. Firefox n'y serait pas testé
 automatiquement.
 
+### 10.2 réalisé (2026-10-10)
+
+Commits : 10.2.1 `bb96020`, 10.2.2 `99b408e`, 10.2.3 `bad156c`, 10.2.4 `6439397` (JASSUB), 10.2.5 (essais de bout en bout et corrections).
+
+**API**
+- `GET /api/episodes/{id}/web-playback?caps=h264,aac,…` (connecté) : ce que le navigateur sait lire (détecté par
+  `MediaSource.isTypeSupported`, liste blanche côté serveur) → réponse :
+  - `READY` + `mode` `DIRECT` (original, élément vidéo natif) ou `HLS` (copie fMP4 sans ré-encodage, hls.js) ;
+  - `202 PREPARING` + `Retry-After` (phase, position dans la file, progression, attente estimée ; la copie HLS est
+    donnée avant la fin dès que ses premiers segments existent, `growing: true`) ;
+  - `UNSUPPORTED` + raison en français (dès que l'analyse est faite, même si le cache est plein) ;
+  - erreurs : `409 WEB_PREP_FAILED`, `503 WEB_CACHE_FULL`, `503 WEB_PREP_UNAVAILABLE`.
+  - Toujours : pistes audio (japonais d'abord), sous-titres (ASS + WebVTT dérivé), polices jointes, épisode, épisode
+    suivant, position de reprise, décalage des sous-titres (copie HLS qui commence à 0).
+- `GET|HEAD /api/stream/{fileId}/web/{clé}/{nom}?a=&u=&exp=&sig=` : `master.m3u8` (généré), `s_N.m3u8` (réécrits
+  avec une signature par segment, `no-store`), `s_N.m4s`, `sub_N.ass|vtt`, `font_N.ttf|otf` (Range).
+- Progression : l'API existante (`PUT /api/episodes/{id}/progress`), toutes les 10 s, à la pause, en quittant la page.
+
+**Lecteur** (`/regarder/:id`, liens depuis l'accueil, « Reprendre », la fiche et chaque épisode) : lecture/pause,
+±10 s, barre de temps, volume, muet, plein écran (paysage sur téléphone), panneau « Audio et sous-titres » (choix
+mémorisés sur l'appareil), reprise, épisode suivant avec compte à rebours de 10 s annulable, états (préparation,
+non lisible, erreur avec « Réessayer »). Clavier : Espace/K, ←/→ (10 s), J/L, ↑/↓ volume, M, F, C (sous-titres), Maj+N (épisode suivant),
+Échap. Lecteur d'écran : boutons nommés, temps parlé, annonces (`aria-live`), panneau en boutons radio.
+Sous-titres ASS : JASSUB (styles, positions, polices du fichier) ; s'il ne démarre pas (navigateur ancien, 20 s
+sans réponse), WebVTT avec un message.
+
+**Règles « navigateur » v3** (fiche, Administration > Médias) : le conteneur ne compte plus (copie HLS) ; à
+convertir : H.264 10 bits, MPEG-4 ASP (Xvid/DivX), son DTS/TrueHD/… ; « HEVC : selon le navigateur » ; sous-titres
+seulement en image (PGS/VobSub) : non affichables. Les fichiers déjà analysés sont reclassés sans nouvelle analyse.
+
+**Dépendances ajoutées (web)**
+
+| Paquet | Licence | Rôle |
+|---|---|---|
+| hls.js 1.7.3 | Apache-2.0 | lecture de la copie HLS (chargé seulement pour une copie HLS) |
+| jassub 2.5.18 | MIT (libass ISC, FreeType FTL, HarfBuzz « Old MIT », fribidi LGPL-2.1 compilés en WebAssembly) | sous-titres ASS |
+| ↳ abslink, lfa-ponyfill, throughput | Apache-2.0, MIT, MIT | dépendances de jassub |
+| ↳ rvfc-polyfill | **GPL-3.0** → **remplacé** par un module vide local (`web/vendor/rvfc-polyfill-noop`, MIT, `overrides` npm) : Chrome, Edge, Firefox récents ont `requestVideoFrameCallback` | — |
+| esbuild 0.28.2 (dev) | MIT | construit le worker de JASSUB (`scripts/jassub-assets.mjs`) |
+| @playwright/test 1.64.0 (dev) | Apache-2.0 | essais de bout en bout |
+
+Le worker et les fichiers WebAssembly de JASSUB sont servis par le site (`/jassub/`), aucune ressource externe.
+« À propos » liste ces licences et la mention « code source disponible sur demande » (fribidi LGPL, ffmpeg GPL en
+10.3).
+
+**Image serveur** : ffmpeg 7.1.5 avec le muxer `hls` et le décodeur `movtext` (sous-titres des MP4 : le nom
+`mov_text` était ignoré sans erreur par `configure`, trouvé par l'essai de bout en bout).
+
+**Essais**
+- Serveur : `WebDecisionTest`, `WebSignatureTest`, `WebPlaybackTest` (outils simulés : signatures, permissions,
+  cache plein, trop gros, reprise après redémarrage), `WebPlaybackRealTest` (vrai ffmpeg : MKV H.264 + 2 AAC + ASS +
+  police, MP4 mov_text, HEVC `hvc1`, lecture avant la fin).
+- Web : unitaires (logique du lecteur, détection des formats, page du lecteur, repli ASS → WebVTT).
+- Bout en bout : `scripts/test/e2e-web.sh` (vraie installation : nginx et sa CSP, Caddy, serveur, ffmpeg de
+  l'image ; fichiers générés) puis `web/e2e/player.spec.ts` dans **Google Chrome** (le Chromium de Playwright ne
+  lit ni H.264 ni AAC) : MKV en HLS + deux pistes + ASS rendu par JASSUB + clavier + progression et reprise ; MP4 lu
+  tel quel + WebVTT ; AVI Xvid « non lisible » ; épisode suivant ; aucune violation de CSP ; axe sans erreur grave.
+  Captures : `web/e2e/screenshots/` (non versionnées).
+
+**Testé automatiquement** : Chrome 155 (Linux, Playwright). **À tester à la main** : Firefox, Edge, Chrome Android
+(S24), avec de vrais fichiers. **Non vérifié** : HEVC (pas de décodeur matériel ici), vitesse de préparation sur le
+DS923+, karaoké ASS lourd (charge CPU de JASSUB), Firefox Android.
+
 ### 10.3 — conversion et file d'attente
 
 | Bloc | Contenu |
@@ -438,7 +503,7 @@ automatiquement.
 | S2 ✅ | `media-src 'self' blob:` | hls.js donne au `<video>` une source MediaSource (`blob:`) | Les `blob:` sont créés par nos scripts dans la page ; aucun contenu distant nouveau |
 | S3 ✅ | Pas de `worker-src blob:` : workers de hls.js (`workerPath`) et de JASSUB chargés comme fichiers de notre origine | Éviter les workers `blob:` | Rien de plus (`'self'` suffit) |
 | S4 ✅ | Pas d'en-têtes COOP/COEP | Ils casseraient les images distantes ; JASSUB s'en passe (un fil) | — |
-| S5 ✅ | Nouvelles URL signées : `/api/stream/{fileId}/web/{clé}/{fichier}` (playlists `.m3u8`, fichiers `.m4s` de chaque piste), `/…/subs/{n}.ass|vtt`, `/…/fonts/{n}` | Copies web et sous-titres | Même signature HMAC et même durée que l'existant ; **liée au fichier et au nom de la ressource** (une signature n'ouvre pas une autre copie) ; noms de fichiers générés par le serveur seulement (aucun chemin client) |
+| S5 ✅ | Nouvelles URL signées : `/api/stream/{fileId}/web/{clé}/{fichier}` (playlists `.m3u8`, fichiers `.m4s` de chaque piste), sous-titres `/…/sub_{n}.ass|vtt`, polices `/…/font_{n}.ttf|otf` (liste blanche de noms) | Copies web et sous-titres | Même signature HMAC et même durée que l'existant ; **liée au fichier et au nom de la ressource** (une signature n'ouvre pas une autre copie) ; noms de fichiers générés par le serveur seulement (aucun chemin client) |
 | S6 ✅ | Playlists `.m3u8` réécrites à la volée avec une signature par ressource | hls.js redemande chaque ressource | Les playlists contiennent des signatures : `Cache-Control: no-store`, jamais journalisées (`sig=` masqué, comme aujourd'hui) |
 | S7 ✅ | ffmpeg avec encodeurs (libx264, AAC) | Conversion | Plus de code exécuté sur des fichiers : processus non root, sans shell, sans réseau (`--disable-network` conservé), délai maximal |
 

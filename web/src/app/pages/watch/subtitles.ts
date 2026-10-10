@@ -2,6 +2,8 @@ import { WebSubtitleTrack } from '../../core/playback-api';
 
 /** Sous-titres affichés par-dessus la vidéo (WebVTT natif ; ASS : voir ass-subtitles.ts). */
 export interface SubtitleRenderer {
+  /** Commandes visibles : sous-titres remontés au-dessus d'elles (si le rendu le permet). */
+  raise?(on: boolean): void;
   destroy(): void;
 }
 
@@ -11,6 +13,7 @@ export interface SubtitleRenderer {
  */
 export class VttSubtitles implements SubtitleRenderer {
   private readonly el: HTMLTrackElement;
+  private raised = false;
 
   constructor(
     private readonly video: HTMLVideoElement,
@@ -26,9 +29,10 @@ export class VttSubtitles implements SubtitleRenderer {
     }
     this.el.src = url;
     this.el.default = true;
-    if (Math.abs(offset) > 0.01) {
-      this.el.addEventListener('load', () => shift(this.el.track, offset), { once: true });
-    }
+    this.el.addEventListener('load', () => {
+      if (Math.abs(offset) > 0.01) shift(this.el.track, offset);
+      this.place();
+    }, { once: true });
     video.appendChild(this.el);
     // Une seule piste affichée à la fois.
     queueMicrotask(() => {
@@ -36,6 +40,18 @@ export class VttSubtitles implements SubtitleRenderer {
         t.mode = t === this.el.track ? 'showing' : 'disabled';
       }
     });
+  }
+
+  raise(on: boolean): void {
+    this.raised = on;
+    this.place();
+  }
+
+  /** Lignes comptées depuis le bas : -4 laisse la place de la barre de commandes, sinon placement normal. */
+  private place(): void {
+    for (const cue of Array.from(this.el.track?.cues ?? [])) {
+      if ('line' in cue) (cue as VTTCue).line = this.raised ? -4 : 'auto';
+    }
   }
 
   destroy(): void {

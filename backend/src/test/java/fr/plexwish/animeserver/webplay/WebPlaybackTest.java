@@ -253,6 +253,23 @@ class WebPlaybackTest {
     }
 
     @Test
+    void fullCacheStillSaysWhenTheBrowserCannotPlayTheFile() throws Exception {
+        library("Days/Days - S01E01.mp4", "Days/Days - S01E02.mp4");
+        playback("Days - S01E02.mp4", "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        // Seule préparation prête, lue à l'instant (intouchable) : plus de place pour une autre.
+        sql("UPDATE web_job SET bytes = 90000000, last_read_at = now() WHERE cache_key = '" + key("Days - S01E02.mp4") + "'");
+        prep.maxBytesForTests(100_000_000L);
+        playback("Days - S01E01.mp4", "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        // Son non décodable : la vraie raison, pas « plus de place ».
+        playback("Days - S01E01.mp4", "h264").then().statusCode(200).body("state", equalTo("UNSUPPORTED"))
+                .body("reason", containsString("son"));
+        playback("Days - S01E01.mp4", "h264,aac").then().statusCode(503).body("error", equalTo("WEB_CACHE_FULL"))
+                .body("message", containsString("manque de place"));
+    }
+
+    @Test
     void interruptedPreparationStartsAgainAfterARestart() throws Exception {
         library("Days/Days - S01E01.mp4");
         playback("Days - S01E01.mp4", "h264,aac").then().statusCode(202);

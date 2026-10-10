@@ -187,6 +187,9 @@
   appearance: none;
   background: transparent;
   margin: 0;
+  padding: 0;
+  border: 0; // pas le cadre des champs de formulaire
+  border-radius: 0;
   cursor: pointer;
   accent-color: var(--accent);
 

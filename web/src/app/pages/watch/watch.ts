@@ -301,6 +301,11 @@ export class WatchPage {
       const id = Number(this.id());
       untracked(() => this.open(id));
     });
+    // Sous-titres WebVTT au-dessus de la barre de commandes quand elle est visible.
+    effect(() => {
+      const raised = this.showControls() && this.phase() === 'ready';
+      untracked(() => this.subs?.raise?.(raised));
+    });
     inject(DestroyRef).onDestroy(() => this.teardown(true));
     const v = Number(loadPref('volume'));
     if (Number.isFinite(v) && v >= 0 && v <= 1 && loadPref('volume') !== null) {
@@ -447,6 +452,7 @@ export class WatchPage {
     const url = t.format === 'vtt' ? t.url : t.vttUrl;
     if (url) {
       this.subs = new VttSubtitles(video, t, url, offset);
+      this.subs.raise?.(this.showControls());
     }
   }
 

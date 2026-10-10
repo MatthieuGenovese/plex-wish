@@ -34,7 +34,7 @@ RUN ./configure --prefix=/opt/ffmpeg --disable-everything --disable-autodetect -
       --enable-muxer=matroska,null,mp4,webvtt,ass,hls \
       --enable-decoder=h264,hevc,mpeg4,msmpeg4v1,msmpeg4v2,msmpeg4v3,mpeg1video,mpeg2video,vp8,vp9,mjpeg,vc1,wmv3,theora \
       --enable-decoder=aac,aac_latm,mp1,mp2,mp3,ac3,eac3,dca,truehd,mlp,vorbis,opus,flac,alac,pcm_s16le,pcm_s24le,pcm_s16be,wmav2 \
-      --enable-decoder=ass,ssa,subrip,srt,webvtt,mov_text,dvdsub,pgssub,dvbsub \
+      --enable-decoder=ass,ssa,subrip,srt,webvtt,movtext,dvdsub,pgssub,dvbsub \
       --enable-encoder=webvtt,ass,subrip \
  && make -j"$(nproc)" > /dev/null && make install > /dev/null \
  && strip /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe

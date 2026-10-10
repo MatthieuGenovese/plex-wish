@@ -165,9 +165,19 @@ public class WebPlaybackResource {
                         .entity(new WebPlayback("PREPARING", null, null, null, null, false, null, List.of(), List.of(), List.of(),
                                 false, List.of(), info, null, episode, next, resume, 0)).build();
             }
-            case WebPrepService.CacheFull f -> throw new ApiException(503, "WEB_CACHE_FULL",
-                    "Le serveur n'a plus de place pour préparer cet épisode pour le navigateur (les copies déjà prêtes sont en cours "
-                            + "de lecture). Réessayez dans quelques minutes.");
+            case WebPrepService.CacheFull f -> {
+                // Fichier que ce navigateur ne lirait de toute façon pas : inutile de faire attendre.
+                if (f.manifest() != null) {
+                    WebManifest planned = f.manifest().withProduced(f.manifest().subtitles(), f.manifest().fonts(), f.manifest().wantsHls());
+                    WebDecision.Result d = WebDecision.decide(planned, caps);
+                    if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
+                        yield Response.ok(unsupported(d.reason(), f.manifest(), episode, next, resume)).build();
+                    }
+                }
+                throw new ApiException(503, "WEB_CACHE_FULL",
+                        "Le serveur manque de place pour préparer cet épisode pour le navigateur. Réessayez plus tard, ou regardez-le "
+                                + "avec l'application Android.");
+            }
             case WebPrepService.Failed f -> {
                 // Fichier que ce navigateur ne lirait de toute façon pas : la raison utile est celle-là, pas l'échec.
                 if (f.manifest() != null) {

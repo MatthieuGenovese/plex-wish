@@ -60,3 +60,8 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Vraie adresse des visiteurs derrière Funnel (en-tête à vérifier) pour l'anti brute force.
 - QR code du lien d'invitation (avec la bibliothèque QR de la page « Installer l'application », D1b).
 - Copie automatique des sauvegardes hors du NAS (aujourd'hui : Hyper Backup de l'ami ou récupération manuelle).
+
+## Lecteur web (phase 10)
+- Sous-titres ASS (JASSUB) remontés au-dessus de la barre de commandes quand elle est visible (fait pour le WebVTT ;
+  pour l'ASS il faudrait réduire la zone de rendu sans déplacer les panneaux en haut de l'image).
+- Essais de bout en bout dans Firefox (Playwright sait le piloter ; reste à vérifier que son Firefox lit le H.264 et l'AAC).

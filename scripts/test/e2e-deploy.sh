@@ -190,18 +190,20 @@ step_backup() {
     [ "$(pub -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Origin: https://$DOMAIN" \
         -d '{"login":"alice","password":"le-mot-de-passe-d-alice"}' "$PUB/api/auth/login")" = 200 ] && ok "alice se reconnecte après restauration" || fail "connexion"
     ls "$DATA/backups" | grep -q '^avant-restauration-' && ok "sauvegarde de sécurité faite avant la restauration" || fail "pas de sauvegarde de sécurité"
-    # Rotation : 200 jours de sauvegardes fictives (deux par jour certains jours).
-    for i in $(seq 0 199); do
-        d=$(date -d "2026-10-09 -$i days" +%Y%m%d)
+    # Rotation : 400 jours de sauvegardes fictives jusqu'à aujourd'hui (deux par jour certains jours), en plus de la vraie.
+    today=$(date +%Y-%m-%d)
+    for i in $(seq 0 399); do
+        d=$(date -d "$today -$i days" +%Y%m%d)
         touch "$DATA/backups/anime-db-$d-030000.dump"
         [ $((i % 10)) = 0 ] && touch "$DATA/backups/anime-db-$d-150000.dump"
     done
     dc exec -T backup sh /app-scripts/backup-loop.sh rotate > /dev/null
-    kept=$(ls "$DATA/backups" | grep -E '^anime-db-2026' | sort -r)
+    kept=$(ls "$DATA/backups" | grep -E '^anime-db-[0-9]{8}-' | sort -r)
     n=$(echo "$kept" | wc -l)
     newest7=$(echo "$kept" | head -7 | cut -c10-17 | tr '\n' ' ')
-    [ "$n" = 17 ] && [ "$newest7" = "20261009 20261008 20261007 20261006 20261005 20261004 20261003 " ] \
-        && ok "rotation : 7 jours, puis semaines et mois ($n gardées sur 220)" || fail "rotation : $n gardées ; $newest7"
+    expected7=$(for i in 0 1 2 3 4 5 6; do date -d "$today -$i days" +%Y%m%d; done | tr '\n' ' ')
+    [ "$n" = 17 ] && [ "$newest7" = "$expected7" ] \
+        && ok "rotation : 7 jours, puis semaines et mois ($n gardées sur 441)" || fail "rotation : $n gardées ; $newest7 (attendu $expected7)"
 }
 
 build_variant() { # build_variant <version> <migration en plus : oui|non> — version CASSÉE (santé toujours en échec)

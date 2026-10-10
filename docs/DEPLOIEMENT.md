@@ -149,7 +149,10 @@ Le script :
   - un secret est trouvé : nom de fichier sensible, motif de clé ou de jeton, ou valeur de ton `.env` et des fichiers
     de signature Android ;
   - le dépôt n'est pas propre ;
-  - la version existe déjà sur le registre.
+  - la version existe déjà sur le registre, sauf avec `-Replace` (`REPLACE=1` sous Linux) : **réservé aux versions
+    d'essai jamais installées chez l'ami**. Sur une pile d'essai déjà à cette version, `update.sh` refuse (« déjà
+    installée ») : recharger les images avec `docker compose --env-file nas.env -f compose.yml pull backend web`
+    puis `sh app/restart.sh`.
 
 Les images contiennent l'application et les scripts de `deploy/`, aucun secret.
 

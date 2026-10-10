@@ -2,12 +2,14 @@
 #
 #   $env:GHCR_OWNER = "mon-compte-images"; scripts\publish-images.ps1          # construit, vérifie, publie
 #   scripts\publish-images.ps1 -NoPush                                         # construit et vérifie seulement
+#   scripts\publish-images.ps1 -Replace                                        # remplace une version déjà publiée
+#                                       (essais seulement : jamais une version déjà installée chez l'ami)
 #
 # Avant la première publication : docker login ghcr.io avec un jeton qui a le droit write:packages
 # (PAS le jeton en lecture donné au NAS). Voir docs/DEPLOIEMENT.md, « Pour moi : images ».
 # Refus de publier si le dépôt a des modifications non commitées, si la version existe déjà sur le registre,
 # ou si un secret est trouvé dans une image (scripts/image-scan.sh, dans un conteneur jetable).
-param([switch]$NoPush)
+param([switch]$NoPush, [switch]$Replace)
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -40,7 +42,10 @@ if (-not $NoPush) {
         $answer = (docker manifest inspect @insecure "${img}:$version" 2>&1 | ForEach-Object { "$_" }) -join "`n"
         $code = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
-        if ($code -eq 0) { Fail "${img}:$version existe déjà sur le registre : augmenter VERSION" }
+        if ($code -eq 0) {
+            if ($Replace) { Write-Host "ATTENTION : ${img}:$version existe déjà et va être REMPLACÉE (-Replace)." -ForegroundColor Yellow; continue }
+            Fail "${img}:$version existe déjà sur le registre : augmenter VERSION (ou -Replace pour une version d'essai jamais installée chez l'ami)"
+        }
         if ($answer -notmatch 'manifest unknown|not found|no such manifest') {
             Fail "registre injoignable ou accès refusé pour ${img} ($answer). Avez-vous fait « docker login ghcr.io » avec le jeton d'écriture ?"
         }

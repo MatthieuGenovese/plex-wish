@@ -3,6 +3,8 @@
 #
 #   GHCR_OWNER=mon-compte-images scripts/publish-images.sh            # construit, vérifie, publie
 #   scripts/publish-images.sh --no-push                                # construit et vérifie seulement
+#   REPLACE=1 scripts/publish-images.sh                                # remplace une version déjà publiée
+#                                                                        (essais seulement : jamais une version installée chez l'ami)
 #
 # Avant la première publication : `docker login ghcr.io` avec un jeton qui a le droit write:packages
 # (PAS le jeton en lecture donné au NAS). Voir docs/DEPLOIEMENT.md, « Pour moi : images ».
@@ -44,7 +46,11 @@ if [ "$push" = 1 ]; then
     for img in "$backend" "$web"; do
         # « manifest unknown » = version absente, cas normal ; toute autre erreur (accès refusé…) arrête tout.
         if answer=$(docker manifest inspect $insecure "$img:$version" 2>&1); then
-            echo "$img:$version existe déjà sur le registre : augmenter VERSION." >&2
+            if [ "${REPLACE:-0}" = 1 ]; then
+                echo "ATTENTION : $img:$version existe déjà et va être REMPLACÉE (REPLACE=1)." >&2
+                continue
+            fi
+            echo "$img:$version existe déjà sur le registre : augmenter VERSION (ou REPLACE=1 pour une version d'essai jamais installée chez l'ami)." >&2
             exit 1
         fi
         if ! echo "$answer" | grep -Eqi 'manifest unknown|not found|no such manifest'; then

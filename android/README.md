@@ -48,7 +48,7 @@ Dans l'app **debug**, adresse du serveur : `http://localhost:8080`.
 
 ## Adresse du serveur
 
-**Préremplie à la compilation** (facultatif) : `plexwish.serverUrl=https://anime.mondomaine.fr` dans `android/app/local.properties` (non versionné), ou `.\gradlew.bat assembleRelease -Pplexwish.serverUrl=https://…`. Les amis n'ont alors que leur identifiant à taper ; l'adresse reste modifiable à l'écran de connexion. Sans cette propriété, le champ est vide.
+**Fixée à la compilation** : `plexwish.serverUrl=https://anime.mondomaine.fr` dans `android/app/local.properties` (non versionné), ou `.\gradlew.bat assembleRelease -Pplexwish.serverUrl=https://…`. L'app s'y connecte alors toujours et ne l'affiche nulle part : pas de champ « Adresse du serveur » à la connexion, pas de mention dans Compte ; les amis n'ont que leur identifiant et leur mot de passe à taper. Sans cette propriété (essais, `adb reverse`), le champ « Adresse du serveur » apparaît.
 
 Au premier lancement : l'adresse publique (celle de `PUBLIC_URL`, ex. `https://anime.mondomaine.fr` ou `https://monnas.synology.me`), puis identifiant et mot de passe. Le `https://` peut être omis. L'app vérifie que l'adresse répond comme un Anime Server avant d'envoyer le mot de passe. L'adresse et l'identifiant sont mémorisés ; le mot de passe ne l'est jamais. Pour changer de serveur : *Compte → Se déconnecter*.
 

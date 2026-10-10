@@ -57,7 +57,7 @@ data class LoginActions(
     val submit: () -> Unit = {},
 )
 
-/** Connexion : adresse du serveur (préremplie, modifiable), identifiant, mot de passe (affichable), aide. */
+/** Connexion : identifiant, mot de passe (affichable), aide ; adresse du serveur seulement si aucune n'est fixée à la compilation. */
 @Composable
 fun LoginScreen(vm: LoginViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
@@ -83,14 +83,16 @@ fun LoginContent(s: LoginState, a: LoginActions) {
             if (s.expired) {
                 Text("Votre session a expiré : reconnectez-vous.", style = MaterialTheme.typography.bodyMedium, color = p.text2)
             }
-            OutlinedTextField(
-                value = s.server, onValueChange = a.onServer, singleLine = true, enabled = !s.loading,
-                label = { Text("Adresse du serveur") },
-                placeholder = { Text("https://anime.mondomaine.fr") },
-                supportingText = { Text("Celle que vous a donnée l'administrateur.") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-                shape = AppShapes.medium, modifier = Modifier.fillMaxWidth(),
-            )
+            if (!s.fixedServer) {
+                OutlinedTextField(
+                    value = s.server, onValueChange = a.onServer, singleLine = true, enabled = !s.loading,
+                    label = { Text("Adresse du serveur") },
+                    placeholder = { Text("https://anime.mondomaine.fr") },
+                    supportingText = { Text("Celle que vous a donnée l'administrateur.") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                    shape = AppShapes.medium, modifier = Modifier.fillMaxWidth(),
+                )
+            }
             OutlinedTextField(
                 value = s.login, onValueChange = a.onLogin, singleLine = true, enabled = !s.loading,
                 label = { Text("Identifiant ou e-mail") },

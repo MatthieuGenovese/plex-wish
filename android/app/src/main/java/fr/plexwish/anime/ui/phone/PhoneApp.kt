@@ -133,7 +133,7 @@ fun PhoneApp(container: AppContainer) {
             }
             composable(Routes.ACCOUNT) {
                 AccountScreen(viewModel(factory = ViewModels.Factory), username = container.session.username,
-                    server = container.session.serverUrl?.let(ServerUrl::display), theme = theme, onTheme = container.themePrefs::set,
+                    server = if (fr.plexwish.anime.BuildConfig.DEFAULT_SERVER_URL.isBlank()) container.session.serverUrl?.let(ServerUrl::display) else null, theme = theme, onTheme = container.themePrefs::set,
                     onAbout = { nav.navigate(Routes.ABOUT) }, onLogout = { scope.launch { container.auth.logout() } }, padding = padding)
             }
             composable(Routes.ABOUT) { AboutScreen(padding) }

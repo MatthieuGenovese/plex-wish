@@ -21,23 +21,30 @@ data class LoginState(
     val expired: Boolean = false,
     /** « Afficher le mot de passe ». */
     val visible: Boolean = false,
+    /** Adresse fixée à la compilation : ni affichée ni modifiable (le champ n'existe pas à l'écran). */
+    val fixedServer: Boolean = false,
 ) {
     val canSubmit get() = !loading && server.isNotBlank() && login.isNotBlank() && password.isNotEmpty()
     override fun toString() = "LoginState(server=$server, login=$login, loading=$loading)" // jamais le mot de passe
 }
 
 /**
- * Connexion. Adresse du serveur : la dernière utilisée, sinon celle préremplie à la compilation
- * ({@code BuildConfig.DEFAULT_SERVER_URL}, propriété {@code plexwish.serverUrl}), toujours modifiable.
+ * Connexion. Adresse du serveur : celle fixée à la compilation ({@code BuildConfig.DEFAULT_SERVER_URL}, propriété
+ * {@code plexwish.serverUrl}) quand il y en a une, toujours utilisée et jamais affichée ; sinon (versions d'essai sans
+ * adresse) la dernière utilisée, saisie à l'écran.
  */
 class LoginViewModel(private val auth: AuthRepository, session: SessionStore, defaultServer: String = "") : ViewModel() {
 
     private val _state = MutableStateFlow(
-        LoginState(server = auth.savedServer ?: defaultServer, login = auth.savedUsername.orEmpty(), expired = session.expired.value),
+        if (defaultServer.isNotBlank()) {
+            LoginState(server = defaultServer, fixedServer = true, login = auth.savedUsername.orEmpty(), expired = session.expired.value)
+        } else {
+            LoginState(server = auth.savedServer.orEmpty(), login = auth.savedUsername.orEmpty(), expired = session.expired.value)
+        },
     )
     val state: StateFlow<LoginState> = _state.asStateFlow()
 
-    fun onServer(v: String) = _state.update { it.copy(server = v, error = null) }
+    fun onServer(v: String) = _state.update { if (it.fixedServer) it else it.copy(server = v, error = null) }
     fun onLogin(v: String) = _state.update { it.copy(login = v, error = null) }
     fun onPassword(v: String) = _state.update { it.copy(password = v, error = null) }
     fun toggleVisible() = _state.update { it.copy(visible = !it.visible) }

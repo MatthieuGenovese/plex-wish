@@ -9,8 +9,9 @@ plugins {
 // Nom affiché de l'application : SEUL endroit côté Android (étiquette du lanceur, écrans). Web : web/src/app/core/app-name.ts.
 val appName = "Anime Server"
 
-// Adresse du serveur préremplie à l'écran de connexion (modifiable dans l'app) : propriété `plexwish.serverUrl` de
-// local.properties (non versionné) ou de la ligne de commande (-Pplexwish.serverUrl=https://…). Vide par défaut.
+// Adresse du serveur, fixée à la compilation : propriété `plexwish.serverUrl` de local.properties (non versionné) ou de
+// la ligne de commande (-Pplexwish.serverUrl=https://…). Quand elle est donnée, l'app s'y connecte toujours et ne
+// l'affiche nulle part (ni champ à la connexion, ni mention dans Compte). Vide : champ « Adresse du serveur » (essais).
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }

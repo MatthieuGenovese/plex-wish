@@ -128,10 +128,26 @@ main > * { display: block; }
   font-size: var(--fs-caption);
 }
 
+// Version installée : discrète, en bas à droite de l'écran, sans gêner les clics (ordinateur seulement).
+.app-version {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  z-index: 20;
+  margin: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  pointer-events: none;
+}
+
 // Barre du bas (téléphone)
 .bottombar { display: none; }
 
 @media (max-width: 47.99rem) {
+  .app-version { display: none; }
   .topbar {
     position: static;
     min-height: 3.5rem;

@@ -9,6 +9,7 @@ import { AccountPage } from './pages/account/account';
 import { ThemeService } from './core/theme.service';
 import { APP_NAME } from './core/app-name';
 import { a11yViolations } from './core/a11y-testing';
+import { SetupService } from './core/setup.service';
 
 describe('Navigation (P2.2)', () => {
   let http: HttpTestingController;
@@ -61,6 +62,17 @@ describe('Navigation (P2.2)', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await fixture.whenStable();
     expect(el.querySelector('.menu-panel')).toBeNull();
+  });
+
+  it('version installée en bas à droite (connue par /api/setup/status), absente tant qu’elle n’est pas connue', async () => {
+    signIn();
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid=app-version]')).toBeNull();
+    TestBed.inject(SetupService).status.set({ installed: true, entry: 'public', adminExists: true, publicUrl: null, version: '1.0.1' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid=app-version]')?.textContent?.trim()).toBe('Version 1.0.1');
   });
 
   it('menu d’un utilisateur : pas d’administration', async () => {

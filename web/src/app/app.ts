@@ -4,6 +4,7 @@ import { filter, map } from 'rxjs';
 import { NavigationEnd } from '@angular/router';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { SetupService } from './core/setup.service';
 import { APP_NAME } from './core/app-name';
 import { TMDB_NOTICE } from './pages/about/about';
 import { AccountMenu } from './shared/account-menu';
@@ -44,6 +45,10 @@ import { SearchBox } from './shared/search-box';
     <footer class="app-footer" [class.with-bottombar]="auth.user()">
       Informations des animés : AniList et TMDB. <span lang="en">{{ tmdbNotice }}</span> · <a routerLink="/a-propos">À propos</a>
     </footer>
+    @if (setup.status()?.version; as v) {
+      <!-- Version installée, en bas à droite de l'écran (ordinateur seulement : masquée sur téléphone, CSS). -->
+      <p class="app-version" data-testid="app-version">Version {{ v }}</p>
+    }
     @if (auth.user()) {
       <nav class="bottombar" aria-label="Navigation principale (téléphone)">
         <a routerLink="/" routerLinkActive #home="routerLinkActive" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">
@@ -62,6 +67,7 @@ export class App {
   protected readonly tmdbNotice = TMDB_NOTICE;
   protected readonly appName = APP_NAME;
   protected readonly auth = inject(AuthService);
+  protected readonly setup = inject(SetupService);
   private readonly router = inject(Router);
   /** Sur la bibliothèque, son propre champ de recherche suffit (pas deux champs à l'écran). */
   protected readonly onLogin = toSignal(

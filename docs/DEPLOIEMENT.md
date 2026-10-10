@@ -174,6 +174,20 @@ Le script :
 
 Les images contiennent l'application et les scripts de `deploy/`, aucun secret.
 
+### Licences et code source à fournir sur demande
+
+L'image du serveur contient **ffmpeg compilé avec x264** (conversion pour le navigateur, phase 10.3) : ce binaire est
+sous **GPL 2 ou ultérieure**. L'APK Android contient FFmpeg via NextLib (**GPL 3**). Les distribuer à l'ami (et aux
+utilisateurs de l'APK) oblige à fournir, **à qui le demande**, le code source correspondant :
+
+- ffmpeg : archive officielle `ffmpeg-7.1.5.tar.xz` (empreinte dans `backend/Dockerfile`) et la ligne `configure` du
+  même fichier ;
+- x264 : paquet source Ubuntu `x264` de la version installée dans l'image (`apt-get source x264` sur la même base
+  `eclipse-temurin:21-jre`) ;
+- l'application : ce dépôt, au commit indiqué dans l'image (`org.opencontainers.image.revision`).
+
+« À propos » sur le site le rappelle. Rien à faire tant que personne ne le demande.
+
 ## 4. Installer
 
 1. **Avant l'appel** : `scripts\make-install-command.ps1 -Owner compte-images -Media /volume1/animes -Domain mon-anime.duckdns.org`

@@ -37,7 +37,7 @@ export const TMDB_NOTICE =
         <h3 id="about-player">Lecteur vidéo</h3>
         <p>Lecture dans le navigateur : hls.js (licence Apache 2.0). Sous-titres ASS : JASSUB (MIT), avec libass,
           FreeType, HarfBuzz, FriBidi et leurs dépendances (LGPL 2.1, FTL, MIT et licences proches), servis par ce site.
-          Préparation des épisodes sur le serveur : FFmpeg (LGPL 2.1 ou plus).</p>
+          Préparation et conversion des épisodes sur le serveur : FFmpeg avec x264 (GPL 2 ou plus).</p>
         <p data-testid="source-notice">Le code source complet de ces composants, et celui de l’application, est fourni à
           toute personne qui le demande à l’administrateur du serveur.</p>
       </section>

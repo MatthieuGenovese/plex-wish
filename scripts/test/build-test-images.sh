@@ -1,7 +1,7 @@
 #!/bin/sh
 # ESSAIS SEULEMENT (cet environnement n'a pas d'accès direct à Maven Central ni à npm dans « docker build ») :
 # construit les images avec le VRAI Dockerfile, mais en remplaçant les étapes de compilation par des sorties
-# compilées sur la machine (jar Quarkus, dist Angular, ffmpeg d'une image existante), puis les pousse sur un
+# compilées sur la machine (jar Quarkus, dist Angular, ffmpeg et libx264 extraits d'une image construite avec la vraie étape « ffmpeg » : bin/ et usr/lib/x86_64-linux-gnu/ dans $ctx/ffmpeg), puis les pousse sur un
 # registre local. Sur le PC de Matthieu, publish-images.sh construit tout dans Docker.
 #
 #   scripts/test/build-test-images.sh <version> [registre]      (défaut : localhost:5000/test)

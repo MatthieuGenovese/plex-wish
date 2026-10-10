@@ -627,3 +627,62 @@ export interface RemuxTestStatus {
   estimatedSecondsLeft: number | null;
   lastError: string | null;
 }
+
+// --- Lecteur web : administration (10.3, GET /api/admin/web) ------------------------------------------------------------
+
+export interface WebSettingsView {
+  maxHeight: 720 | 1080;
+  preventive: boolean;
+  preventiveVideo: boolean;
+  nightStartHour: number;
+  nightEndHour: number;
+}
+
+export interface WebJobLabel {
+  episodeId: number | null;
+  animeId: number | null;
+  animeTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+}
+
+/** BASE : sous-titres et copie sans conversion ; CONV : conversion (vidéo et/ou son). */
+export type WebJobKind = 'BASE' | 'CONV';
+
+export interface WebRunning {
+  kind: WebJobKind;
+  mediaFileId: number;
+  episode: WebJobLabel;
+  phase: string | null;
+  priority: number;
+  progress: number | null;
+  speed: number | null;
+  paused: boolean;
+}
+
+export interface WebJobItem {
+  kind: WebJobKind;
+  mediaFileId: number;
+  episode: WebJobLabel;
+  status: 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED';
+  priority: number;
+  phase: string | null;
+  error: string | null;
+  attempts: number;
+  requestedAt: string | null;
+  nextAttemptAt: string | null;
+  blocked: boolean;
+}
+
+export interface WebAdminOverview {
+  settings: WebSettingsView;
+  ffmpegVersion: string | null;
+  usable: boolean;
+  nightOpen: boolean;
+  cache: { hostPath: string | null; usedBytes: number; capBytes: number; freeBytes: number; totalBytes: number; readyBase: number; readyConverted: number };
+  running: WebRunning[];
+  queued: number;
+  queue: WebJobItem[];
+  failures: WebJobItem[];
+  speeds: Record<string, number>;
+}

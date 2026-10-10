@@ -57,7 +57,7 @@ describe('WatchPage (lecteur web)', () => {
     const first = ask();
     expect(first.request.params.get('caps')).not.toBeNull();
     first.flush(base({ state: 'PREPARING', mode: null, url: null,
-      preparing: { phase: 'HLS', position: 0, progress: 0.4, estimatedSeconds: 150, retryAfterSeconds: 1, message: 'Préparation de la vidéo pour le navigateur…' } }),
+      preparing: { phase: 'HLS', position: 0, progress: 0.4, estimatedSeconds: 150, retryAfterSeconds: 1, message: 'Préparation de la vidéo pour le navigateur…', conversion: false } }),
       { status: 202, statusText: 'Accepted' });
     await fixture.whenStable();
     const card = el.querySelector('[data-testid=preparing]')!;
@@ -107,6 +107,19 @@ describe('WatchPage (lecteur web)', () => {
     const put = http.expectOne((r) => r.url === '/api/episodes/5/progress' && r.method === 'PUT');
     expect(put.request.body).toEqual({ positionSeconds: 312, durationSeconds: 1440 });
     put.flush({});
+    fixture.destroy();
+  });
+
+  it('conversion sur le serveur : attente en heures et minutes, la page peut être fermée', async () => {
+    const { fixture, el } = await open();
+    ask().flush(base({ state: 'PREPARING', mode: null, url: null,
+      preparing: { phase: 'CONVERT', position: 1, progress: null, estimatedSeconds: 4800, retryAfterSeconds: 10,
+        message: 'Conversion pour le navigateur en attente… (1 avant lui)', conversion: true } }), { status: 202, statusText: 'Accepted' });
+    await fixture.whenStable();
+    const card = el.querySelector('[data-testid=preparing]')!;
+    expect(card.textContent).toContain('Environ 1 h 20');
+    expect(el.querySelector('[data-testid=conversion-note]')?.textContent).toContain('Vous pouvez aussi fermer cette page');
+    expect(await a11yViolations(el)).toEqual([]);
     fixture.destroy();
   });
 

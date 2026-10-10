@@ -10,6 +10,7 @@ import { Icon } from '../../shared/icon';
 import { Poster } from '../../shared/poster';
 import { Rail } from '../../shared/rail';
 import { ResumeCard } from '../../shared/resume-card';
+import { PlaybackApi } from '../../core/playback-api';
 import { StateBox } from '../../shared/state';
 import { longEpisode, percent, remainingMinutes } from '../../shared/viewing';
 
@@ -60,7 +61,10 @@ interface HomeData {
             <div class="hero-text">
               <p class="hero-kicker">{{ h.kicker }}</p>
               <h2 id="hero-title" class="hero-title">{{ h.title }}</h2>
-              <p class="hero-meta num">{{ h.meta }}</p>
+              <p class="hero-meta num">{{ h.meta }}
+                @if (h.episodeId && webStatus()[h.episodeId] === 'READY') { <span class="badge badge-success">Prêt pour le navigateur</span> }
+                @else if (h.episodeId && webStatus()[h.episodeId] === 'PREPARING') { <span class="badge">En préparation</span> }
+              </p>
               @if (h.pct !== null) {
                 <p class="hero-progress num"><span class="progress" aria-hidden="true"><i [style.width.%]="h.pct"></i></span>{{ h.left }}</p>
               }
@@ -78,7 +82,7 @@ interface HomeData {
           <app-rail heading="Continuer à regarder" id="rail-continue">
             <ul class="rail-list">
               @for (c of d.continueWatching.slice(1); track c.animeId) {
-                <li><app-resume-card [item]="c" /></li>
+                <li><app-resume-card [item]="c" [webState]="webStatus()[c.episodeId]" /></li>
               }
             </ul>
           </app-rail>
@@ -157,6 +161,13 @@ export class HomePage {
     ),
   );
 
+  private readonly playback = inject(PlaybackApi);
+  /** Épisodes de « Continuer » → « Prêt pour le navigateur » / « En préparation » (D9). */
+  private readonly resumeIds = computed(() => (this.state().data?.continueWatching ?? []).map((c) => c.episodeId).join(','));
+  private readonly webStatusState = loadOn(this.resumeIds, (ids) =>
+    ids ? this.playback.webStatus(ids.split(',').map(Number)).pipe(catchError(() => of({}))) : of({}));
+  protected readonly webStatus = computed<Record<string, 'READY' | 'PREPARING'>>(() => this.webStatusState().data ?? {});
+
   /** Héros : l'épisode à reprendre (la rangée « Continuer à regarder » montre les suivants) (ou suivant), sinon le dernier ajout. */
   protected readonly hero = computed(() => {
     const d = this.state().data;
@@ -172,7 +183,7 @@ export class HomePage {
         pct: resume ? percent(c.positionSeconds, c.durationSeconds) : null,
         left: left ? `reste ${left} min` : '',
         action: c.kind === 'NEXT' ? 'Regarder l’épisode suivant' : 'Reprendre', icon: 'play_arrow_fill' as const,
-        link: ['/regarder', String(c.episodeId)], params: {},
+        link: ['/regarder', String(c.episodeId)], params: {}, episodeId: c.episodeId as number | null,
       };
     }
     const a = d.recent.items[0];
@@ -181,6 +192,7 @@ export class HomePage {
       animeId: a.id, title: a.title, poster: a.posterUrl, kicker: 'Dernier ajout',
       meta: [a.year, `${a.episodeCount} épisode${a.episodeCount > 1 ? 's' : ''}`].filter(Boolean).join(' · '),
       pct: null, left: '', action: 'Voir la fiche', icon: 'chevron_right' as const, link: ['/anime', String(a.id)], params: {},
+      episodeId: null as number | null,
     };
   });
 }

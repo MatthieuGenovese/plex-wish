@@ -1,4 +1,4 @@
-import { episodeLine, formatTime, pickAudio, pickSubtitle, reportable, resumeFrom, spokenTime } from './player-logic';
+import { episodeLine, formatTime, pickAudio, pickSubtitle, reportable, resumeFrom, spokenTime, waitText } from './player-logic';
 import { WebAudioTrack, WebSubtitleTrack } from '../../core/playback-api';
 
 const audio = (id: number, language: string | null): WebAudioTrack => ({ id, label: String(language), language, codec: 'aac', isDefault: id === 0 });
@@ -7,6 +7,13 @@ const sub = (id: number, language: string | null, extra: Partial<WebSubtitleTrac
 });
 
 describe('règles du lecteur web', () => {
+  it('attente annoncée en mots', () => {
+    expect(waitText(30)).toBe('Prêt dans moins d’une minute.');
+    expect(waitText(12 * 60)).toBe('Environ 12 min.');
+    expect(waitText(80 * 60)).toBe('Environ 1 h 20.');
+    expect(waitText(2 * 3600)).toBe('Environ 2 h.');
+  });
+
   it('temps lisibles et parlés', () => {
     expect(formatTime(0)).toBe('0:00');
     expect(formatTime(754)).toBe('12:34');

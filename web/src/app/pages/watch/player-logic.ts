@@ -52,6 +52,16 @@ export function pickSubtitle(tracks: WebSubtitleTrack[], preferred: string | nul
   return t ? t.id : null;
 }
 
+/** Attente estimée, en mots : « Prêt dans moins d’une minute. », « Environ 12 min. », « Environ 1 h 20. ». */
+export function waitText(seconds: number): string {
+  if (seconds < 60) return 'Prêt dans moins d’une minute.';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Environ ${minutes} min.`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `Environ ${h} h${m ? ' ' + String(m).padStart(2, '0') : ''}.`;
+}
+
 /** Position de reprise : la position enregistrée, sauf épisode fini, tout début ou toute fin. */
 export function resumeFrom(info: Pick<WebPlayback, 'resume' | 'durationSeconds'>): number {
   const r = info.resume;

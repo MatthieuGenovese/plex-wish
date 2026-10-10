@@ -3,6 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
 import { AnimeDetailPage, chunksOf } from './anime-detail';
+import { AuthService } from '../../core/auth.service';
+import { ADMIN, tokens } from '../../core/testing';
 import { AnimeDetail, EpisodeSummary, Progress, Resume } from '../../core/api-types';
 import { a11yViolations } from '../../core/a11y-testing';
 
@@ -113,10 +115,35 @@ describe('AnimeDetailPage (P2.5)', () => {
     list[1] = { ...list[1], browserPlayable: true };
     http.expectOne('/api/seasons/71/episodes').flush(list);
     await fixture.whenStable();
-    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('1 épisode est dans un format que le navigateur ne lit pas toujours');
+    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('1 épisode est dans un format que le navigateur ne lit pas tel quel');
+    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('le serveur les convertit à la première lecture');
     expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('application Android');
-    expect(el.querySelectorAll('.episode')[0].textContent).toContain('Android conseillé');
-    expect(el.querySelectorAll('.episode')[1].textContent).not.toContain('Android conseillé');
+    expect(el.querySelectorAll('.episode')[0].textContent).toContain('À convertir');
+    expect(el.querySelectorAll('.episode')[1].textContent).not.toContain('À convertir');
+    expect(el.querySelector('[data-testid=prepare-browser]')).toBeNull(); // réservé à l'admin
+    // Pastilles du lecteur web (D9) : une conversion faite remplace « À convertir ».
+    const st = http.expectOne((r) => r.url === '/api/web-status');
+    expect(st.request.params.get('episodes')).toBe(list.map((e) => e.id).join(','));
+    st.flush({ [list[0].id]: 'READY', [list[1].id]: 'PREPARING' });
+    await fixture.whenStable();
+    expect(el.querySelectorAll('.episode')[0].textContent).toContain('Prêt pour le navigateur');
+    expect(el.querySelectorAll('.episode')[0].textContent).not.toContain('À convertir');
+    expect(el.querySelectorAll('.episode')[1].textContent).toContain('En préparation');
+  });
+
+  it('admin : « Préparer l’animé pour le navigateur » met les épisodes en file', async () => {
+    TestBed.inject(AuthService).login('a', 'b').subscribe();
+    http.expectOne('/api/auth/login').flush(tokens('t', ADMIN));
+    const { fixture, el } = await open(detail(), { saison: 0 });
+    http.expectOne('/api/seasons/71/episodes').flush(episodes(2).map((e) => ({ ...e, browserPlayable: false })));
+    await fixture.whenStable();
+    http.match((r) => r.url === '/api/web-status').forEach((r) => r.flush({}));
+    el.querySelector<HTMLButtonElement>('[data-testid=prepare-browser]')!.click();
+    http.expectOne(`/api/admin/web/anime/${detail().id}/prepare`).flush({ episodes: 2, queued: 2 });
+    await fixture.whenStable();
+    expect(el.querySelector('.admin-prepare')?.textContent).toContain('2 épisodes mis en file');
+    http.match((r) => r.url === '/api/web-status').forEach((r) => r.flush({}));
+    expect(await a11yViolations(el)).toEqual([]);
   });
 
   it('toute la saison illisible dans un navigateur : la note suffit, pas de badge sur chaque épisode', async () => {
@@ -124,7 +151,7 @@ describe('AnimeDetailPage (P2.5)', () => {
     http.expectOne('/api/seasons/71/episodes').flush(episodes(2).map((e) => ({ ...e, browserPlayable: false })));
     await fixture.whenStable();
     expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('Les épisodes de cette saison sont');
-    expect(el.querySelector('.episodes')?.textContent).not.toContain('Android conseillé');
+    expect(el.querySelector('.episodes')?.textContent).not.toContain('À convertir');
   });
 
   it('synopsis long replié avec « Lire la suite », langue et sources', async () => {

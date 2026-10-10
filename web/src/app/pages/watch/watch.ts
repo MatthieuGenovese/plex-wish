@@ -30,6 +30,7 @@ import {
   resumeFrom,
   savePref,
   spokenTime,
+  waitText,
 } from './player-logic';
 
 type Phase = 'loading' | 'preparing' | 'ready' | 'unsupported' | 'error';
@@ -91,7 +92,13 @@ const REPORT_EVERY_MS = 10_000;
               <div class="player-bar" aria-hidden="true"><i [style.width.%]="(info()!.preparing!.progress ?? 0) * 100"></i></div>
             }
             <p class="player-card-text">{{ prepText() }}</p>
-            <p class="player-card-text">La lecture commencera toute seule. Vous pouvez aussi revenir plus tard : la préparation continue.</p>
+            @if (info()?.preparing?.conversion) {
+              <p class="player-card-text" data-testid="conversion-note">Cet épisode est converti pour le navigateur sur le serveur. La lecture
+                commencera dès qu’assez de vidéo sera prête. Vous pouvez aussi fermer cette page : la conversion continue, l’épisode sera
+                prêt à votre retour (pastille « Prêt » sur la fiche).</p>
+            } @else {
+              <p class="player-card-text">La lecture commencera toute seule. Vous pouvez aussi revenir plus tard : la préparation continue.</p>
+            }
             <a class="btn" [routerLink]="backLink()">Retour à la fiche</a>
           </div>
         }
@@ -278,8 +285,7 @@ export class WatchPage {
   protected readonly prepText = computed(() => {
     const p = this.info()?.preparing;
     if (!p) return '';
-    const minutes = Math.max(1, Math.round(p.estimatedSeconds / 60));
-    return p.estimatedSeconds < 60 ? 'Prêt dans moins d’une minute.' : `Environ ${minutes} min.`;
+    return waitText(p.estimatedSeconds);
   });
 
   private hls: HlsLike | null = null;

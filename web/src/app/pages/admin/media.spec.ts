@@ -37,6 +37,14 @@ const entry = {
   remuxStatus: 'READY', remuxError: null,
 };
 
+export const webOverview = {
+  settings: { maxHeight: 720, preventive: true, preventiveVideo: false, nightStartHour: 1, nightEndHour: 7 },
+  ffmpegVersion: 'ffmpeg version 7.1.5', usable: true, nightOpen: false,
+  cache: { hostPath: '/volume2/web-cache', usedBytes: 12_000_000_000, capBytes: 200_000_000_000, freeBytes: 900_000_000_000,
+    totalBytes: 2_000_000_000_000, readyBase: 40, readyConverted: 6 },
+  running: [], queued: 0, queue: [], failures: [], speeds: {},
+};
+
 describe('MediaPage (admin)', () => {
   let http: HttpTestingController;
 
@@ -45,12 +53,16 @@ describe('MediaPage (admin)', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.match('/api/admin/web').forEach((r) => r.flush(webOverview));
+    http.verify();
+  });
 
   async function open(filter?: string) {
     const fixture = TestBed.createComponent(MediaPage);
     if (filter) fixture.componentRef.setInput('filtre', filter);
     await fixture.whenStable();
+    http.expectOne('/api/admin/web').flush(webOverview);
     http.expectOne('/api/admin/media/summary').flush(summary);
     http.expectOne('/api/admin/media/remux-test').flush(test);
     http.expectOne('/api/admin/media/remux').flush(cache);
@@ -122,9 +134,18 @@ describe('MediaPage (admin)', () => {
     await fixture.whenStable();
     expect(el.textContent).toContain('Remux remis en file');
 
-    [...el.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) => b.textContent?.includes('Préparer'))!.click();
+    [...el.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) => b.textContent?.includes('Préparer l’animé'))!.click();
     http.expectOne('/api/admin/media/remux/anime/3/prepare').flush({ queued: 12, bytes: 2_000_000_000 });
     await fixture.whenStable();
+    reload();
+    await fixture.whenStable();
+
+    // Fichier non lisible dans un navigateur : préparation (conversion) de tout l'animé pour le navigateur.
+    [...el.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) => b.textContent?.includes('pour le navigateur'))!.click();
+    http.expectOne('/api/admin/web/anime/3/prepare').flush({ episodes: 12, queued: 5 });
+    await fixture.whenStable();
+    expect(el.textContent).toContain('5 épisodes sur 12 mis en file pour le navigateur');
+    http.match('/api/admin/web').forEach((r) => r.flush(webOverview));
     reload();
     await fixture.whenStable();
 

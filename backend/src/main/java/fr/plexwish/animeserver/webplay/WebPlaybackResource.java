@@ -376,6 +376,55 @@ public class WebPlaybackResource {
         }
     }
 
+    // --- 3. Pastilles « Prêt pour le navigateur » / « En préparation » (décision D9) ------------------------------------
+
+    static final Pattern EPISODE_LIST = Pattern.compile("\\d{1,12}(,\\d{1,12}){0,99}");
+
+    /**
+     * État de la préparation pour le navigateur de quelques épisodes (fiche d'un animé, « Continuer ») : READY (lisible
+     * par tous les navigateurs sans attendre) ou PREPARING ; les autres épisodes sont absents de la réponse.
+     */
+    @GET
+    @Path("/web-status")
+    @Authenticated
+    @Produces(MediaType.APPLICATION_JSON)
+    public java.util.Map<String, String> status(@QueryParam("episodes") String episodes) throws SQLException {
+        if (episodes == null || !EPISODE_LIST.matcher(episodes).matches()) {
+            throw new ApiException(400, "INVALID_EPISODES", "Liste d'épisodes invalide (100 au plus)");
+        }
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        Long[] ids = java.util.Arrays.stream(episodes.split(",")).map(Long::valueOf).toArray(Long[]::new);
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement st = c.prepareStatement("""
+                     SELECT e.id, j.kind, j.status, j.priority, j.manifest FROM episode e
+                     JOIN media_file f ON f.id = e.media_file_id AND f.available
+                     JOIN web_job j ON j.media_file_id = f.id AND j.source_size = f.file_size
+                         AND j.source_modified IS NOT DISTINCT FROM f.last_modified
+                     WHERE e.id = ANY (?)""")) {
+            st.setArray(1, c.createArrayOf("bigint", ids));
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    String ep = Long.toString(rs.getLong(1));
+                    String kind = rs.getString(2);
+                    String state = rs.getString(3);
+                    boolean ready = "READY".equals(state) && (WebPrepService.CONV.equals(kind) || playableEverywhere(rs.getString(5)));
+                    boolean preparing = "RUNNING".equals(state) || ("QUEUED".equals(state) && rs.getInt(4) < WebPrepService.PRIORITY_NIGHT);
+                    if (ready) {
+                        out.put(ep, "READY");
+                    } else if (preparing && !"READY".equals(out.get(ep))) {
+                        out.put(ep, "PREPARING");
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private boolean playableEverywhere(String manifest) {
+        WebManifest m = prep.manifest(manifest);
+        return m != null && WebDecision.decide(m, WebDecision.DEFAULT).mode() != WebDecision.Mode.UNSUPPORTED;
+    }
+
     // --- 2. Ressources signées ------------------------------------------------------------------------------------------
 
     @GET

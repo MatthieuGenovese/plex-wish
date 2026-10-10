@@ -31,6 +31,8 @@ export interface WebPreparing {
   estimatedSeconds: number;
   retryAfterSeconds: number;
   message: string;
+  /** Conversion de la vidéo ou du son (minutes) : la page peut être fermée, le travail continue sur le serveur. */
+  conversion: boolean;
 }
 
 export interface WebEpisodeInfo {
@@ -76,6 +78,11 @@ export class PlaybackApi {
       params: { caps: caps.join(',') },
       observe: 'response',
     });
+  }
+
+  /** Pastilles « Prêt pour le navigateur » / « En préparation » (épisodes absents : rien à signaler). */
+  webStatus(episodeIds: number[]): Observable<Record<string, 'READY' | 'PREPARING'>> {
+    return this.http.get<Record<string, 'READY' | 'PREPARING'>>('/api/web-status', { params: { episodes: episodeIds.slice(0, 100).join(',') } });
   }
 
   saveProgress(episodeId: number, positionSeconds: number, durationSeconds: number): Observable<unknown> {

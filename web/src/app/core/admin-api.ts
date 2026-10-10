@@ -19,7 +19,7 @@ import {
   TmdbSheet,
   TmdbSummary,
   TmdbType,
-  User, CreatedUser, InvitationLink, MediaEntry, MediaSummary, RemuxJobEntry, RemuxSummary, RemuxTestStatus } from './api-types';
+  User, CreatedUser, InvitationLink, MediaEntry, MediaSummary, RemuxJobEntry, RemuxSummary, RemuxTestStatus, WebAdminOverview, WebJobKind, WebSettingsView } from './api-types';
 
 export interface CreateUser {
   username: string;
@@ -281,5 +281,31 @@ export class AdminApi {
 
   clearRemuxCache(): Observable<{ removed: number; keptInUse: number }> {
     return this.http.post<{ removed: number; keptInUse: number }>('/api/admin/media/remux/clear', null, { params: { confirm: 'true' } });
+  }
+
+  // --- Lecteur web (10.3) ---------------------------------------------------------------------------------------------
+
+  webOverview(): Observable<WebAdminOverview> {
+    return this.http.get<WebAdminOverview>('/api/admin/web');
+  }
+
+  saveWebSettings(s: { maxHeight: number; preventive: boolean; preventiveVideo: boolean }): Observable<WebSettingsView> {
+    return this.http.put<WebSettingsView>('/api/admin/web/settings', s);
+  }
+
+  retryWebJob(mediaFileId: number, kind: WebJobKind): Observable<void> {
+    return this.http.post<void>(`/api/admin/web/jobs/${mediaFileId}/${kind}/retry`, null);
+  }
+
+  cancelWebJob(mediaFileId: number, kind: WebJobKind): Observable<void> {
+    return this.http.delete<void>(`/api/admin/web/jobs/${mediaFileId}/${kind}`);
+  }
+
+  prepareAnimeForBrowser(animeId: number): Observable<{ episodes: number; queued: number }> {
+    return this.http.post<{ episodes: number; queued: number }>(`/api/admin/web/anime/${animeId}/prepare`, null);
+  }
+
+  cleanupWebCache(): Observable<{ orphans: number; evicted: number }> {
+    return this.http.post<{ orphans: number; evicted: number }>('/api/admin/web/cleanup', null);
   }
 }

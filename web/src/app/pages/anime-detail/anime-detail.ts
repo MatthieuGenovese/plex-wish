@@ -3,6 +3,10 @@ import { Router, RouterLink } from '@angular/router';
 import { catchError, of } from 'rxjs';
 import { EpisodeSummary, Progress, Resume, Season } from '../../core/api-types';
 import { LibraryApi } from '../../core/library-api';
+import { PlaybackApi } from '../../core/playback-api';
+import { AdminApi } from '../../core/admin-api';
+import { AuthService } from '../../core/auth.service';
+import { errorMessage } from '../../core/errors';
 import { pageTitle } from '../../core/title-strategy';
 import { Icon } from '../../shared/icon';
 import { loadOn } from '../../shared/load-state';
@@ -137,8 +141,15 @@ const MAX_SEASON_BUTTONS = 5;
             @if (notInBrowser(list) > 0) {
               <p class="alert browser-note" data-testid="browser-note">
                 {{ notInBrowser(list) === list.length ? 'Les épisodes de cette saison sont' : notInBrowser(list) + ' épisode' + (notInBrowser(list) > 1 ? 's sont' : ' est') }}
-                dans un format que le navigateur ne lit pas toujours (à convertir, ou selon le navigateur) : en cas de problème,
-                regardez-les avec l’application Android.
+                dans un format que le navigateur ne lit pas tel quel : le serveur les convertit à la première lecture (quelques
+                minutes à une demi-heure, la page peut être fermée), ou regardez-les tout de suite avec l’application Android.
+              </p>
+            }
+            @if (isAdmin() && notInBrowser(list) > 0) {
+              <p class="admin-prepare">
+                <button type="button" class="btn btn-small" (click)="prepareForBrowser(anime.id)" [disabled]="preparing()"
+                        data-testid="prepare-browser">Préparer l’animé pour le navigateur</button>
+                @if (prepareMessage(); as m) { <span role="status" class="muted">{{ m }}</span> }
               </p>
             }
             <ol class="episodes" [attr.aria-busy]="e.loading">
@@ -160,8 +171,18 @@ const MAX_SEASON_BUTTONS = 5;
                     }
                     <span class="ep-meta num">
                       {{ duration(ep.durationSeconds) ?? 'durée inconnue' }}
-                      @if (ep.browserPlayable === false && notInBrowser(list) < list.length) {
-                        <span class="badge">Android conseillé</span><span class="visually-hidden">, format que le navigateur ne lit pas toujours</span>
+                      @switch (webStatus()[ep.id]) {
+                        @case ('READY') {
+                          <span class="badge badge-success" data-testid="web-ready">Prêt pour le navigateur</span>
+                        }
+                        @case ('PREPARING') {
+                          <span class="badge" data-testid="web-preparing">En préparation</span>
+                        }
+                        @default {
+                          @if (ep.browserPlayable === false && notInBrowser(list) < list.length) {
+                            <span class="badge">À convertir</span><span class="visually-hidden">, converti pour le navigateur à la première lecture</span>
+                          }
+                        }
                       }
                     </span>
                   </a>
@@ -214,6 +235,11 @@ export class AnimeDetailPage {
   /** Incrémenté par « Aller à l'épisode » : ramène l'épisode à l'écran même s'il était déjà en évidence. */
   private readonly scrollRequest = signal(0);
   private readonly router = inject(Router);
+  private readonly playback = inject(PlaybackApi);
+  private readonly admin = inject(AdminApi);
+  protected readonly isAdmin = inject(AuthService).isAdmin;
+  protected readonly preparing = signal(false);
+  protected readonly prepareMessage = signal<string | null>(null);
 
   /** Titre français (TMDB), autre titre : sans répéter le titre principal. */
   protected readonly subtitle = computed(() => {
@@ -264,6 +290,12 @@ export class AnimeDetailPage {
     const list = this.episodes().data ?? [];
     return list.length > CHUNK ? list.slice(this.chunk() * CHUNK, (this.chunk() + 1) * CHUNK) : list;
   });
+
+  /** Épisodes affichés → « Prêt pour le navigateur » / « En préparation » (décision D9). */
+  private readonly visibleIds = computed(() => this.visible().map((e) => e.id).join(','));
+  private readonly webStatusState = loadOn(this.visibleIds, (ids) =>
+    ids ? this.playback.webStatus(ids.split(',').map(Number)).pipe(catchError(() => of({}))) : of({}));
+  protected readonly webStatus = computed<Record<string, 'READY' | 'PREPARING'>>(() => this.webStatusState().data ?? {});
 
   protected readonly countLabel = computed(() => {
     const s = this.season();
@@ -336,6 +368,22 @@ export class AnimeDetailPage {
 
   protected duration(seconds: number | null): string | null {
     return minutesLabel(seconds);
+  }
+
+  /** Admin : tous les épisodes de l'animé préparés pour le navigateur (conversion si besoin), en pause pendant les lectures. */
+  prepareForBrowser(animeId: number): void {
+    this.preparing.set(true);
+    this.admin.prepareAnimeForBrowser(animeId).subscribe({
+      next: (r) => {
+        this.preparing.set(false);
+        this.prepareMessage.set(`${r.queued} épisode${r.queued > 1 ? 's' : ''} mis en file (suivi dans Administration › Médias).`);
+        this.webStatusState.reload();
+      },
+      error: (err: unknown) => {
+        this.preparing.set(false);
+        this.prepareMessage.set(errorMessage(err));
+      },
+    });
   }
 
   /** Épisodes dont le format n'est pas lisible dans un navigateur (analyse du fichier). */

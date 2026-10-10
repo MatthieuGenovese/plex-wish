@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, inject, input, numberAttribute, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, input, numberAttribute, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { AndroidClass, MediaEntry } from '../../core/api-types';
 import { AdminApi } from '../../core/admin-api';
@@ -6,6 +6,7 @@ import { errorMessage } from '../../core/errors';
 import { formatBytes, formatDateTime, formatNumber } from '../../shared/format';
 import { loadOn } from '../../shared/load-state';
 import { Pager } from '../../shared/pager';
+import { WebPrepSection } from './web-prep';
 
 const PAGE_SIZE = 50;
 
@@ -44,7 +45,7 @@ const VARIANT_LABELS: Record<string, string> = {
 /** Médias : analyse ffprobe (avancement, catégories, liste filtrable) et test à blanc du remux. ?filtre=&q=&page= */
 @Component({
   selector: 'app-admin-media',
-  imports: [Pager],
+  imports: [Pager, WebPrepSection],
   template: `
     @let sum = summary();
     @if (sum.data; as s) {
@@ -124,6 +125,8 @@ const VARIANT_LABELS: Record<string, string> = {
         </div>
       }
     </section>
+
+    <app-admin-web-prep (changed)="reloads.update(n => n + 1)" />
 
     <section class="card remux" aria-labelledby="remux-title">
       <h2 id="remux-title">Test à blanc du remux</h2>
@@ -241,6 +244,10 @@ const VARIANT_LABELS: Record<string, string> = {
                     <div class="row-actions">
                       <button type="button" class="btn-small" (click)="reprobe(e)" [disabled]="busy()"
                               [attr.aria-label]="'Réanalyser ' + e.path">Réanalyser</button>
+                      @if (e.browserPlayable === false && e.animeId !== null) {
+                        <button type="button" class="btn-small" (click)="prepareWeb(e)" [disabled]="busy()"
+                                [attr.aria-label]="'Préparer pour le navigateur tous les épisodes de ' + (e.animeTitle ?? e.path)">Préparer pour le navigateur</button>
+                      }
                       @if (e.android === 'REMUX' && e.animeId !== null) {
                         <button type="button" class="btn-small" (click)="prepare(e)" [disabled]="busy()"
                                 [attr.aria-label]="'Préparer à l’avance les épisodes à remuxer de ' + (e.animeTitle ?? e.path)">Préparer l’animé</button>
@@ -309,7 +316,8 @@ export class MediaPage {
   protected readonly at = signal('02:00');
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
 
-  private readonly reloads = signal(0);
+  protected readonly reloads = signal(0);
+  private readonly webPrep = viewChild(WebPrepSection);
   protected readonly summary = loadOn(this.reloads, () => this.api.mediaSummary());
   protected readonly test = loadOn(this.reloads, () => this.api.remuxTest());
   protected readonly cache = loadOn(this.reloads, () => this.api.remuxSummary());
@@ -403,6 +411,18 @@ export class MediaPage {
 
   prepare(e: MediaEntry): void {
     this.run(this.api.prepareAnime(e.animeId!), `« ${e.animeTitle ?? e.path} » : épisodes à remuxer mis en file (après les demandes des utilisateurs).`);
+  }
+
+  prepareWeb(e: MediaEntry): void {
+    this.api.prepareAnimeForBrowser(e.animeId!).subscribe({
+      next: (r) => {
+        this.message.set({ text: `« ${e.animeTitle ?? e.path} » : ${r.queued} épisode${r.queued > 1 ? 's' : ''} sur ${r.episodes} mis en file pour le navigateur `
+          + '(conversion si besoin ; en pause pendant les lectures).', error: false });
+        this.reloads.update((n) => n + 1);
+        this.webPrep()?.reload();
+      },
+      error: (err: unknown) => this.message.set({ text: errorMessage(err), error: true }),
+    });
   }
 
   clearCache(): void {

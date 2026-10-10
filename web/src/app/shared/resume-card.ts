@@ -26,7 +26,10 @@ import { longEpisode, percent, remainingMinutes, shortEpisode } from './viewing'
       <span class="resume-text">
         <span class="resume-kicker">{{ c.kind === 'NEXT' ? 'Épisode suivant' : 'Reprendre' }}</span>
         <span class="resume-title">{{ c.animeTitle }}</span>
-        <span class="resume-meta num">{{ meta() }}</span>
+        <span class="resume-meta num">{{ meta() }}
+          @if (webState() === 'READY') { <span class="badge badge-success">Prêt pour le navigateur</span> }
+          @else if (webState() === 'PREPARING') { <span class="badge">En préparation</span> }
+        </span>
         @if (c.kind === 'RESUME' && c.durationSeconds > 0) {
           <span class="progress" aria-hidden="true"><i [style.width.%]="pct()"></i></span>
         }
@@ -38,6 +41,8 @@ import { longEpisode, percent, remainingMinutes, shortEpisode } from './viewing'
 })
 export class ResumeCard {
   readonly item = input.required<ContinueWatching>();
+  /** Préparation pour le navigateur (pastille, décision D9). */
+  readonly webState = input<'READY' | 'PREPARING' | undefined>(undefined);
   protected readonly pct = computed(() => percent(this.item().positionSeconds, this.item().durationSeconds));
   protected readonly meta = computed(() => {
     const c = this.item();
@@ -49,7 +54,8 @@ export class ResumeCard {
     const c = this.item();
     const left = c.kind === 'RESUME' ? remainingMinutes(c.positionSeconds, c.durationSeconds) : null;
     return `${c.kind === 'NEXT' ? 'Épisode suivant' : 'Reprendre'} : ${c.animeTitle}, ${longEpisode(c.seasonNumber, c.episodeNumber)}`
-      + (left ? `, reste ${left} minutes` : '');
+      + (left ? `, reste ${left} minutes` : '')
+      + (this.webState() === 'READY' ? ', prêt pour le navigateur' : this.webState() === 'PREPARING' ? ', en préparation pour le navigateur' : '');
   });
   protected readonly hue = computed(() => {
     let h = 0;

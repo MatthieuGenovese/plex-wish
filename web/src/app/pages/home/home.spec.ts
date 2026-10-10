@@ -27,7 +27,10 @@ describe('HomePage (P2.3)', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.match((r) => r.url === '/api/web-status').forEach((r) => r.flush({}));
+    http.verify();
+  });
 
   async function open(continueWatching: ContinueWatching[], total: number, items: AnimeSummary[]) {
     const fixture = TestBed.createComponent(HomePage);
@@ -57,6 +60,13 @@ describe('HomePage (P2.3)', () => {
     const { fixture, el } = await open([cw('RESUME', 7), cw('NEXT', 8)], 300, [anime(1, 'Tout juste ajouté'), anime(2)]);
     flushRows(true);
     await fixture.whenStable();
+    // Pastilles du lecteur web (D9) : épisode 70 en préparation, 80 prêt.
+    const st = http.expectOne((r) => r.url === '/api/web-status');
+    expect(st.request.params.get('episodes')).toBe('70,80');
+    st.flush({ 70: 'PREPARING', 80: 'READY' });
+    await fixture.whenStable();
+    expect(el.querySelector('.hero-meta')?.textContent).toContain('En préparation');
+    expect(el.querySelector('.resume-meta')?.textContent).toContain('Prêt pour le navigateur');
     expect(el.querySelector('.hero-kicker')?.textContent).toBe('À reprendre');
     expect(el.querySelector('.hero-title')?.textContent).toBe('Série 7');
     expect(el.querySelector('.hero-meta')?.textContent).toContain('Saison 1 · Épisode 4 · Le marché de nuit');

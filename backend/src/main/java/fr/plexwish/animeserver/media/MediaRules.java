@@ -17,7 +17,7 @@ import java.util.Set;
 public final class MediaRules {
 
     /** À augmenter à chaque changement de règle. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     public enum Android { DIRECT, REMUX, TRANSCODE }
 
@@ -93,6 +93,10 @@ public final class MediaRules {
             }
             if (v != null && "hevc".equals(v.codec()) && v.bitDepth() != null && v.bitDepth() >= 10) {
                 reasons.add("HEVC 10 bits : décodé par les téléphones récents (S24 : oui)");
+            }
+            if (v != null && "h264".equals(v.codec()) && v.bitDepth() != null && v.bitDepth() >= 10) {
+                // Aucun décodeur matériel de téléphone ne lit le H.264 10 bits : l'app passe au décodeur FFmpeg (v2).
+                reasons.add("H.264 10 bits : lisible sur Android (décodage logiciel)");
             }
         }
 

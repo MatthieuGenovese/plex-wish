@@ -77,6 +77,20 @@ class MediaRulesTest {
     }
 
     @Test
+    void h264TenBitIsSoftwareDecodedOnAndroidAndNotPlayableInBrowsers() {
+        ProbeFacts.Video v = new ProbeFacts.Video("h264", "High 10", 10, 1920, 1080, "yuv420p10le");
+        ProbeFacts.Audio aac = new ProbeFacts.Audio("aac", null, 2, "jpn", true);
+        MediaRules.Classification c = MediaRules.classify(new ProbeFacts(1.0, "mov,mp4,m4a,3gp,3g2,mj2", v, List.of(aac), List.of()), "mp4");
+        assertEquals(MediaRules.Android.DIRECT, c.android());
+        assertEquals(List.of("H.264 10 bits : lisible sur Android (décodage logiciel)"), c.androidReasons());
+        assertFalse(c.browserPlayable());
+        assertEquals(List.of("H.264 10 bits"), c.browserReasons());
+        // 8 bits : rien à signaler.
+        ProbeFacts.Video v8 = new ProbeFacts.Video("h264", "High", 8, 1920, 1080, "yuv420p");
+        assertTrue(MediaRules.classify(new ProbeFacts(1.0, "mov,mp4,m4a,3gp,3g2,mj2", v8, List.of(aac), List.of()), "mp4").androidReasons().isEmpty());
+    }
+
+    @Test
     void transcodeCases() {
         ProbeFacts.Audio aac = new ProbeFacts.Audio("aac", null, 2, "jpn", true);
         // Vidéo que les téléphones ne décodent pas.

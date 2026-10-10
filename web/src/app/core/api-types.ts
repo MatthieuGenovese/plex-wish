@@ -297,6 +297,8 @@ export interface MetadataSummary {
   total: number;
   pausedUntil: string | null;
   lastUnavailable: string | null;
+  /** Prochain passage de la tâche de fond quand elle attend (null pendant le travail). */
+  nextCheckAt: string | null;
   estimatedMinutesLeft: number;
 }
 
@@ -408,6 +410,8 @@ export interface PosterSummary {
   freeBytes: number;
   pausedUntil: string | null;
   lastUnavailable: string | null;
+  /** Prochain passage de la tâche de fond quand elle attend (null pendant le travail). */
+  nextCheckAt: string | null;
 }
 
 export type PosterState = 'LOCAL' | 'REMOTE' | 'MISSING';
@@ -498,6 +502,8 @@ export interface CastSummary {
   waitingForMetadata: boolean;
   pausedUntil: string | null;
   lastUnavailable: string | null;
+  /** Prochain passage de la tâche de fond quand elle attend (null pendant le travail). */
+  nextCheckAt: string | null;
 }
 
 export interface CastAdminEntry {

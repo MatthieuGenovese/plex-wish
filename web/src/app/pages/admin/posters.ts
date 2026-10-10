@@ -33,6 +33,9 @@ export const FILTER_LABELS: Record<PosterFilter, string> = {
         </div>
       } @else if (s.pausedUntil) {
         <p class="muted" role="status">Serveur d’images indisponible ({{ s.lastUnavailable }}) : reprise vers {{ time(s.pausedUntil) }}.</p>
+      } @else if (s.remote + s.missing > 0 && s.nextCheckAt) {
+        <p class="muted" role="status">Affiches restant à télécharger : prochain passage vers {{ time(s.nextCheckAt) }}
+          (ou dès une correction, un scan ou un retéléchargement).</p>
       }
       <ul class="summary">
         @for (f of filters; track f) {

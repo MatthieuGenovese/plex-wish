@@ -3,6 +3,8 @@ package fr.plexwish.animeserver.common;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 
 /**
  * Fil de fond qui traite un élément à la fois (métadonnées AniList, TMDB, affiches) : dort quand il n'y a rien
@@ -32,6 +34,8 @@ public abstract class BackgroundLoop {
     private final Object signal = new Object();
     private volatile boolean running;
     private volatile boolean wakeRequested;
+    /** Fin de l'attente en cours (rien à faire ou pause) ; vide pendant le travail. Affichée dans l'administration. */
+    private volatile Instant nextCheckAt;
     private Thread thread;
 
     protected BackgroundLoop(String name) {
@@ -56,6 +60,11 @@ public abstract class BackgroundLoop {
 
     public boolean running() {
         return running;
+    }
+
+    /** Heure du prochain passage quand la tâche attend (« en attente » expliqué dans l'administration). */
+    public Optional<Instant> nextCheckAt() {
+        return Optional.ofNullable(nextCheckAt);
     }
 
     public void wake() {
@@ -91,6 +100,15 @@ public abstract class BackgroundLoop {
     }
 
     private void sleep(Duration d, boolean wakeable) throws InterruptedException {
+        nextCheckAt = Instant.now().plus(d);
+        try {
+            waitFor(d, wakeable);
+        } finally {
+            nextCheckAt = null;
+        }
+    }
+
+    private void waitFor(Duration d, boolean wakeable) throws InterruptedException {
         synchronized (signal) {
             if (wakeable && wakeRequested) {
                 wakeRequested = false;

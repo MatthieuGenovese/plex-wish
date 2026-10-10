@@ -52,7 +52,7 @@ public class MetadataAdminResource {
     static final Set<String> STATUSES = Set.of("PENDING", "MATCHED", "DOUBTFUL", "UNMATCHED", "MANUAL");
 
     public record Summary(boolean enabled, String provider, Map<String, Long> counts, long total,
-                          Instant pausedUntil, String lastUnavailable, long estimatedMinutesLeft) {
+                          Instant pausedUntil, String lastUnavailable, long estimatedMinutesLeft, Instant nextCheckAt) {
     }
 
     public record Entry(long animeId, String title, String status, String reason, Double score, boolean locked,
@@ -125,7 +125,7 @@ public class MetadataAdminResource {
         long pending = counts.get("PENDING");
         long minutes = (long) Math.ceil(pending * config.minInterval().toMillis() / 60_000.0);
         return new Summary(worker.enabled(), provider.displayName(), counts, total, service.pausedUntil().orElse(null),
-                service.lastUnavailable().orElse(null), minutes);
+                service.lastUnavailable().orElse(null), minutes, worker.nextCheckAt().orElse(null));
     }
 
     @GET

@@ -22,6 +22,11 @@ public class MetadataWorker extends BackgroundLoop {
     MetadataService service;
     @Inject
     MetadataConfig config;
+    @Inject
+    fr.plexwish.animeserver.cast.CastWorker castWorker;
+
+    /** Vrai si des animés ont été appariés depuis le dernier passage sans travail. */
+    private boolean workedSinceIdle;
 
     public MetadataWorker() {
         super("metadata-worker");
@@ -52,6 +57,14 @@ public class MetadataWorker extends BackgroundLoop {
         MetadataService.Step step = service.processNext();
         if (step instanceof MetadataService.Idle) {
             step = service.backfillGenres(); // rien à apparier : genres des fiches plus anciennes (§24.6)
+        }
+        if (step instanceof MetadataService.Done) {
+            workedSinceIdle = true;
+        } else if (step instanceof MetadataService.Idle && workedSinceIdle) {
+            // Métadonnées terminées : la distribution, qui leur cède la place, peut commencer sans attendre son
+            // prochain passage (jusqu'à 10 minutes).
+            workedSinceIdle = false;
+            castWorker.wake();
         }
         return switch (step) {
             case MetadataService.Done d -> new Worked();

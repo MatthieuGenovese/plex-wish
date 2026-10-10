@@ -85,6 +85,8 @@ public class MetadataService {
         try {
             String status = process(animeId);
             lastUnavailable = null;
+            // Une ligne par animé traité (le titre du dossier et le résultat, rien d'autre) : suivi dans les journaux.
+            LOG.infof("Métadonnées : %s → %s", titleOf(animeId), status);
             return new Done(animeId, status);
         } catch (ProviderUnavailableException e) {
             // Pas la faute de cet animé : il reste « à faire », la tâche entière se met en pause.
@@ -97,6 +99,18 @@ public class MetadataService {
             LOG.warnf(e, "Métadonnées : échec pour l'animé %d", animeId);
             recordError(animeId, e.toString());
             return new Done(animeId, "ERROR");
+        }
+    }
+
+    private String titleOf(long animeId) {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement st = c.prepareStatement("SELECT title FROM anime WHERE id = ?")) {
+            st.setLong(1, animeId);
+            try (ResultSet rs = st.executeQuery()) {
+                return rs.next() ? rs.getString(1) : "animé " + animeId;
+            }
+        } catch (SQLException e) {
+            return "animé " + animeId;
         }
     }
 

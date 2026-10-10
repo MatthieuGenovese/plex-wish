@@ -148,7 +148,7 @@ public class CastService {
     // --- Récupération d'un animé -------------------------------------------------------------------
 
     /** Un animé à traiter : sa fiche AniList appariée et le nombre de saisons voulues (suites comprises). */
-    record Work(long animeId, String mediaId, int seasons) {
+    record Work(long animeId, String mediaId, int seasons, String title) {
     }
 
     private static final String WANTED = """
@@ -156,7 +156,7 @@ public class CastService {
 
     Optional<Work> nextAnime() throws SQLException {
         try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT a.id, a.metadata_provider_id, " + WANTED + """
+             PreparedStatement st = c.prepareStatement("SELECT a.id, a.metadata_provider_id, " + WANTED + ", a.title" + """
                       FROM anime a LEFT JOIN anime_cast_state st ON st.anime_id = a.id
                      WHERE a.metadata_provider = 'ANILIST' AND a.metadata_provider_id IS NOT NULL
                        AND (st.next_attempt_at IS NULL OR st.next_attempt_at <= now())
@@ -170,7 +170,7 @@ public class CastService {
             st.setLong(2, config.refreshAfter().toSeconds());
             st.setInt(3, config.maxSeasons());
             try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(new Work(rs.getLong(1), rs.getString(2), rs.getInt(3))) : Optional.empty();
+                return rs.next() ? Optional.of(new Work(rs.getLong(1), rs.getString(2), rs.getInt(3), rs.getString(4))) : Optional.empty();
             }
         }
     }
@@ -195,11 +195,13 @@ public class CastService {
         if (first.isEmpty()) {
             replaceCast(w.animeId(), List.of());
             saveState(w, "FAILED", 0, 0, "fiche AniList introuvable", null);
+            LOG.infof("Distribution : %s → fiche AniList introuvable", w.title());
             return "FAILED";
         }
         if (first.get().path("isAdult").asBoolean(false)) {
             replaceCast(w.animeId(), List.of());
             saveState(w, "EXCLUDED", 0, 0, null, null);
+            LOG.infof("Distribution : %s → exclue (fiche réservée aux adultes)", w.title());
             return "EXCLUDED";
         }
         List<JsonNode> seasons = new ArrayList<>(List.of(first.get()));
@@ -232,6 +234,8 @@ public class CastService {
         replaceCast(w.animeId(), roles);
         String status = roles.isEmpty() ? "NONE" : "OK";
         saveState(w, status, seasons.size(), roles.size(), error, error == null ? null : Duration.ofHours(1));
+        LOG.infof("Distribution : %s → %d rôle(s), %d saison(s)%s", w.title(), roles.size(), seasons.size(),
+                error == null ? "" : " (incomplet, suite retentée)");
         if (pause != null) {
             throw pause;
         }

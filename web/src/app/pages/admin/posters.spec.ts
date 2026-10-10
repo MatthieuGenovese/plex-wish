@@ -8,7 +8,7 @@ import { formatBytes } from '../../shared/format';
 const summary = {
   enabled: true, folderUsable: true, folder: '/data/posters', total: 4, local: 2, localTmdb: 1, localAniList: 1,
   remote: 1, missing: 1, failed: 1, diskBytes: 152_000_000, averageBytes: 110_000, estimatedBytes: 143_000_000,
-  freeBytes: 2_000_000_000_000, pausedUntil: null, lastUnavailable: null,
+  freeBytes: 2_000_000_000_000, pausedUntil: null, lastUnavailable: null, nextCheckAt: null,
 };
 
 describe('formatBytes', () => {

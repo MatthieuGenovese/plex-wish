@@ -43,6 +43,8 @@ export const REASON_LABELS: Record<string, string> = {
           Récupération automatique désactivée (<code>METADATA_ENABLED=false</code>).
         } @else if (s.pausedUntil) {
           {{ s.provider }} indisponible ou limite de débit atteinte ({{ s.lastUnavailable }}) : reprise vers {{ time(s.pausedUntil) }}.
+        } @else if (s.counts.PENDING > 0 && s.nextCheckAt) {
+          {{ num(s.counts.PENDING) }} animé{{ s.counts.PENDING > 1 ? 's' : '' }} en attente d’un nouvel essai : prochain passage vers {{ time(s.nextCheckAt) }}.
         } @else if (s.counts.PENDING > 0) {
           Récupération en cours depuis {{ s.provider }} : {{ num(s.counts.PENDING) }} animé{{ s.counts.PENDING > 1 ? 's' : '' }} restant{{ s.counts.PENDING > 1 ? 's' : '' }}, environ {{ s.estimatedMinutesLeft }} min.
         } @else {

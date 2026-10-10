@@ -36,7 +36,8 @@ public class PosterAdminResource {
 
     public record Summary(boolean enabled, boolean folderUsable, String folder, long total, long local, long localTmdb,
                           long localAniList, long remote, long missing, long failed, long diskBytes, long averageBytes,
-                          long estimatedBytes, long freeBytes, Instant pausedUntil, String lastUnavailable) {
+                          long estimatedBytes, long freeBytes, Instant pausedUntil, String lastUnavailable,
+                          Instant nextCheckAt) {
     }
 
     /** state : LOCAL (fichier sur le NAS), REMOTE (chargée depuis sa source), MISSING (aucune affiche). */
@@ -93,7 +94,7 @@ public class PosterAdminResource {
         long average = counted.isEmpty() ? 0 : disk / counted.size();
         return new Summary(config.enabled(), store.usable(), store.root().toString(), states.size(), local, tmdb, anilist,
                 remote, missing, failed, disk, average, average * withSource, store.usableSpace(),
-                service.pausedUntil().orElse(null), service.lastUnavailable().orElse(null));
+                service.pausedUntil().orElse(null), service.lastUnavailable().orElse(null), worker.nextCheckAt().orElse(null));
     }
 
     @GET

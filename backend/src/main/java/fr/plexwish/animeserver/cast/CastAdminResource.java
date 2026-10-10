@@ -41,7 +41,7 @@ public class CastAdminResource {
     public record Summary(boolean enabled, boolean running, boolean folderUsable, int maxRoles, long withAniList,
                           Map<String, Long> counts, long people, long characters, long roles,
                           Map<String, Long> images, long diskBytes, long estimatedBytes, boolean waitingForMetadata,
-                          Instant pausedUntil, String lastUnavailable) {
+                          Instant pausedUntil, String lastUnavailable, Instant nextCheckAt) {
     }
 
     /** status : OK, NONE (pas de distribution chez AniList), EXCLUDED (adulte), FAILED, PENDING, NO_MATCH (pas d'appariement AniList). */
@@ -107,7 +107,7 @@ public class CastAdminResource {
             long estimated = withAniList == 0 ? 0 : avg * totalImages * Math.max(withAniList, done) / done;
             return new Summary(config.enabled(), worker.running(), service.store().usable(), config.maxRoles(), withAniList,
                     counts, people, characters, roles, images, disk, estimated, service.metadataBusy(),
-                    service.pausedUntil().orElse(null), service.lastUnavailable().orElse(null));
+                    service.pausedUntil().orElse(null), service.lastUnavailable().orElse(null), worker.nextCheckAt().orElse(null));
         }
     }
 

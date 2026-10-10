@@ -36,10 +36,18 @@ const FILTER_LABELS: Record<Filter, string> = { missing: 'Sans distribution', fa
       <p class="muted" role="status" data-testid="cast-status">
         {{ num(s.counts.OK) }} animé{{ s.counts.OK > 1 ? 's' : '' }} sur {{ num(s.withAniList) }} appariés à AniList ont leur distribution
         ({{ s.maxRoles }} rôles au plus par animé).
-        @if (s.counts.PENDING > 0) {
-          {{ num(s.counts.PENDING) }} en attente{{ s.waitingForMetadata ? ', après les métadonnées (prioritaires)' : '' }}.
+        @if (s.pausedUntil) {
+          AniList indisponible ({{ s.lastUnavailable }}) : reprise vers {{ time(s.pausedUntil) }}.
+        } @else if (s.counts.PENDING > 0) {
+          {{ num(s.counts.PENDING) }} en attente :
+          @if (s.waitingForMetadata) {
+            les métadonnées passent d’abord (même source, AniList) ; la distribution commence dès qu’elles sont terminées.
+          } @else if (s.nextCheckAt) {
+            prochain passage vers {{ time(s.nextCheckAt) }} (ou dès la fin d’un scan).
+          } @else {
+            récupération en cours, un animé à la fois.
+          }
         }
-        @if (s.pausedUntil) { AniList indisponible ({{ s.lastUnavailable }}) : reprise vers {{ time(s.pausedUntil) }}. }
       </p>
       <ul class="summary">
         <li class="tile"><span class="value">{{ num(s.people) }}</span><span>comédiens</span></li>

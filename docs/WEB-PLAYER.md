@@ -485,6 +485,67 @@ DS923+, karaoké ASS lourd (charge CPU de JASSUB), Firefox Android.
 | 10.3.5 [serveur] | Alerte ntfy (échecs répétés, disque) — **dépend de ntfy (D1b)** : à faire avec D1b si ntfy n'existe pas encore |
 | 10.3.6 | Tests : arrêt du serveur en pleine conversion, disque presque plein (plafond simulé), 2 lectures pendant une conversion (suspension), échecs répétés |
 
+### 10.3 réalisé (2026-10-10)
+
+Commits : 10.3.1 `ae8e4be` (image), 10.3.2 `c532ecf` (conversions), 10.3.3 `d516cbb` (nuit), 10.3.4 `807a3d0` (interface et
+administration), 10.3.6 (essais de bout en bout, docs). **10.3.5 (alerte ntfy) reporté à D1b** : ntfy n'existe pas
+encore ; les échecs et le cache sont visibles dans Administration › Médias › Lecteur web.
+
+**Image (10.3.1)** : ffmpeg 7.1.5 avec assembleur (nasm), encodeurs AAC et libx264, filtres `scale`, `format`,
+`aformat`, `aresample`. Écart avec §4.5 : x264 vient du **paquet Ubuntu** (archive signée) au lieu d'une compilation
+depuis la source ; Ubuntu 26.04 ne fournit plus la version statique, la bibliothèque partagée est recopiée dans
+l'image finale et vérifiée à la construction (`ffmpeg -encoders`). Binaire GPL 2+ : DEPLOIEMENT §3, « À propos ».
+Étape `ffmpeg` du `Dockerfile` construite ici dans Docker (avec réseau) : c'est elle qui sert aux images d'essai.
+
+**Conversions (10.3.2)** : préparation `CONV` (une seule copie pour tous les navigateurs) à côté de `BASE` (sous-titres,
+polices, copie sans conversion) :
+
+- vidéo H.264 8 bits copiée (« W2 », son seul converti : minutes), sinon x264 `veryfast`, CRF 21, `-tune animation`,
+  2 fils, image clé toutes les 6 s, hauteur au plus 720 (réglable en 1080) (« W3 ») ;
+- chaque piste audio copiée (AAC, MP3) ou convertie en AAC stéréo 160 kb/s ;
+- sous-titres et polices toujours ceux de la préparation de base.
+
+Quand un navigateur ne lit ni la vidéo ni le son (et qu'il lit H.264 + AAC), `web-playback` met la conversion en file
+et répond 202 avec `preparing.conversion = true` ; lecture dès 2 minutes d'avance si ffmpeg va plus vite que la
+lecture. Deux files (une préparation de base et une conversion à la fois), priorités 0 = utilisateur, 1 = admin,
+2 = nuit. Une conversion admin ou de nuit est **suspendue (SIGSTOP) pendant les lectures** (une requête de lecture
+dans les 60 dernières secondes) puis reprend (SIGCONT) ; elle **cède la place** (arrêt, remise en file, essai non
+compté) à une demande d'utilisateur. Échecs : 3 essais (10 puis 20 min d'écart), ensuite « Relancer » dans
+l'administration. Vitesse observée gardée par sorte (son seul, vidéo SD, 720p, 1080p) : elle remplace les estimations
+de §6 pour annoncer l'attente.
+
+**Nuit (10.3.3)** : planificateur interne (toutes les 10 min ; une fois par nuit entre 1 h et 7 h, heure du serveur) :
+nettoyage (sources disparues ou changées, puis les moins lues jusqu'à 85 % du plafond, jamais une lue depuis 3 h) et
+préventif (2 épisodes suivants des animés regardés depuis 30 jours, ajouts des 7 derniers jours, 200 au plus) ;
+conversion vidéo préventive seulement si l'admin l'a permis (D8). Le travail de nuit n'est pris que la nuit ; à 7 h
+une conversion de nuit est arrêtée et reprendra la nuit suivante (perte du travail fait : ffmpeg ne reprend pas).
+
+**Interface (10.3.4)** :
+
+- lecteur : « Conversion de la vidéo pour le navigateur… », attente en minutes ou heures, « vous pouvez fermer cette
+  page » ;
+- pastilles « Prêt pour le navigateur » / « En préparation » sur la fiche (épisodes affichés) et dans « Continuer »
+  (`GET /api/web-status?episodes=…`, 100 au plus) ; « À convertir » remplace « Android conseillé » ;
+- Administration › Médias › **Lecteur web** : cache (place, plafond, disque, dossier du NAS), en cours (étape,
+  avancement, vitesse, « en pause : lecture en cours »), file, échecs avec « Relancer », « Annuler » / « Retirer »,
+  « Nettoyer le cache maintenant », vitesses observées, et les **réglages** (hauteur 720/1080, préventif, conversion
+  vidéo la nuit) : placés ici plutôt que dans Réglages (§0 D5) pour les avoir à côté de leur effet ;
+- « Préparer l'animé pour le navigateur » (admin) sur la fiche et dans la liste des médias.
+- API admin : `GET /api/admin/web`, `PUT /api/admin/web/settings`, `POST /api/admin/web/jobs/{fichier}/{BASE|CONV}/retry`,
+  `DELETE /api/admin/web/jobs/{fichier}/{BASE|CONV}`, `POST /api/admin/web/anime/{id}/prepare`, `POST /api/admin/web/cleanup`.
+
+**Essais** : vrai ffmpeg (`WebConvertRealTest` : Hi10P 1080p → H.264 720p + AAC avec l'ASS de la préparation de
+base, AC3 → vidéo copiée + AAC, Xvid, suspension vue dans `/proc` puis reprise, conversion admin qui cède la place),
+faux outils (`WebPlaybackTest` : 3 échecs puis plus d'essai, redémarrage en pleine conversion ; `WebNightTest` :
+préventif, jour/nuit, conversion vidéo seulement si permise, nettoyage ; `WebAdminTest` : droits, réglages,
+préparer, relancer, annuler, pastilles), web (section admin, pastilles, carte de conversion), bout en bout dans
+Chrome (`scripts/test/e2e-web.sh`, 7 essais : AVI Xvid et MKV Hi10P convertis par le ffmpeg de l'image puis lus,
+carte « Conversion », pastille « Prêt » sur la fiche, section admin, son seul « non lisible »).
+
+**Non vérifié** : vitesse réelle sur le DS923+ (à lire dans Administration › Médias › Lecteur web après quelques
+conversions), charge du NAS pendant une conversion avec 2 à 3 lectures, comportement sur un vrai épisode de 24 min
+(ici des extraits de 4 à 40 s), Firefox et Chrome Android.
+
 ### Risques
 
 - **Vitesse du DS923+** : non mesurée (§6). Si W3 est trop lent, on se limite au remux et au son, et la vidéo

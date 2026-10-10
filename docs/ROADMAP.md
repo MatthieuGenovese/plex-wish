@@ -21,7 +21,7 @@ Toute idée non essentielle va dans `docs/FUTURE.md`.
 | P | **Polish** (interface web et Android) — **avant le déploiement sur le NAS et avant la phase 8** | P1, P2 (serveur et web), 9.2 et P3.0 (chaîne Android) validées ; P3.1–P3.7 (app Android) et suppression du spike livrées le 2026-10-08, en attente des essais sur le S24 (DESIGN §13) |
 | D1 | **Déploiement sur le NAS** (préparation, testée sur une pile Docker propre) | D1a (D1.1 à D1.7) livrée le 2026-10-09 : images, secrets, assistant, Caddy et DuckDNS, invitations, sauvegardes, mises à jour, installateur, docs ; puis installation d'essai sur le vrai NAS (D2), puis D1b (tâches de nuit, alertes ntfy, APK release et page d'installation, contrôles de sécurité) |
 | 8 | Android TV | à faire, après le Polish |
-| 10 | **Lecteur web et préparation des médias pour le navigateur** | 10.1 conception et décisions (2026-10-10, `docs/WEB-PLAYER.md`) ; **10.2 lecteur livré le 2026-10-10**, à tester sur vrais fichiers ; 10.3 conversion et file en attente du feu vert |
+| 10 | **Lecteur web et préparation des médias pour le navigateur** | 10.1 conception et décisions (2026-10-10, `docs/WEB-PLAYER.md`) ; **10.2 lecteur et 10.3 conversions livrés le 2026-10-10** (10.3.5 ntfy reporté à D1b), à tester sur vrais fichiers |
 
 ---
 
@@ -162,7 +162,7 @@ sécurité (CSP, jetons, URL signées) sans accord ; aucune ressource externe.
 - **10.2 Lecteur web** (livré le 2026-10-10, détail : WEB-PLAYER.md « 10.2 réalisé ») : lecture directe et remux (HLS fMP4), pistes audio, sous-titres WebVTT et
   ASS, reprise et progression, raccourcis, plein écran, épisode suivant, accessibilité ; tests unitaires et de bout en
   bout sur un fichier généré, captures. Blocs 10.2.1 à 10.2.5. Arrêt.
-- **10.3 Conversion et file d'attente** (après feu vert) : ffmpeg avec asm, AAC et libx264 ; file persistante, plafonds
+- **10.3 Conversion et file d'attente** (livré le 2026-10-10, sauf 10.3.5 ntfy reporté à D1b ; détail : WEB-PLAYER.md « 10.3 réalisé ») : ffmpeg avec asm, AAC et libx264 ; file persistante, plafonds
   de charge et de disque, nettoyage de nuit, déclenchement à la demande et préventif (planificateur interne minimal),
   états dans le lecteur et l'onglet Médias, alerte ntfy ; tests d'arrêt en pleine conversion et de disque presque
   plein. Blocs 10.3.1 à 10.3.6. Arrêt.

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 
 /**
  * Lecteur web de bout en bout (phase 10), sur la pile démarrée par scripts/test/e2e-web.sh, dans Google Chrome :
- * fichiers générés (MKV H.264 + deux pistes AAC + ASS + police jointe ; MP4 avec sous-titres mov_text ; AVI Xvid).
+ * fichiers générés (MKV H.264 + deux pistes AAC + ASS + police jointe ; MP4 avec sous-titres mov_text ; AVI Xvid et MKV
+ * H.264 10 bits convertis sur le serveur ; MKV son seul).
  * Aucun écart à la CSP n'est toléré.
  */
 const USER = process.env['E2E_USER'] ?? 'chef';
@@ -51,16 +52,16 @@ async function noCspViolation(page: Page): Promise<void> {
   expect([...csp, ...inPage]).toEqual([]);
 }
 
-async function axe(page: Page): Promise<string[]> {
+async function axe(page: Page, root = '.player'): Promise<string[]> {
   // Exécuté par l'outil de test (hors CSP de la page), comme les tests d'accessibilité des composants.
   const source = readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
-  return page.evaluate(async (src) => {
+  return page.evaluate(async ([src, sel]) => {
     // eslint-disable-next-line no-eval
     (0, eval)(src);
     const w = window as unknown as { axe: { run(n: Element, o: object): Promise<{ violations: { id: string; impact: string; nodes: unknown[] }[] }> } };
-    const r = await w.axe.run(document.querySelector('.player')!, { resultTypes: ['violations'] });
+    const r = await w.axe.run(document.querySelector(sel)!, { resultTypes: ['violations'] });
     return r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id);
-  }, source);
+  }, [source, root] as const);
 }
 
 test.beforeEach(() => {
@@ -134,14 +135,58 @@ test('MP4 : lu tel quel (élément vidéo natif), sous-titres WebVTT', async ({ 
   await noCspViolation(page);
 });
 
-test('AVI Xvid : non pris en charge par le navigateur, raison claire', async ({ page }) => {
+test('AVI Xvid : converti pour le navigateur sur le serveur, puis lu', async ({ page }) => {
   await login(page);
   await openEpisode(page, 'Air Gear', 1);
+  await waitPlaying(page, 1);
+  // Copie convertie (H.264 + AAC) lue par hls.js.
+  expect(await page.evaluate(() => document.querySelector('video')!.src)).toMatch(/^blob:/);
+  await noCspViolation(page);
+});
+
+test('H.264 10 bits : « conversion » annoncée (la page peut être fermée), lecture convertie avec ses sous-titres ASS', async ({ page }) => {
+  await login(page);
+  await openEpisode(page, 'Frieren', 3);
+  const card = page.getByTestId('preparing');
+  await expect(card).toContainText(/Conversion|Préparation|Analyse/);
+  await expect(page.getByTestId('conversion-note')).toBeVisible({ timeout: 60_000 });
+  await page.screenshot({ path: join(SHOTS, 'lecteur-conversion.png') });
+  expect(await axe(page, '.player-card')).toEqual([]);
+  await waitPlaying(page, 1);
+  await expect(page.locator('canvas.JASSUB')).toHaveCount(1);
+  await page.mouse.move(640, 360);
+  await page.screenshot({ path: join(SHOTS, 'lecteur-converti.png') });
+  await noCspViolation(page);
+
+  // Fiche : pastille « Prêt pour le navigateur » sur l'épisode converti.
+  await page.goto('/anime');
+  await page.getByRole('link', { name: /Frieren/ }).first().click();
+  const row = page.locator('li.episode', { hasText: 'Lire l’épisode 3' });
+  await expect(row).toContainText('Prêt pour le navigateur');
+  await page.screenshot({ path: join(SHOTS, 'fiche-pastilles.png') });
+});
+
+test('son seul : non lisible, raison claire', async ({ page }) => {
+  await login(page);
+  await openEpisode(page, 'Air Gear', 2);
   const card = page.getByTestId('unsupported');
-  await expect(card).toContainText('MPEG-4 ASP');
+  await expect(card).toContainText('pas de piste vidéo');
   await expect(card.getByRole('link', { name: 'Retour à la fiche' })).toBeVisible();
   await page.screenshot({ path: join(SHOTS, 'lecteur-non-pris-en-charge.png') });
   expect(await axe(page)).toEqual([]);
+  await noCspViolation(page);
+});
+
+test('administration › Médias : section « Lecteur web » (cache, conversions, réglages)', async ({ page }) => {
+  await login(page);
+  await page.goto('/admin/media');
+  const section = page.locator('section.web');
+  await expect(section.getByRole('heading', { name: 'Lecteur web' })).toBeVisible();
+  await expect(page.getByTestId('web-cache-status')).toContainText('Cache');
+  await expect(section.getByRole('radio', { name: /720p/ })).toBeChecked();
+  await section.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(SHOTS, 'admin-lecteur-web.png'), fullPage: true });
+  expect(await axe(page, 'section.web')).toEqual([]);
   await noCspViolation(page);
 });
 

@@ -65,3 +65,9 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - Sous-titres ASS (JASSUB) remontés au-dessus de la barre de commandes quand elle est visible (fait pour le WebVTT ;
   pour l'ASS il faudrait réduire la zone de rendu sans déplacer les panneaux en haut de l'image).
 - Essais de bout en bout dans Firefox (Playwright sait le piloter ; reste à vérifier que son Firefox lit le H.264 et l'AAC).
+- Piste audio non lisible par le navigateur dans une copie sans conversion (ex. VF en AC3 dans Firefox) : proposer la
+  conversion pour cette piste aussi (aujourd'hui : « piste indisponible dans le navigateur », la conversion ne sert que
+  si aucune piste n'est lisible).
+- Reprise d'une conversion de nuit interrompue à 7 h (aujourd'hui recommencée la nuit suivante) : segments HLS déjà
+  écrits gardés, reprise à partir du dernier.
+- Alerte ntfy du lecteur web (10.3.5) : échecs répétés, cache plein ; avec ntfy (D1b).

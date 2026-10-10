@@ -42,3 +42,8 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+generated/
+/e2e/screenshots/
+/e2e-results/
+/playwright-report/
+/test-results/

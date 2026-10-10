@@ -57,7 +57,10 @@ describe('AnimeDetailPage (P2.5)', () => {
     expect(el.querySelector('.hero-meta')?.textContent).toBe('1999 · 252 épisodes');
     expect(el.querySelector('.genre-chips a')?.getAttribute('href')).toBe('/anime?genre=Adventure');
     expect(el.querySelector('.resume-label')?.textContent).toBe('Pour commencer');
-    expect(el.querySelector('.resume-box button')?.textContent).toContain('Voir le premier épisode');
+    expect(el.querySelector('.resume-box a[data-testid=hero-play]')?.textContent).toContain('Regarder le premier épisode');
+    expect(el.querySelector('.resume-box a[data-testid=hero-play]')?.getAttribute('href')).toBe('/regarder/1');
+    // Chaque épisode ouvre le lecteur web.
+    expect(el.querySelector('.episode a.ep-link')?.getAttribute('href')).toBe('/regarder/1');
     // Saisons en boutons, 250 épisodes : menu de plages, 100 lignes affichées.
     expect([...el.querySelectorAll('.seasons a')].map((a) => a.textContent?.trim())).toEqual(['Saison 1', 'Spéciaux']);
     expect([...el.querySelectorAll('#chunk-select option')].map((o) => o.textContent?.trim()))
@@ -110,10 +113,10 @@ describe('AnimeDetailPage (P2.5)', () => {
     list[1] = { ...list[1], browserPlayable: true };
     http.expectOne('/api/seasons/71/episodes').flush(list);
     await fixture.whenStable();
-    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('1 épisode est dans un format non lisible dans un navigateur');
+    expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('1 épisode est dans un format que le navigateur ne lit pas toujours');
     expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('application Android');
-    expect(el.querySelectorAll('.episode')[0].textContent).toContain('Android seulement');
-    expect(el.querySelectorAll('.episode')[1].textContent).not.toContain('Android seulement');
+    expect(el.querySelectorAll('.episode')[0].textContent).toContain('Android conseillé');
+    expect(el.querySelectorAll('.episode')[1].textContent).not.toContain('Android conseillé');
   });
 
   it('toute la saison illisible dans un navigateur : la note suffit, pas de badge sur chaque épisode', async () => {
@@ -121,7 +124,7 @@ describe('AnimeDetailPage (P2.5)', () => {
     http.expectOne('/api/seasons/71/episodes').flush(episodes(2).map((e) => ({ ...e, browserPlayable: false })));
     await fixture.whenStable();
     expect(el.querySelector('[data-testid=browser-note]')?.textContent).toContain('Les épisodes de cette saison sont');
-    expect(el.querySelector('.episodes')?.textContent).not.toContain('Android seulement');
+    expect(el.querySelector('.episodes')?.textContent).not.toContain('Android conseillé');
   });
 
   it('synopsis long replié avec « Lire la suite », langue et sources', async () => {

@@ -130,7 +130,7 @@ public class RealFfmpegTest {
         assertEquals("DIRECT", col("Gen - S01E02.mkv", "android_class"));
         assertTrue(col("Gen - S01E02.mkv", "subtitles").contains("\"codec\": \"ass\"") && col("Gen - S01E02.mkv", "subtitles").contains("fre"));
         assertTrue(col("Gen - S01E02.mkv", "audio").contains("jpn"));
-        assertTrue(col("Gen - S01E02.mkv", "browser_reasons").contains("sous-titres ASS"));
+        assertTrue(col("Gen - S01E02.mkv", "browser_reasons").contains("MPEG-4 ASP")); // ASS : rendu par le lecteur web
         assertEquals("REMUX", col("Gen - S01E03.avi", "android_class"));
         if (col("Gen - S01E04.ogg", "status") != null) {
             assertEquals("TRANSCODE", col("Gen - S01E04.ogg", "android_class")); // Theora : non décodé par Android

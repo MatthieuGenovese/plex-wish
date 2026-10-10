@@ -59,6 +59,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/anime-detail/anime-detail').then((m) => m.AnimeDetailPage),
       },
       {
+        path: 'regarder/:id',
+        title: 'Lecture',
+        loadComponent: () => import('./pages/watch/watch').then((m) => m.WatchPage),
+      },
+      {
         path: 'personne/:id',
         title: 'Comédien',
         loadComponent: () => import('./pages/person/person').then((m) => m.PersonPage),

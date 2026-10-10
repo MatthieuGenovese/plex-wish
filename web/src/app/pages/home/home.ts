@@ -67,12 +67,9 @@ interface HomeData {
             </div>
             <div class="hero-cta">
               <div class="hero-actions">
-                <a class="btn btn-primary btn-lg" [routerLink]="['/anime', h.animeId]" [queryParams]="h.params">
+                <a class="btn btn-primary btn-lg" [routerLink]="h.link" [queryParams]="h.params" data-testid="hero-play">
                   <app-icon [name]="h.icon" />{{ h.action }}</a>
               </div>
-              @if (h.androidHint) {
-                <p class="hero-hint"><app-icon name="android" size="sm" />La lecture se fait dans l’application Android.</p>
-              }
             </div>
           </section>
         }
@@ -174,8 +171,8 @@ export class HomePage {
         meta: longEpisode(c.seasonNumber, c.episodeNumber) + (c.episodeTitle ? ` · ${c.episodeTitle}` : ''),
         pct: resume ? percent(c.positionSeconds, c.durationSeconds) : null,
         left: left ? `reste ${left} min` : '',
-        action: c.kind === 'NEXT' ? 'Voir l’épisode suivant' : 'Voir l’épisode', icon: 'play_arrow_fill' as const,
-        params: { saison: c.seasonNumber, episode: c.episodeId }, androidHint: true,
+        action: c.kind === 'NEXT' ? 'Regarder l’épisode suivant' : 'Reprendre', icon: 'play_arrow_fill' as const,
+        link: ['/regarder', String(c.episodeId)], params: {},
       };
     }
     const a = d.recent.items[0];
@@ -183,7 +180,7 @@ export class HomePage {
     return {
       animeId: a.id, title: a.title, poster: a.posterUrl, kicker: 'Dernier ajout',
       meta: [a.year, `${a.episodeCount} épisode${a.episodeCount > 1 ? 's' : ''}`].filter(Boolean).join(' · '),
-      pct: null, left: '', action: 'Voir la fiche', icon: 'chevron_right' as const, params: {}, androidHint: false,
+      pct: null, left: '', action: 'Voir la fiche', icon: 'chevron_right' as const, link: ['/anime', String(a.id)], params: {},
     };
   });
 }

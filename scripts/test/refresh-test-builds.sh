@@ -9,7 +9,7 @@ rm -rf "$pkg" && mkdir -p "$pkg" && cp -r "$root/backend/pom.xml" "$root/backend
 (cd "$pkg" && mvn -o -q package -DskipTests)
 rm -rf "$ctx/build/build/target/quarkus-app" && mkdir -p "$ctx/build/build/target" && cp -r "$pkg/target/quarkus-app" "$ctx/build/build/target/"
 if [ "${WEB:-1}" = 1 ]; then
-    (cd "$root/web" && PATH="${NODE_BIN:+$NODE_BIN:}$PATH" npx ng build > /dev/null)
+    (cd "$root/web" && PATH="${NODE_BIN:+$NODE_BIN:}$PATH" npm run build > /dev/null)
     rm -rf "$ctx/webb/build/dist/web/browser" && mkdir -p "$ctx/webb/build/dist/web" && cp -r "$root/web/dist/web/browser" "$ctx/webb/build/dist/web/"
 fi
 echo "compilations à jour dans $ctx"

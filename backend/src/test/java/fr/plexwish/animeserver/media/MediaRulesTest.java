@@ -37,7 +37,8 @@ class MediaRulesTest {
         assertEquals(MediaRules.Android.REMUX, c.android());
         assertTrue(c.androidReasons().get(0).contains("AVI"));
         assertFalse(c.browserPlayable());
-        assertTrue(c.browserReasons().containsAll(List.of("conteneur AVI", "MPEG-4 ASP (Xvid/DivX)")), c.browserReasons().toString());
+        // Lecteur web (phase 10) : le conteneur ne compte plus (copie faite par le serveur), la vidéo Xvid est à convertir.
+        assertEquals(List.of("MPEG-4 ASP (Xvid/DivX) : à convertir pour le navigateur"), c.browserReasons());
     }
 
     @Test
@@ -45,7 +46,7 @@ class MediaRulesTest {
         MediaRules.Classification c = MediaRules.classify(fixture("ogm-mpeg4-vorbis"), "ogm");
         assertEquals(MediaRules.Android.REMUX, c.android());
         assertTrue(c.androidReasons().get(0).contains("OGM"));
-        assertTrue(c.browserReasons().contains("conteneur OGM"));
+        assertFalse(c.browserPlayable());
     }
 
     @Test
@@ -57,8 +58,8 @@ class MediaRulesTest {
         assertEquals("fre", mkv.subtitles().get(1).language());
         MediaRules.Classification c = MediaRules.classify(mkv, "mkv");
         assertEquals(MediaRules.Android.DIRECT, c.android());
-        assertFalse(c.browserPlayable());
-        assertEquals(List.of("conteneur MKV", "sous-titres PGS"), c.browserReasons());
+        // MKV H.264 + AAC, SRT et PGS : lisible dans le lecteur web (copie HLS, SRT en WebVTT ; le PGS seul ne l'est pas).
+        assertTrue(c.browserPlayable(), c.browserReasons().toString());
 
         MediaRules.Classification mp4 = MediaRules.classify(fixture("mp4-real"), "mp4");
         assertEquals(MediaRules.Android.DIRECT, mp4.android());
@@ -73,7 +74,7 @@ class MediaRulesTest {
         MediaRules.Classification c = MediaRules.classify(p, "mkv");
         assertEquals(MediaRules.Android.DIRECT, c.android());
         assertTrue(c.androidReasons().get(0).contains("HEVC 10 bits"));
-        assertEquals(List.of("conteneur MKV", "HEVC 10 bits", "sous-titres ASS"), c.browserReasons());
+        assertEquals(List.of("HEVC 10 bits : selon le navigateur"), c.browserReasons());
     }
 
     @Test
@@ -84,7 +85,7 @@ class MediaRulesTest {
         assertEquals(MediaRules.Android.DIRECT, c.android());
         assertEquals(List.of("H.264 10 bits : lisible sur Android (décodage logiciel)"), c.androidReasons());
         assertFalse(c.browserPlayable());
-        assertEquals(List.of("H.264 10 bits"), c.browserReasons());
+        assertEquals(List.of("H.264 10 bits : à convertir pour le navigateur"), c.browserReasons());
         // 8 bits : rien à signaler.
         ProbeFacts.Video v8 = new ProbeFacts.Video("h264", "High", 8, 1920, 1080, "yuv420p");
         assertTrue(MediaRules.classify(new ProbeFacts(1.0, "mov,mp4,m4a,3gp,3g2,mj2", v8, List.of(aac), List.of()), "mp4").androidReasons().isEmpty());
@@ -109,12 +110,13 @@ class MediaRulesTest {
                 List.of(new ProbeFacts.Audio("ac3", null, 6, "jpn", true)), List.of()), "mkv");
         assertEquals(MediaRules.Android.DIRECT, ac3.android());
         assertTrue(ac3.androidReasons().get(0).contains("dépend du téléphone"));
-        assertTrue(ac3.browserReasons().contains("son AC3"));
+        assertTrue(ac3.browserReasons().contains("son AC3 : à convertir pour le navigateur"), ac3.browserReasons().toString());
         // VobSub : affiché sur Android, pas dans un navigateur.
         MediaRules.Classification vob = MediaRules.classify(new ProbeFacts(1.0, "matroska,webm", h264, List.of(aac),
                 List.of(new ProbeFacts.Subtitle("dvd_subtitle", "fre", true, false))), "mkv");
         assertEquals(MediaRules.Android.DIRECT, vob.android());
-        assertTrue(vob.browserReasons().contains("sous-titres VobSub"));
+        assertTrue(vob.browserReasons().contains("sous-titres en image (VobSub) : non affichables dans un navigateur"),
+                vob.browserReasons().toString());
     }
 
     @Test

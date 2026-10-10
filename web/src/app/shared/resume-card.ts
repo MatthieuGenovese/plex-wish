@@ -8,7 +8,7 @@ import { longEpisode, percent, remainingMinutes, shortEpisode } from './viewing'
 /**
  * Carte « Continuer à regarder » (paysage) : affiche floutée en fond (pas d'image d'épisode sur le serveur),
  * affiche nette, titre, épisode et temps restant ; « Épisode suivant » pour un épisode à commencer.
- * Ouvre la fiche sur cet épisode (la lecture se fait dans l'app Android tant qu'il n'y a pas de lecteur web).
+ * Lance la lecture de cet épisode dans le lecteur web (phase 10).
  */
 @Component({
   selector: 'app-resume-card',
@@ -16,8 +16,7 @@ import { longEpisode, percent, remainingMinutes, shortEpisode } from './viewing'
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let c = item();
-    <a class="resume-card" [routerLink]="['/anime', c.animeId]" [queryParams]="{ saison: c.seasonNumber, episode: c.episodeId }"
-       [attr.aria-label]="label()">
+    <a class="resume-card" [routerLink]="['/regarder', c.episodeId]" [attr.aria-label]="label()">
       @if (c.posterUrl) {
         <img class="resume-bg" [src]="c.posterUrl" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
       } @else {

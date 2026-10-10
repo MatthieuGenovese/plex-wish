@@ -62,7 +62,7 @@ describe('HomePage (P2.3)', () => {
     expect(el.querySelector('.hero-meta')?.textContent).toContain('Saison 1 · Épisode 4 · Le marché de nuit');
     expect(el.querySelector('.hero-progress')?.textContent).toContain('reste 14 min');
     const cta = el.querySelector<HTMLAnchorElement>('.hero-actions a')!;
-    expect(cta.getAttribute('href')).toBe('/anime/7?saison=1&episode=70');
+    expect(cta.getAttribute('href')).toBe('/regarder/70'); // lecture directe dans le lecteur web
     // La rangée montre les épisodes suivants (le premier est dans le héros).
     expect([...el.querySelectorAll('#rail-continue ~ * .resume-title, .resume-title')].map((t) => t.textContent)).toEqual(['Série 8']);
     expect(el.querySelector('.resume-kicker')?.textContent).toBe('Épisode suivant');

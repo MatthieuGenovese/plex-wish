@@ -5,9 +5,12 @@ ENV NG_CLI_ANALYTICS=false
 
 # Dépendances d'abord : couche en cache tant que package*.json ne change pas.
 COPY package.json package-lock.json ./
+# Paquet local qui remplace rvfc-polyfill (GPL-3.0) importé par jassub (package.json, « overrides ») : avant npm ci.
+COPY vendor ./vendor
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+# « prebuild » : worker et WebAssembly de JASSUB copiés dans le site (scripts/jassub-assets.mjs), puis ng build.
 RUN npm run build
 
 # --- Exécution : nginx ----------------------------------------------------------------------

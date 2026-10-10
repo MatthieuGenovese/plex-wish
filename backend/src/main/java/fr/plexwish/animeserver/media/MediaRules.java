@@ -12,12 +12,12 @@ import java.util.Set;
  *
  * <p>Android (Media3 sur le téléphone) : DIRECT (lu tel quel), REMUX (conteneur non lu ou mal lu, contenu lisible :
  * AVI, OGM → MKV sans ré-encodage, phase 9.2), TRANSCODE (codec que le téléphone ne décode pas : seul un
- * ré-encodage aiderait, hors périmètre). Navigateur (Chrome / Firefox récents) : lisible ou non, avec les raisons.
+ * ré-encodage aiderait, hors périmètre). Navigateur (lecteur web, phase 10) : lisible ou non, avec les raisons.
  */
 public final class MediaRules {
 
     /** À augmenter à chaque changement de règle. */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     public enum Android { DIRECT, REMUX, TRANSCODE }
 
@@ -39,11 +39,11 @@ public final class MediaRules {
 
     // --- Navigateur ---------------------------------------------------------------------------------------------
 
-    static final Set<String> BROWSER_CONTAINERS = Set.of("mp4", "webm");
-    static final Set<String> BROWSER_VIDEO = Set.of("h264", "vp8", "vp9", "av1");
-    static final Set<String> BROWSER_AUDIO = Set.of("aac", "mp3", "opus", "vorbis", "flac");
-    /** Sous-titres qu'un navigateur peut afficher une fois extraits en WebVTT (texte simple). */
-    static final Set<String> BROWSER_TEXT_SUBTITLES = Set.of("subrip", "webvtt", "mov_text", "text");
+    /** Vidéo et son lus par les navigateurs dans la copie HLS (H.264 8 bits ; HEVC : selon le navigateur). */
+    static final Set<String> BROWSER_VIDEO = Set.of("h264", "vp9", "av1");
+    static final Set<String> BROWSER_AUDIO = Set.of("aac", "mp3", "opus", "flac");
+    /** Sous-titres en image : jamais affichés par un navigateur (le texte, ASS compris, est extrait par le serveur). */
+    static final Set<String> BROWSER_IMAGE_SUBTITLES = Set.of("hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub");
 
     private MediaRules() {
     }
@@ -100,38 +100,29 @@ public final class MediaRules {
             }
         }
 
+        // Navigateur (lecteur web, phase 10, docs/WEB-PLAYER.md) : le conteneur ne compte plus (copie HLS sans
+        // ré-encodage faite par le serveur) ; seuls les codecs à convertir et les sous-titres en image en empêchent la
+        // lecture. HEVC : selon le navigateur et sa carte graphique (lu par Chrome / Edge avec décodeur matériel).
         List<String> browser = new ArrayList<>();
-        if (!BROWSER_CONTAINERS.contains(container)) {
-            browser.add("conteneur " + containerLabel(container));
-        }
         if (v == null) {
             browser.add("aucune piste vidéo");
         } else if ("hevc".equals(v.codec())) {
-            browser.add(v.bitDepth() != null && v.bitDepth() >= 10 ? "HEVC 10 bits" : "HEVC");
-        } else if ("mpeg4".equals(v.codec())) {
-            browser.add("MPEG-4 ASP (Xvid/DivX)");
-        } else if (!BROWSER_VIDEO.contains(v.codec())) {
-            browser.add("vidéo " + label(v.codec()));
+            browser.add((v.bitDepth() != null && v.bitDepth() >= 10 ? "HEVC 10 bits" : "HEVC") + " : selon le navigateur");
         } else if ("h264".equals(v.codec()) && v.bitDepth() != null && v.bitDepth() >= 10) {
-            browser.add("H.264 10 bits");
+            browser.add("H.264 10 bits : à convertir pour le navigateur");
+        } else if ("mpeg4".equals(v.codec())) {
+            browser.add("MPEG-4 ASP (Xvid/DivX) : à convertir pour le navigateur");
+        } else if (!BROWSER_VIDEO.contains(v.codec())) {
+            browser.add("vidéo " + label(v.codec()) + " : à convertir pour le navigateur");
         }
         if (!p.audio().isEmpty() && p.audio().stream().noneMatch(a -> BROWSER_AUDIO.contains(a.codec()))) {
-            browser.add("son " + label(p.audio().get(0).codec()));
+            browser.add("son " + label(p.audio().get(0).codec()) + " : à convertir pour le navigateur");
         }
-        List<String> subs = p.subtitles().stream().map(ProbeFacts.Subtitle::codec)
-                .filter(c -> !BROWSER_TEXT_SUBTITLES.contains(c)).distinct().map(MediaRules::label).toList();
-        if (!subs.isEmpty()) {
-            browser.add("sous-titres " + String.join(", ", subs));
+        if (!p.subtitles().isEmpty() && p.subtitles().stream().allMatch(s -> BROWSER_IMAGE_SUBTITLES.contains(s.codec()))) {
+            browser.add("sous-titres en image (" + String.join(", ", p.subtitles().stream().map(ProbeFacts.Subtitle::codec)
+                    .distinct().map(MediaRules::label).toList()) + ") : non affichables dans un navigateur");
         }
         return new Classification(android, List.copyOf(reasons), browser.isEmpty(), List.copyOf(browser));
-    }
-
-    private static String containerLabel(String c) {
-        return switch (c) {
-            case "matroska" -> "MKV";
-            case "ogg" -> "OGM";
-            default -> c.toUpperCase(Locale.ROOT);
-        };
     }
 
     /** Nom lisible d'un codec ffmpeg. */

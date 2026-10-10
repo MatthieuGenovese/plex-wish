@@ -94,6 +94,10 @@ a.chip.chip-dark:hover { color: #fff; background: rgb(255 255 255 / 0.14); }
 }
 .ep-num .progress { position: absolute; left: 5px; right: 5px; bottom: 5px; height: 3px; }
 .ep-body { display: flex; flex-direction: column; min-width: 0; }
+// Lien de lecture (lecteur web) : toute la ligne de texte, sans soulignement.
+.ep-link { color: inherit; text-decoration: none; border-radius: var(--r-sm); }
+.ep-link:hover .ep-title { color: var(--accent); }
+.ep-link:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .ep-title {
   font-weight: var(--fw-semibold);
   overflow-wrap: anywhere;

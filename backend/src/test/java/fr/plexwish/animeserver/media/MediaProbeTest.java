@@ -104,7 +104,7 @@ class MediaProbeTest {
         assertEquals("DIRECT", probe("Days - S01E03.mkv", "android_class"));
         assertEquals("DIRECT", probe("Baka - S01E12.mp4", "android_class"));
         assertEquals("t", probe("Baka - S01E12.mp4", "browser_playable"));
-        assertEquals("conteneur MKV ; HEVC 10 bits ; sous-titres ASS", probe("Frieren hevc10 - S01E01.mkv", "browser_reasons"));
+        assertEquals("HEVC 10 bits : selon le navigateur", probe("Frieren hevc10 - S01E01.mkv", "browser_reasons"));
         assertEquals("10", probe("Frieren hevc10 - S01E01.mkv", "video_bit_depth"));
         assertEquals("mpeg4", probe("Air Gear - 1x05.avi", "video_codec"));
         assertTrue(probe("Days - S01E03.mkv", "subtitles").contains("hdmv_pgs_subtitle"));
@@ -135,14 +135,14 @@ class MediaProbeTest {
         admin().get("/api/admin/media/summary").then().statusCode(200)
                 .body("files", equalTo(6)).body("analyzed", equalTo(5)).body("failed", equalTo(1)).body("pending", equalTo(0))
                 .body("android.DIRECT", equalTo(3)).body("android.REMUX", equalTo(2)).body("android.TRANSCODE", equalTo(0))
-                .body("browserPlayable", equalTo(1)).body("remuxFiles", equalTo(2)).body("remuxBytes", equalTo(6))
+                .body("browserPlayable", equalTo(2)) // MP4 et MKV H.264 + AAC (lecteur web, phase 10).body("remuxFiles", equalTo(2)).body("remuxBytes", equalTo(6))
                 .body("episodesWithDuration", equalTo(5)).body("ffprobeVersion", equalTo("ffprobe version fake-1.0"));
         admin().queryParam("filter", "REMUX").get("/api/admin/media/files").then().statusCode(200)
                 .body("total", equalTo(2)).body("items.extension", org.hamcrest.Matchers.containsInAnyOrder("avi", "ogm"))
                 .body("items.find { it.extension == 'avi' }.video", equalTo("MPEG-4 ASP Advanced Simple Profile 640×480"))
                 .body("items.find { it.extension == 'avi' }.audio", equalTo("MP3 2 ch"));
         admin().queryParam("filter", "failed").get("/api/admin/media/files").then().body("total", equalTo(1));
-        admin().queryParam("filter", "browser-ko").get("/api/admin/media/files").then().body("total", equalTo(4));
+        admin().queryParam("filter", "browser-ko").get("/api/admin/media/files").then().body("total", equalTo(3));
         admin().queryParam("filter", "nope").get("/api/admin/media/files").then().statusCode(400);
     }
 

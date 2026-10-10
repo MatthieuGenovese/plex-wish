@@ -29,6 +29,7 @@ const FILTER_LABELS: Record<Filter, string> = {
 const WORKER_LABELS: Record<string, string> = {
   working: 'analyse en cours',
   remux: 'en pause pendant un remux demandé par un utilisateur',
+  web: 'en pause pendant une préparation pour le navigateur',
   idle: 'à jour, en attente de nouveaux fichiers',
   scan: 'en pause pendant le scan',
   'remux-test': 'en pause pendant le test à blanc du remux',

@@ -63,9 +63,10 @@ const MAX_SEASON_BUTTONS = 5;
               <p class="hero-progress num"><span class="progress" aria-hidden="true"><i [style.width.%]="r.pct"></i></span>{{ r.left }}</p>
             }
             <div class="hero-actions">
-              <button type="button" class="btn-primary btn-lg" (click)="goTo(r.target)"><app-icon [name]="r.icon" />{{ r.action }}</button>
+              <a class="btn btn-primary btn-lg" [routerLink]="['/regarder', r.target.episodeId]" data-testid="hero-play">
+                <app-icon [name]="r.icon" />{{ r.action }}</a>
+              <button type="button" class="btn btn-lg" (click)="goTo(r.target)">Voir dans la liste</button>
             </div>
-            <p class="hero-hint"><app-icon name="android" size="sm" />La lecture se fait dans l’application Android.</p>
           </div>
         }
       </section>
@@ -136,7 +137,8 @@ const MAX_SEASON_BUTTONS = 5;
             @if (notInBrowser(list) > 0) {
               <p class="alert browser-note" data-testid="browser-note">
                 {{ notInBrowser(list) === list.length ? 'Les épisodes de cette saison sont' : notInBrowser(list) + ' épisode' + (notInBrowser(list) > 1 ? 's sont' : ' est') }}
-                dans un format non lisible dans un navigateur : regardez-les avec l’application Android.
+                dans un format que le navigateur ne lit pas toujours (à convertir, ou selon le navigateur) : en cas de problème,
+                regardez-les avec l’application Android.
               </p>
             }
             <ol class="episodes" [attr.aria-busy]="e.loading">
@@ -149,8 +151,8 @@ const MAX_SEASON_BUTTONS = 5;
                       <span class="progress"><i [style.width.%]="pct(p)"></i></span>
                     }
                   </span>
-                  <span class="ep-body">
-                    <span class="visually-hidden">Épisode {{ ep.episodeNumber }}</span>
+                  <a class="ep-body ep-link" [routerLink]="['/regarder', ep.id]">
+                    <span class="visually-hidden">Lire l’épisode {{ ep.episodeNumber }}</span>
                     @if (ep.title) {
                       <span class="ep-title">{{ ep.title }}</span>
                     } @else {
@@ -159,10 +161,10 @@ const MAX_SEASON_BUTTONS = 5;
                     <span class="ep-meta num">
                       {{ duration(ep.durationSeconds) ?? 'durée inconnue' }}
                       @if (ep.browserPlayable === false && notInBrowser(list) < list.length) {
-                        <span class="badge">Android seulement</span><span class="visually-hidden">, format non lisible dans un navigateur</span>
+                        <span class="badge">Android conseillé</span><span class="visually-hidden">, format que le navigateur ne lit pas toujours</span>
                       }
                     </span>
-                  </span>
+                  </a>
                   <span class="ep-state">
                     @if (p?.completed) {
                       <app-icon name="check_circle_fill" class="seen-icon" /><span class="visually-hidden">Vu</span>
@@ -278,9 +280,9 @@ export class AnimeDetailPage {
     const resume = r.kind === 'RESUME' && r.durationSeconds > 0;
     const left = resume ? remainingMinutes(r.positionSeconds, r.durationSeconds) : null;
     const texts: Record<string, [string, string]> = {
-      RESUME: ['Vous en êtes à', 'Aller à l’épisode'],
-      NEXT: ['Prochain épisode', 'Aller à l’épisode'],
-      START: ['Pour commencer', 'Voir le premier épisode'],
+      RESUME: ['Vous en êtes à', 'Reprendre'],
+      NEXT: ['Prochain épisode', 'Regarder'],
+      START: ['Pour commencer', 'Regarder le premier épisode'],
       REWATCH: ['Vous avez tout vu', 'Revoir depuis le début'],
     };
     return {

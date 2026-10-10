@@ -283,6 +283,23 @@ class PosterTest {
     // --- Repli ------------------------------------------------------------------------------------------
 
     @Test
+    void correctedSourceIsShownAtOnceThenDownloaded() throws Exception {
+        processAll();
+        String oldUrl = posterUrl("Beta");
+        assertTrue(oldUrl.startsWith("/api/posters/"));
+        // Correction manuelle de la fiche : nouvelle affiche à la source. L'ancienne copie locale n'est plus servie,
+        // la nouvelle image s'affiche tout de suite (URL distante) jusqu'au téléchargement de la nouvelle copie.
+        byte[] corrected = FakeImages.jpeg(700, 4);
+        fake.on("/anilist/b2.jpg", Reply.image("image/jpeg", corrected));
+        anilist("Beta", "/anilist/b2.jpg");
+        assertEquals(fake.url("/anilist/b2.jpg"), posterUrl("Beta"), "nouvelle source, pas l'ancienne copie");
+        processAll();
+        String newUrl = posterUrl("Beta");
+        assertTrue(newUrl.startsWith("/api/posters/") && !newUrl.equals(oldUrl), newUrl);
+        assertArrayEquals(corrected, given().get(newUrl).asByteArray());
+    }
+
+    @Test
     void missingLocalFileFallsBackToRemoteThenIsDownloadedAgain() throws Exception {
         processAll();
         String oldUrl = posterUrl("Alpha");

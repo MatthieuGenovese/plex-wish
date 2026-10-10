@@ -361,7 +361,7 @@ public class PosterService {
                      SELECT a.id, p.public_id, p.relative_path,
                             p.provider <> 'TMDB' OR p.fetched_at > now() - make_interval(secs => ?),
                             CASE WHEN t.poster_path IS NOT NULL AND t.fetched_at > now() - make_interval(secs => ?) THEN ? || t.poster_path END,
-                            a.poster_url, a.poster_large_url
+                            a.poster_url, a.poster_large_url, p.source_url
                      FROM anime a LEFT JOIN anime_poster p ON p.anime_id = a.id LEFT JOIN anime_tmdb t ON t.anime_id = a.id
                      WHERE a.id = ANY(?)""")) {
             st.setLong(1, config.tmdbMaxAge().toSeconds());
@@ -374,7 +374,15 @@ public class PosterService {
                     long id = rs.getLong(1);
                     String publicId = rs.getString(2);
                     String relative = rs.getString(3);
-                    if (publicId != null && relative != null && rs.getBoolean(4)) {
+                    String tmdb = rs.getString(5);
+                    String small = rs.getString(6);
+                    String large = rs.getString(7);
+                    // Source voulue aujourd'hui (même règle que DESIRED) : la copie locale n'est servie que si elle en
+                    // vient. Après une correction manuelle, la nouvelle image s'affiche donc tout de suite (chargée à
+                    // la source), le temps que la tâche de fond télécharge la nouvelle copie.
+                    String desired = tmdb != null ? tmdb : (large != null ? large : small);
+                    boolean current = desired != null && desired.equals(rs.getString(8));
+                    if (publicId != null && relative != null && rs.getBoolean(4) && current) {
                         if (store.existing(relative).isPresent()) {
                             String local = "/api/posters/" + publicId;
                             out.put(id, new Urls(local, local, true));
@@ -382,9 +390,6 @@ public class PosterService {
                         }
                         missing.add(id);
                     }
-                    String tmdb = rs.getString(5);
-                    String small = rs.getString(6);
-                    String large = rs.getString(7);
                     if (tmdb != null) {
                         out.put(id, new Urls(tmdb, tmdb, false));
                     } else if (small != null || large != null) {

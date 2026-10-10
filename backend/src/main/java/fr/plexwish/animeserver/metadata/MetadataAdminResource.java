@@ -98,6 +98,10 @@ public class MetadataAdminResource {
     ObjectMapper json;
     @Inject
     JsonWebToken jwt;
+    @Inject
+    fr.plexwish.animeserver.tmdb.TmdbWorker tmdbWorker;
+    @Inject
+    fr.plexwish.animeserver.poster.PosterWorker posterWorker;
 
     @GET
     @Path("/metadata/summary")
@@ -227,7 +231,21 @@ public class MetadataAdminResource {
                     st.executeUpdate();
                 }
                 service.applyToAnime(c, animeId, title, proposed);
+                boolean changed = current == null || !current.providerId().equals(providerId);
+                if (changed) {
+                    // Une fiche TMDB trouvée automatiquement l'a été avec les titres de l'ancienne fiche : on la
+                    // refait (synopsis français, affiche). Une fiche TMDB choisie à la main (verrouillée) est gardée.
+                    try (PreparedStatement st = c.prepareStatement("DELETE FROM anime_tmdb WHERE anime_id = ? AND NOT locked")) {
+                        st.setLong(1, animeId);
+                        st.executeUpdate();
+                    }
+                }
                 c.commit();
+                if (changed) {
+                    tmdbWorker.wake();
+                }
+                // Nouvelle affiche à télécharger : sans attendre le prochain passage de la tâche.
+                posterWorker.wake();
             } catch (SQLException | RuntimeException | IOException e) {
                 c.rollback();
                 throw e;

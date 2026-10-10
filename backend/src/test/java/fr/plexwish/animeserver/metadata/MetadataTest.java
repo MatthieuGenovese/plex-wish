@@ -271,6 +271,34 @@ class MetadataTest {
         assertEquals(1, count(ds, "SELECT count(*) FROM anime WHERE title = 'Hunter x Hunter' AND metadata_provider_id = '11061'"));
     }
 
+    private void exec(String sql) throws Exception {
+        try (java.sql.Connection c = ds.getConnection(); java.sql.Statement st = c.createStatement()) {
+            st.executeUpdate(sql);
+        }
+    }
+
+    @Test
+    void manualCorrectionRedoesAnAutomaticTmdbMatchButKeepsAManualOne() throws Exception {
+        runUntilIdle();
+        fake.onId(FakeAniList.media(182255, "Sousou no Frieren 2nd Season", "Frieren: Beyond Journey's End Season 2", 2026, "TV", 10));
+        long frieren = animeId("Sousou no Frieren");
+        // Fiche TMDB trouvée automatiquement avec les titres de l'ancienne fiche AniList.
+        exec("INSERT INTO anime_tmdb (anime_id, status, tmdb_type, tmdb_id, language, poster_path, fetched_at, locked, updated_by)"
+                + " VALUES (" + frieren + ", 'MATCHED', 'tv', 1, 'fr', '/ancienne.jpg', now(), FALSE, 'auto')");
+        put("Sousou no Frieren", "182255", true).statusCode(200);
+        assertEquals(0, count(ds, "SELECT count(*) FROM anime_tmdb WHERE anime_id = " + frieren),
+                "appariement TMDB automatique refait avec la nouvelle fiche");
+        // Même fiche AniList redonnée : rien ne change côté TMDB.
+        exec("INSERT INTO anime_tmdb (anime_id, status, tmdb_type, tmdb_id, language, poster_path, fetched_at, locked, updated_by)"
+                + " VALUES (" + frieren + ", 'MATCHED', 'tv', 2, 'fr', '/nouvelle.jpg', now(), FALSE, 'auto')");
+        put("Sousou no Frieren", "182255", null).statusCode(200);
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime_tmdb WHERE anime_id = " + frieren + " AND tmdb_id = 2"));
+        // Fiche TMDB choisie à la main (verrouillée) : gardée même si la fiche AniList change.
+        exec("UPDATE anime_tmdb SET status = 'MANUAL', locked = TRUE WHERE anime_id = " + frieren);
+        put("Sousou no Frieren", "154587", true).statusCode(200);
+        assertEquals(1, count(ds, "SELECT count(*) FROM anime_tmdb WHERE anime_id = " + frieren + " AND locked AND tmdb_id = 2"));
+    }
+
     @Test
     void replacingAnExistingSheetNeedsConfirmationAndChangesNothingBefore() throws Exception {
         runUntilIdle();

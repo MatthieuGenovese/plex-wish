@@ -1,4 +1,4 @@
-# Génère la commande que l'ami collera dans le Planificateur de tâches du DSM (D1.7). Rien n'est écrit dans le dépôt.
+﻿# Génère la commande que l'ami collera dans le Planificateur de tâches du DSM (D1.7). Rien n'est écrit dans le dépôt.
 #
 #   scripts\make-install-command.ps1 -Owner mon-compte-images -Media /volume1/animes -Domain mon-anime.duckdns.org
 #
@@ -36,3 +36,7 @@ $lines | ForEach-Object { Write-Host $_ }
 Write-Host ""
 Write-Host "Pour une SIMULATION d'abord (rien n'est modifié) : ajouter  --dry-run  à la fin de la dernière ligne." -ForegroundColor Yellow
 Write-Host "À envoyer par un message privé. Explication ligne par ligne : docs/DEPLOIEMENT.md, « La commande, expliquée »."
+# Copie dans le presse-papiers : une commande recopiée depuis la console peut être coupée là où la fenêtre l'affiche
+# sur deux lignes. Elle contient le jeton de lecture : la coller seulement dans un message privé ou dans le terminal.
+($lines -join "`n") | Set-Clipboard
+Write-Host "Commande copiée dans le presse-papiers (avec le jeton) : la coller telle quelle, sans la recopier à la main." -ForegroundColor Green

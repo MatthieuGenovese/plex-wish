@@ -1,4 +1,4 @@
-# Mise à jour du NAS depuis le PC de Matthieu (D1.6) : publie les images de la version du fichier VERSION, puis
+﻿# Mise à jour du NAS depuis le PC de Matthieu (D1.6) : publie les images de la version du fichier VERSION, puis
 # lance deploy/update.sh sur le NAS par SSH, à travers Tailscale (docs/DEPLOIEMENT.md, « Pour moi : mettre à jour »).
 #
 #   scripts\update.ps1 -Nas nas-ami -User matthieu                 # publie puis met à jour

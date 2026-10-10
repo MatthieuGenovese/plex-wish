@@ -1,4 +1,4 @@
-# Génère la bibliothèque factice (≈ 33 000 fichiers vides) dans un volume Docker, depuis Windows.
+﻿# Génère la bibliothèque factice (≈ 33 000 fichiers vides) dans un volume Docker, depuis Windows.
 # Les fichiers sont créés dans un conteneur Linux : certains noms seraient interdits sous Windows.
 #
 #   .\scripts\generate-fake-library.ps1                  → volume Docker "anime-fake-media"

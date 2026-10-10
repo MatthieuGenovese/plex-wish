@@ -1,4 +1,4 @@
-# Vérification de l'accès Internet (D1.7), version Windows de check-access.sh : CGNAT, nom de domaine, port ouvert,
+﻿# Vérification de l'accès Internet (D1.7), version Windows de check-access.sh : CGNAT, nom de domaine, port ouvert,
 # boucle locale (hairpin). Depuis un PC du réseau de l'ami, puis depuis l'extérieur (-Outside) :
 #
 #   powershell -ExecutionPolicy Bypass -File check-access.ps1 -Domain mon-anime.duckdns.org -WanIp 88.12.34.56

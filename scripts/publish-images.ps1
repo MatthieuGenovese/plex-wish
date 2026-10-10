@@ -1,4 +1,4 @@
-# Construit et publie les images du serveur et du web (D1.1), depuis Windows. Même logique que publish-images.sh.
+﻿# Construit et publie les images du serveur et du web (D1.1), depuis Windows. Même logique que publish-images.sh.
 #
 #   $env:GHCR_OWNER = "mon-compte-images"; scripts\publish-images.ps1          # construit, vérifie, publie
 #   scripts\publish-images.ps1 -NoPush                                         # construit et vérifie seulement

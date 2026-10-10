@@ -1,4 +1,4 @@
-# Catalogue de démonstration (outil de développement, phase Polish ; voir docs/DESIGN.md §6).
+﻿# Catalogue de démonstration (outil de développement, phase Polish ; voir docs/DESIGN.md §6).
 # Équivalent PowerShell de scripts/demo-catalog.sh :
 #   scripts\demo-catalog.ps1          → génère, démarre la stack « plexwish-demo », charge les données
 #   scripts\demo-catalog.ps1 down     → arrête la stack de démonstration et efface sa base

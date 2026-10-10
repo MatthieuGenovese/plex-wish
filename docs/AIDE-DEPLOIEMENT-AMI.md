@@ -1,6 +1,6 @@
 # Aide-mémoire : guider l'ami pendant l'installation
 
-C'est **mon** fiche pour l'appel avec l'ami qui héberge le NAS : quoi préparer, quoi lui demander, quoi lui faire
+C'est **ma** fiche pour l'appel avec l'ami qui héberge le NAS : quoi préparer, quoi lui demander, quoi lui faire
 faire, dans l'ordre. Chaque terme technique est expliqué en une phrase, pour que je puisse le lui redire simplement.
 
 Le détail technique est dans [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Situation au 2026-10-09.

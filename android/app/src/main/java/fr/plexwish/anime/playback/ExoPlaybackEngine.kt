@@ -15,8 +15,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import fr.plexwish.anime.data.log.SafeLog
@@ -26,6 +30,7 @@ import fr.plexwish.anime.feature.player.TrackInfo
 import fr.plexwish.anime.feature.player.TrackPrefs
 import fr.plexwish.anime.feature.player.TrackPrefsStore
 import fr.plexwish.anime.feature.player.TrackType
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import okhttp3.OkHttpClient
 
 /**
@@ -47,7 +52,10 @@ class ExoPlaybackEngine(
     /** Vrai pendant {@link load} : le « play » qu'on y règle n'est pas une reprise demandée par l'utilisateur. */
     private var loading = false
 
-    val player: ExoPlayer = ExoPlayer.Builder(context)
+    private val selector = DefaultTrackSelector(context)
+
+    val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory(context))
+        .setTrackSelector(selector)
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(OkHttpDataSource.Factory(streamClient).setUserAgent("AnimeServer-Android"))
                 .setLoadErrorHandlingPolicy(NoRetryOnClientError()),
@@ -57,6 +65,15 @@ class ExoPlaybackEngine(
         .build()
 
     init {
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(t: AnalyticsListener.EventTime, name: String, initializedMs: Long, durationMs: Long) {
+                listener?.onDecoder(TrackType.VIDEO, name)
+            }
+
+            override fun onAudioDecoderInitialized(t: AnalyticsListener.EventTime, name: String, initializedMs: Long, durationMs: Long) {
+                listener?.onDecoder(TrackType.AUDIO, name)
+            }
+        })
         applyPrefs(prefs.load())
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -75,6 +92,7 @@ class ExoPlaybackEngine(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (fallBackToFfmpeg(error)) return
                 listener?.onError(failureOf(error))
             }
 
@@ -126,6 +144,34 @@ class ExoPlaybackEngine(
                 supported = g.isTrackSupported(i, /* allowExceedsCapabilities = */ true), selected = g.isTrackSelected(i),
                 group = gi, index = i)
         }
+    }
+
+    /** Renderers du téléphone écartés après un échec de décodage : pour la vie du lecteur, donc l'épisode en cours. */
+    private val disabledRenderers = mutableSetOf<Int>()
+
+    /**
+     * Filet de sécurité : le décodeur du téléphone a accepté la piste puis échoue (il se dit capable à tort). On écarte
+     * ce renderer et on relance à la même position : FFmpeg, ajouté après lui, prend la piste. Une seule fois par
+     * renderer ; si FFmpeg échoue aussi, l'erreur remonte normalement.
+     */
+    private fun fallBackToFfmpeg(e: PlaybackException): Boolean {
+        val x = e as? ExoPlaybackException ?: return false
+        if (x.type != ExoPlaybackException.TYPE_RENDERER || e.errorCode !in DECODER_ERRORS) return false
+        val index = x.rendererIndex
+        if (index !in 0 until player.rendererCount || index in disabledRenderers) return false
+        val type = player.getRendererType(index)
+        if (type != C.TRACK_TYPE_VIDEO && type != C.TRACK_TYPE_AUDIO) return false
+        val failed = player.getRenderer(index)
+        if (failed.name.startsWith("Ffmpeg")) return false
+        val hasFfmpeg = (0 until player.rendererCount).any { player.getRendererType(it) == type && player.getRenderer(it).name.startsWith("Ffmpeg") }
+        if (!hasFfmpeg) return false
+        disabledRenderers += index
+        SafeLog.w(TAG, "Décodeur du téléphone en échec (${e.errorCodeName}, ${failed.name}) : repli sur FFmpeg")
+        applying = true // pas un choix de piste à mémoriser
+        selector.parameters = selector.buildUponParameters().setRendererDisabled(index, true).build()
+        applying = false
+        player.prepare()
+        return true
     }
 
     /** Erreur → modèle sans secret : code, statut HTTP, causes nettoyées, piste en cause pour un décodeur. */
@@ -193,6 +239,29 @@ class ExoPlaybackEngine(
         player.trackSelectionParameters = b.build()
     }
     override fun release() = player.release()
+
+    companion object {
+        private const val TAG = "Lecteur"
+
+        /** Erreurs de décodeur qui justifient un repli sur FFmpeg (initialisation, format, capacités, décodage). */
+        private val DECODER_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        )
+
+        /**
+         * Décodeurs du téléphone d'abord, FFmpeg (NextLib) en repli : mode ON, pas PREFER. Les renderers FFmpeg sont
+         * ajoutés APRÈS ceux de MediaCodec ; le sélecteur de pistes prend le renderer le mieux noté pour chaque piste,
+         * et le premier en cas d'égalité. Un H.264 8 bits (MediaCodec : « pris en charge ») reste donc sur le matériel ;
+         * un H.264 10 bits (MediaCodec : « dépasse les capacités ») ou un son DTS/TrueHD (aucun décodeur du téléphone)
+         * passe à FFmpeg. Ordre vérifié par RenderersOrderTest.
+         */
+        fun renderersFactory(context: Context): RenderersFactory = NextRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    }
 
     /**
      * 4xx (403 lien expiré, 404 fichier absent…) : inutile d'insister, l'erreur remonte tout de suite et le

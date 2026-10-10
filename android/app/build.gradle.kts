@@ -39,6 +39,9 @@ android {
         resValue("string", "app_name", appName)
         buildConfigField("String", "APP_NAME", "\"$appName\"")
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl.replace("\"", "")}\"")
+        // Bibliothèques natives (FFmpeg) : téléphones ARM seulement. arm64-v8a couvre tout téléphone récent ;
+        // armeabi-v7a garde les vieux modèles 32 bits. Pas d'x86 (émulateurs, Chromebooks rares).
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -115,6 +118,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
+    // Décodeurs FFmpeg logiciels (NextLib 0.8.4, GPL-3.0, bâti sur Media3 1.5.1) : repli quand le décodeur matériel
+    // refuse un fichier (H.264 10 bits, DTS, TrueHD…). Le matériel reste prioritaire (EXTENSION_RENDERER_MODE_ON).
+    implementation("com.github.anilbeesetti.nextlib:nextlib-media3ext:0.8.4")
 
     testImplementation("junit:junit:4.13.2")
     // Écrans Compose testés et capturés sur la JVM (dépendances de test seulement, rien dans l'APK de release).

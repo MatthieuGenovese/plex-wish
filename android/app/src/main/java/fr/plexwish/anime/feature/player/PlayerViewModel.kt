@@ -41,7 +41,10 @@ data class PlayerState(
     val preparing: PreparingInfo? = null,
     /** Pistes du fichier (panneau « Audio et sous-titres »). */
     val tracks: List<TrackInfo> = emptyList(),
+    /** Décodeurs en service (nom par type de piste) : sert à l'indicateur « Décodage logiciel ». */
+    val decoders: Map<TrackType, String> = emptyMap(),
 ) {
+    val softwareDecoding: String? get() = softwareDecodingLabel(decoders)
     val audioTracks get() = tracks.filter { it.type == TrackType.AUDIO && it.supported }
     val textTracks get() = tracks.filter { it.type == TrackType.TEXT && it.supported }
 }
@@ -232,6 +235,11 @@ class PlayerViewModel(
             val w = Diagnostics.warnings(tracks, episode?.container).map { it.second }
             if (w.isNotEmpty()) _state.update { it.copy(warnings = w) }
         }
+    }
+
+    override fun onDecoder(type: TrackType, name: String) {
+        SafeLog.i(TAG, "Décodeur ${type.name.lowercase()} : $name")
+        _state.update { it.copy(decoders = it.decoders + (type to name)) }
     }
 
     override fun onError(failure: PlaybackFailure) {

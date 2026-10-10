@@ -75,6 +75,20 @@ class PlayerScreenTest : ScreenTest() {
         assertEquals(true, opened)
     }
 
+    /** Indicateur discret quand FFmpeg décode (essais du décodage logiciel). */
+    @Test
+    fun softwareDecodingIndicator() {
+        val s = state.copy(decoders = mapOf(TrackType.VIDEO to "ffmpeg6.0", TrackType.AUDIO to "c2.android.opus.decoder"))
+        shoot("p36-lecteur-logiciel", listOf(ScreenTest.ALL[0])) {
+            PaletteTheme(OnImagePalette) {
+                Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
+                    PlayerOverlay(s, Playhead(612_000, 1_440_000, playing = true), FocusRequester(), PlayerActions())
+                }
+            }
+        }
+        compose.onNodeWithText("Décodage logiciel : image").assertIsDisplayed()
+    }
+
     @Test
     fun trackPanel() {
         var chosen: Pair<TrackType, TrackInfo?>? = null

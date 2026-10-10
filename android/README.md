@@ -93,10 +93,23 @@ Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, r�
 | Lecture bloquée au chargement (tout fichier) | Détectée par Media3 (« stuck buffering ») ou par l'app (20 s de mise en tampon sans que les données chargées n'avancent de 2 s) : même message ; **Détails** indique la durée de mise en tampon, la position chargée et les pistes actives. Une connexion lente, qui fait avancer le chargement, n'est pas prise pour un blocage. |
 | AVI, OGM | Convertis par le serveur (voir « Préparation de l'épisode »). Si une copie posait encore problème, le filet de sécurité reste : lecture bloquée → message avec **Réessayer** et **Lire sans le son**. |
 | Son illisible | Bandeau « Pas de son : … » (piste audio absente ou dans un format que le téléphone ne lit pas) ; la vidéo continue. |
-| MKV HEVC 10 bits | Lu si le téléphone a le décodeur (le S24 l'a) ; sinon « Ce téléphone ne sait pas décoder la vidéo (HEVC (H.265) 10 bits) ». |
+| MKV HEVC 10 bits | Lu par le décodeur du téléphone s'il l'a (le S24 l'a), sinon par le décodeur logiciel (voir ci-dessous). |
+| H.264 10 bits, son DTS / TrueHD | Aucun téléphone ne les décode : décodeur logiciel (voir ci-dessous), mention « Décodage logiciel » dans la surcouche. |
 | Réseau coupé | « Connexion au serveur perdue », après les nouveaux essais automatiques. |
 | 403 qui persiste | « Le serveur refuse la lecture (lien expiré, ou compte désactivé) ». |
 | Fichier retiré du NAS | « Ce fichier n'est plus disponible sur le serveur ». |
+
+### Décodage logiciel (FFmpeg)
+
+Le décodeur du téléphone (matériel, économe) reste **toujours prioritaire**. Quand il refuse une piste, le lecteur passe à un décodeur logiciel FFmpeg (bibliothèque NextLib 0.8.4, bâtie pour Media3 1.5.1) :
+
+- **Ordre** : Media3 en mode « extensions ON » (pas « PREFER ») : les décodeurs FFmpeg sont ajoutés **après** ceux du téléphone. Pour chaque piste, Media3 prend le décodeur le mieux noté, le premier en cas d'égalité : un H.264 8 bits (« pris en charge » par le téléphone) reste sur le matériel ; un H.264 10 bits (« dépasse les capacités ») ou un son DTS (aucun décodeur) passe à FFmpeg. Vérifié par `SoftwareDecoderTest`.
+- **Filet de sécurité** : si le décodeur du téléphone accepte une piste puis échoue (erreur de décodeur), le lecteur l'écarte pour l'épisode et repart à la même position avec FFmpeg, une seule fois ; si FFmpeg échoue aussi, le message d'erreur habituel s'affiche.
+- **Formats** : vidéo H.264 (10 bits compris), HEVC, MPEG-2, VP8, VP9 ; son AC3, E-AC3 (Atmos : la base E-AC3), DTS (DTS-HD : cœur et extensions), TrueHD, ainsi que AAC, MP3, Opus, Vorbis, FLAC, ALAC. Pas de MPEG-4 ASP (Xvid/DivX), ni de VC-1 / WMV : ceux-là restent sur le téléphone ou sur la conversion du serveur.
+- **Indicateur** : « Décodage logiciel : image », « : son » ou « : image et son » sous le titre, dans la surcouche (pour les essais). Le nom du décodeur est aussi écrit dans le journal (`adb logcat -s Player`).
+- **Coût** : batterie et chauffe plus élevées qu'en matériel ; FFmpeg est compilé sans optimisations assembleur dans NextLib : la fluidité d'un 1080p est à vérifier sur chaque téléphone.
+- **Sous-titres, pistes audio, reprise, commandes** : inchangés (ils ne dépendent pas du décodeur vidéo).
+- **Taille** : bibliothèques natives pour `arm64-v8a` (tous les téléphones récents) et `armeabi-v7a` (vieux téléphones ou Android Go en 32 bits, qui refuseraient l'APK sans elles) : environ 5,5 et 5,1 Mo ; pas d'x86.
 
 ### Préparation de l'épisode (AVI, OGM)
 
@@ -169,3 +182,17 @@ APK signé : `build/outputs/apk/release/anime-android-release.apk`. Sans `keysto
 2. Sur le téléphone, l'ouvrir : Android demande d'autoriser l'installation d'applications inconnues **pour l'appli qui ouvre le fichier** (navigateur, Mes fichiers…) : accepter pour celle-ci seulement.
 3. Play Protect peut avertir qu'il ne connaît pas le développeur : *Plus de détails → Installer quand même*.
 4. Mise à jour : même procédure avec le nouvel APK (même clé de signature), les données sont conservées.
+
+## Licences
+
+| Composant | Licence |
+|---|---|
+| Media3 / ExoPlayer, Jetpack Compose, AndroidX, OkHttp, Coil, kotlinx | Apache 2.0 |
+| NextLib 0.8.4 (`nextlib-media3ext`, décodeurs FFmpeg pour Media3) | **GPL 3.0** |
+| FFmpeg 6.0 (libavcodec, libavutil, libswresample, libswscale, compilé par NextLib) | LGPL 3.0 |
+| libvpx (dans libavcodec) | BSD |
+| Police Figtree | SIL OFL 1.1 |
+| Icônes Material Symbols | Apache 2.0 |
+
+**GPL 3.0** : avec NextLib, l'APK distribué est une œuvre GPL 3.0 dans son ensemble. Toute personne qui a reçu l'app peut demander son **code source complet** (ce dépôt, à la version de l'APK, plus le code de NextLib et de FFmpeg ou un lien vers leur version exacte) : il faut le lui fournir, sous GPL 3.0, gratuitement ou au prix du support. Garder donc le commit de chaque APK distribué (le `versionName` suffit s'il est tagué). L'écran « À propos » le rappelle. Une diffusion privée (amis) reste une distribution au sens de la GPL. Sources : NextLib `github.com/anilbeesetti/nextlib` (tag 0.8.4), FFmpeg `ffmpeg.org` (6.0).
+

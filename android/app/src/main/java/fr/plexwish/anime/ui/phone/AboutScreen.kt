@@ -19,11 +19,12 @@ import androidx.compose.ui.unit.dp
 import fr.plexwish.anime.BuildConfig
 import fr.plexwish.anime.ui.components.Panel
 import fr.plexwish.anime.ui.components.ScreenTitle
+import fr.plexwish.anime.ui.components.GPL_NOTICE
 import fr.plexwish.anime.ui.components.TMDB_NOTICE
 import fr.plexwish.anime.ui.theme.AppTheme
 import fr.plexwish.anime.ui.theme.Dimens
 
-/** À propos : version, sources des données (AniList, TMDB) et mention TMDB, polices et icônes (licences). */
+/** À propos : version, sources des données (AniList, TMDB) et mention TMDB, lecteur, polices et icônes (licences). */
 @Composable
 fun AboutScreen(padding: PaddingValues) {
     val p = AppTheme.palette
@@ -43,6 +44,12 @@ fun AboutScreen(padding: PaddingValues) {
                 Text("Synopsis et titres en français, et affiches quand AniList n'en a pas : The Movie Database (themoviedb.org).",
                     style = MaterialTheme.typography.bodyMedium)
                 Text(TMDB_NOTICE, style = MaterialTheme.typography.bodySmall, color = p.text2)
+            }
+            Panel(title = "Lecteur vidéo") {
+                Text("Lecture : Media3 / ExoPlayer (Google, licence Apache 2.0). Décodage logiciel de secours, quand le téléphone " +
+                    "ne sait pas lire un fichier : NextLib (licence GPL 3.0), FFmpeg 6.0 (LGPL 3.0) et libvpx (BSD).",
+                    style = MaterialTheme.typography.bodyMedium)
+                Text(GPL_NOTICE, style = MaterialTheme.typography.bodySmall, color = p.text2)
             }
             Panel(title = "Police et icônes") {
                 Text("Police Figtree (SIL Open Font License 1.1) ; icônes Material Symbols (Google, licence Apache 2.0).",

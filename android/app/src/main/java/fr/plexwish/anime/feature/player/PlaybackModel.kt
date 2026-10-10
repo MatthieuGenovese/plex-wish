@@ -32,6 +32,24 @@ data class PlaybackFailure(
     val formatCodecs: String? = null,
 )
 
+/**
+ * Décodeurs FFmpeg logiciels (NextLib) : leur nom commence par « ffmpeg ». Les décodeurs du téléphone (matériel,
+ * « c2.qti… », « c2.exynos… », ou logiciel Android « c2.android… ») sont le cas normal et ne sont pas signalés.
+ */
+fun isFfmpegDecoder(name: String?): Boolean = name?.startsWith("ffmpeg", ignoreCase = true) == true
+
+/** Mention discrète dans le lecteur quand FFmpeg décode l'image et/ou le son ; {@code null} sinon. */
+fun softwareDecodingLabel(decoders: Map<TrackType, String>): String? {
+    val video = isFfmpegDecoder(decoders[TrackType.VIDEO])
+    val audio = isFfmpegDecoder(decoders[TrackType.AUDIO])
+    return when {
+        video && audio -> "Décodage logiciel : image et son"
+        video -> "Décodage logiciel : image"
+        audio -> "Décodage logiciel : son"
+        else -> null
+    }
+}
+
 /** Moteur de lecture (ExoPlayer dans l'app, faux moteur dans les tests). */
 interface PlaybackEngine {
     interface Listener {
@@ -43,6 +61,9 @@ interface PlaybackEngine {
         fun onEnded() {}
         fun onError(failure: PlaybackFailure) {}
         fun onTracks(tracks: List<TrackInfo>) {}
+
+        /** Décodeur mis en service pour l'image ({@link TrackType#VIDEO}) ou le son ({@link TrackType#AUDIO}). */
+        fun onDecoder(type: TrackType, name: String) {}
     }
 
     fun setListener(listener: Listener?)

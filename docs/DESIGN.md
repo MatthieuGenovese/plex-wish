@@ -212,6 +212,7 @@ Rien n'est installé avant ta décision. Licences vérifiées dans les paquets (
 | Angular | web | déjà en 22.2 (dernière : 22.2.1) | — | MIT | pas de mise à jour majeure |
 | Compose BOM 2024.12.01 → 2026.09.00 (UI 1.7.6 → 1.12.1, Material 3 1.3.1 → 1.4.0) avec Kotlin 2.0.21 → 2.4.x et AGP 8.7.3 → version compatible | Android | composants Material 3 récents, corrections de focus et de performances, base saine pour la TV | chaîne de build à remonter d'un coup (compileSdk, AGP) ; avertissements de dépréciation ; à revalider sur le S24 | Apache 2.0 | ✅ en bloc séparé P3.0 (décision 4) |
 | Coil 2.7.0 → 3.6.3 | Android | branche maintenue (Coil 2 n'évolue plus) | nouveaux noms de paquets + `coil-network-okhttp` ; 2 fichiers touchés | Apache 2.0 | ✅ avec P3.0 |
+| NextLib 0.8.4 (`com.github.anilbeesetti.nextlib:nextlib-media3ext`, JitPack, groupe filtré) | Android | décodage logiciel FFmpeg en repli (H.264 10 bits, DTS, TrueHD) sans toucher à Media3 1.5.1 | +10,7 Mo d'APK (arm64-v8a + armeabi-v7a) ; batterie et chauffe en logiciel ; FFmpeg sans assembleur | GPL 3.0 (FFmpeg LGPL 3.0) : source complet de l'app à fournir sur demande | ✅ (2026-10-10) |
 | Media3 1.5.1 → 1.11.1, `media3-ui-compose` | Android | commandes de lecteur en Compose | lecture validée sur le S24 avec 1.5.1 : tout changement = nouveau test complet (AVI, OGM, sous-titres) | Apache 2.0 | ❌ pendant le Polish (FUTURE) |
 | `androidx.tv:tv-material` 1.1.0 | Android | composants TV | — | Apache 2.0 | phase 8 |
 

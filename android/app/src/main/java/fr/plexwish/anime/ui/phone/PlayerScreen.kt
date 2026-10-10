@@ -345,6 +345,8 @@ fun PlayerOverlay(s: PlayerState, head: Playhead, firstControl: FocusRequester, 
                 Text(s.title, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics { heading() })
                 s.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                // Indicateur discret (essais) : FFmpeg décode à la place du téléphone. Visible avec les commandes seulement.
+                s.softwareDecoding?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1) }
                 if (s.soundOff) Text("Lecture sans le son (fichier à convertir sur le serveur)", color = AppTheme.palette.warn,
                     style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }

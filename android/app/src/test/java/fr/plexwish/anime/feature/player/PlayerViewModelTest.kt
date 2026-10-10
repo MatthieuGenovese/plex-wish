@@ -115,6 +115,17 @@ class PlayerViewModelTest : PlayerTestBase() {
     }
 
     @Test
+    fun ffmpegDecoderShowsTheSoftwareDecodingIndicator() {
+        val engine = FakeEngine()
+        val vm = player(engine)
+        await("chargement") { engine.loads.size == 1 }
+        engine.current!!.onDecoder(TrackType.VIDEO, "c2.qti.avc.decoder")
+        assertEquals(null, vm.state.value.softwareDecoding)
+        engine.current!!.onDecoder(TrackType.VIDEO, "ffmpeg6.0")
+        assertEquals("Décodage logiciel : image", vm.state.value.softwareDecoding)
+    }
+
+    @Test
     fun completedEpisodeStartsFromTheBeginning() {
         progressBody = """[{"episodeId":5,"positionSeconds":1400,"durationSeconds":1440,"completed":true,"updatedAt":"2026-10-05T10:00:00Z"}]"""
         val engine = FakeEngine()

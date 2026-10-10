@@ -21,6 +21,7 @@ describe('WatchPage (lecteur web)', () => {
 
   beforeEach(() => {
     played.length = 0;
+    localStorage.clear(); // choix de pistes mémorisés par un essai précédent
     // jsdom ne lit pas de vidéo : lecture simulée.
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
       played.push('play');
@@ -141,6 +142,19 @@ describe('WatchPage (lecteur web)', () => {
       await fixture.whenStable();
       expect(el.querySelector('[data-testid=error]')?.textContent).toContain('HLS');
     });
+  });
+
+  it('sous-titres ASS : JASSUB, et WebVTT (avec un message) s’il ne peut pas démarrer', async () => {
+    const { fixture, el } = await open();
+    ask().flush(base({ subtitles: [{ id: 0, label: 'Français', language: 'fre', forced: false, isDefault: true, format: 'ass',
+      url: '/api/stream/9/web/k/sub_0.ass?s', vttUrl: '/api/stream/9/web/k/sub_0.vtt?s' }], fonts: ['/api/stream/9/web/k/font_0.ttf?s'] }));
+    // jsdom n'a ni OffscreenCanvas ni Worker : JASSUB échoue, le lecteur passe au WebVTT.
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      expect(el.querySelector('video track')?.getAttribute('src')).toContain('sub_0.vtt');
+    }, { timeout: 4000 });
+    expect(el.querySelector('[data-testid=notice]')?.textContent).toContain('sans leurs styles');
+    fixture.destroy();
   });
 
   it('fin de l’épisode : compte à rebours vers l’épisode suivant, annulable', async () => {

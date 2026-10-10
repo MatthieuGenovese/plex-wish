@@ -19,6 +19,7 @@ import { detectCaps } from '../../core/media-caps';
 import { errorMessage } from '../../core/errors';
 import { Icon } from '../../shared/icon';
 import { SubtitleRenderer, VttSubtitles } from './subtitles';
+import { AssSubtitles } from './ass-subtitles';
 import {
   episodeLine,
   formatTime,
@@ -430,11 +431,27 @@ export class WatchPage {
     const info = this.info();
     const t = id === null ? null : info?.subtitles.find((s) => s.id === id);
     if (!t || !info) return;
+    const video = this.videoRef().nativeElement;
+    const offset = info.mode === 'HLS' ? info.subtitleOffsetSeconds : 0;
+    if (t.format === 'ass' && !this.assBroken) {
+      // ASS : rendu fidèle par JASSUB ; s'il ne démarre pas (navigateur trop ancien, WebAssembly bloqué), WebVTT.
+      this.subs = new AssSubtitles(video, t.url, info.fonts, offset, () => {
+        this.assBroken = true;
+        if (this.subtitleId() === id) {
+          this.applySubtitle(id);
+          this.notice.set({ text: 'Sous-titres affichés sans leurs styles (rendu avancé indisponible dans ce navigateur).' });
+        }
+      });
+      return;
+    }
     const url = t.format === 'vtt' ? t.url : t.vttUrl;
     if (url) {
-      this.subs = new VttSubtitles(this.videoRef().nativeElement, t, url, info.mode === 'HLS' ? info.subtitleOffsetSeconds : 0);
+      this.subs = new VttSubtitles(video, t, url, offset);
     }
   }
+
+  /** JASSUB n'a pas pu démarrer : WebVTT pour la suite de la séance. */
+  private assBroken = false;
 
   // --- Commandes ----------------------------------------------------------------------------------------------------
 

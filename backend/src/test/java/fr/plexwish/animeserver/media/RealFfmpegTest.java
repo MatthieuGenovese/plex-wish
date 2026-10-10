@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 @QuarkusTest
 @TestProfile(RealFfmpegTest.Profile.class)
-class RealFfmpegTest {
+public class RealFfmpegTest {
 
     public static class Profile implements QuarkusTestProfile {
         @Override

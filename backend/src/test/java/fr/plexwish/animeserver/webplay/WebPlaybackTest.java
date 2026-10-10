@@ -161,10 +161,16 @@ class WebPlaybackTest {
                 .body("reason", containsString("HEVC 10 bits"));
     }
 
-    /** Copie HLS simulée (10.2.2 la fabrique avec ffmpeg) : réécriture, signatures, Range, en-têtes. */
+    @Inject
+    com.fasterxml.jackson.databind.ObjectMapper json;
+
+    /** Copie HLS toute prête (WebPlaybackRealTest la fabrique avec le vrai ffmpeg) : réécriture, signatures, Range, en-têtes. */
     private void fakeCopy(String fileName) throws Exception {
         String k = key(fileName);
-        sql("UPDATE web_job SET manifest = jsonb_set(manifest, '{hls}', 'true') WHERE cache_key = '" + k + "'");
+        WebManifest m = new WebManifest(1444.9, "matroska", new WebManifest.Video(0, "h264", 8, 1280, 720, 0.0),
+                List.of(new WebManifest.Audio(0, 1, "aac", 2, "jpn", null, true, 1)), List.of(), List.of(), false, true, true);
+        sql("UPDATE web_job SET status = 'READY', manifest = '" + json.writeValueAsString(m).replace("'", "''")
+                + "'::jsonb, bytes = 160 WHERE cache_key = '" + k + "'");
         Path d = cache.dir(k);
         Files.createDirectories(d);
         Files.writeString(d.resolve("s_0.m3u8"), """
@@ -196,9 +202,6 @@ class WebPlaybackTest {
     void hlsCopyIsServedWithSignedRewrittenPlaylists() throws Exception {
         library("Days/Days - S01E03.mkv");
         playback("Days - S01E03.mkv", "h264,aac").then().statusCode(202);
-        assertTrue(prep.processNext());
-        // 10.2.1 : copie pas encore faite → non lisible, avec la raison.
-        playback("Days - S01E03.mkv", "h264,aac").then().statusCode(200).body("state", equalTo("UNSUPPORTED"));
         fakeCopy("Days - S01E03.mkv");
         Response r = playback("Days - S01E03.mkv", "h264,aac");
         r.then().statusCode(200).body("mode", equalTo("HLS")).body("mimeType", equalTo("application/vnd.apple.mpegurl"))

@@ -65,7 +65,8 @@ public class WebPrepService {
                             String key, WebManifest manifest, boolean playableEarly) implements Decision {
     }
 
-    public record Failed(String reason, Instant retryAt) implements Decision {
+    /** Échec ; {@code manifest} : pistes connues (null si l'analyse elle-même a échoué). */
+    public record Failed(String reason, Instant retryAt, WebManifest manifest) implements Decision {
     }
 
     public record CacheFull(int retryAfterSeconds) implements Decision {
@@ -255,7 +256,7 @@ public class WebPrepService {
                 }
                 case "FAILED" -> {
                     if (j.nextAttempt() != null && j.nextAttempt().isAfter(Instant.now())) {
-                        return new Failed(j.error(), j.nextAttempt());
+                        return new Failed(j.error(), j.nextAttempt(), j.manifest());
                     }
                     requeue(mediaFileId, 0, false);
                 }

@@ -37,7 +37,7 @@ public final class ProcessRunner {
     }
 
     /** Préfixe de priorité basse (vide si les outils manquent : la commande reste identique). */
-    static List<String> lowPriorityPrefix(boolean enabled) {
+    public static List<String> lowPriorityPrefix(boolean enabled) {
         List<String> p = new ArrayList<>();
         if (enabled && Files.isExecutable(NICE)) {
             p.addAll(List.of(NICE.toString(), "-n", "19"));

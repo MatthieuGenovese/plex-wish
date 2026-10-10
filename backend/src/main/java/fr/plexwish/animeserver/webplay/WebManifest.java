@@ -23,8 +23,12 @@ import java.util.Set;
 public record WebManifest(Double durationSeconds, String container, Video video, List<Audio> audio, List<Subtitle> subtitles,
                           List<Font> fonts, boolean direct, boolean wantsHls, boolean hls) {
 
-    /** {@code index} : index de la piste dans le fichier (pour {@code -map 0:index}). */
-    public record Video(int index, String codec, Integer bitDepth, Integer width, Integer height) {
+    /**
+     * {@code index} : index de la piste dans le fichier (pour {@code -map 0:index}) ; {@code start} : instant de sa
+     * première image dans le fichier (s) : la copie HLS lue par hls.js commence à 0, les sous-titres extraits gardent
+     * l'horloge du fichier (décalage à appliquer : {@code -start}).
+     */
+    public record Video(int index, String codec, Integer bitDepth, Integer width, Integer height, Double start) {
     }
 
     /**
@@ -120,7 +124,8 @@ public record WebManifest(Double durationSeconds, String container, Video video,
                     continue;
                 }
                 String pix = text(st.path("pix_fmt"));
-                video = new Video(index, codec, bitDepth(st, pix), integer(st.path("width")), integer(st.path("height")));
+                video = new Video(index, codec, bitDepth(st, pix), integer(st.path("width")), integer(st.path("height")),
+                        signed(st.path("start_time")));
             } else if ("audio".equals(type)) {
                 audio.add(new Audio(a++, index, codec, integer(st.path("channels")), lang, title, disp.path("default").asInt(0) == 1, null));
             } else if ("subtitle".equals(type) && s < MAX_SUBTITLES) {
@@ -215,6 +220,20 @@ public record WebManifest(Double durationSeconds, String container, Video video,
         try {
             double d = Double.parseDouble(t);
             return Double.isFinite(d) && d >= 0 ? d : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Nombre éventuellement négatif (start_time), sinon null. */
+    private static Double signed(JsonNode n) {
+        String t = text(n);
+        if (t == null || "N/A".equals(t)) {
+            return null;
+        }
+        try {
+            double d = Double.parseDouble(t);
+            return Double.isFinite(d) ? d : null;
         } catch (NumberFormatException e) {
             return null;
         }

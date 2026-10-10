@@ -15,7 +15,7 @@ RUN mvn -B -q package -DskipTests
 
 # --- ffmpeg / ffprobe : version figée, compilés avec le strict nécessaire (ARCHITECTURE §22.1) -------------
 # Source officielle, empreinte vérifiée. Seulement : lecture de fichiers, tous les conteneurs en lecture (démuxeurs),
-# MKV / MP4 / sortie nulle en écriture, les filtres de flux (mpeg4_unpack_bframes…), quelques décodeurs pour que
+# MKV / MP4 / HLS (lecteur web) / sortie nulle en écriture, les filtres de flux (mpeg4_unpack_bframes…), quelques décodeurs pour que
 # ffprobe complète les informations. Ni réseau, ni encodeur vidéo, ni bibliothèque externe (zlib exceptée) :
 # ~18 Mo au lieu de ~600 Mo pour le paquet ffmpeg d'Ubuntu. Compilation : 2 à 3 min sur un PC, ~10-15 min sur le NAS
 # (une seule fois, ensuite en cache tant que ce bloc ne change pas).
@@ -31,7 +31,7 @@ RUN curl -fsSL -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VER
 RUN ./configure --prefix=/opt/ffmpeg --disable-everything --disable-autodetect --disable-doc --disable-debug \
       --disable-ffplay --disable-network --disable-x86asm --enable-static --disable-shared --enable-zlib \
       --enable-protocol=file,pipe --enable-demuxers --enable-parsers --enable-bsfs \
-      --enable-muxer=matroska,null,mp4,webvtt,ass \
+      --enable-muxer=matroska,null,mp4,webvtt,ass,hls \
       --enable-decoder=h264,hevc,mpeg4,msmpeg4v1,msmpeg4v2,msmpeg4v3,mpeg1video,mpeg2video,vp8,vp9,mjpeg,vc1,wmv3,theora \
       --enable-decoder=aac,aac_latm,mp1,mp2,mp3,ac3,eac3,dca,truehd,mlp,vorbis,opus,flac,alac,pcm_s16le,pcm_s24le,pcm_s16be,wmav2 \
       --enable-decoder=ass,ssa,subrip,srt,webvtt,mov_text,dvdsub,pgssub,dvbsub \

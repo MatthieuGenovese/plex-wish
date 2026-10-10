@@ -86,7 +86,7 @@ public class WebPlaybackResource {
     public record WebPlayback(String state, String mode, String url, String mimeType, Instant expiresAt, boolean growing,
                               Double durationSeconds, List<AudioTrack> audio, List<SubtitleTrack> subtitles, List<String> fonts,
                               boolean imageSubtitles, List<String> unavailableAudio, PreparingInfo preparing, String reason,
-                              EpisodeInfo episode, NextEpisode next, Resume resume) {
+                              EpisodeInfo episode, NextEpisode next, Resume resume, double subtitleOffsetSeconds) {
     }
 
     static final Pattern AUDIO_LIST = Pattern.compile("\\d{1,2}(,\\d{1,2}){0,19}");
@@ -163,13 +163,23 @@ public class WebPlaybackResource {
                 }
                 yield Response.status(Response.Status.ACCEPTED).header("Retry-After", p.retryAfterSeconds())
                         .entity(new WebPlayback("PREPARING", null, null, null, null, false, null, List.of(), List.of(), List.of(),
-                                false, List.of(), info, null, episode, next, resume)).build();
+                                false, List.of(), info, null, episode, next, resume, 0)).build();
             }
             case WebPrepService.CacheFull f -> throw new ApiException(503, "WEB_CACHE_FULL",
                     "Le serveur n'a plus de place pour préparer cet épisode pour le navigateur (les copies déjà prêtes sont en cours "
                             + "de lecture). Réessayez dans quelques minutes.");
-            case WebPrepService.Failed f -> throw new ApiException(409, "WEB_PREP_FAILED",
-                    "Cet épisode n'a pas pu être préparé pour le navigateur (" + f.reason() + "). Regardez-le avec l'application Android.");
+            case WebPrepService.Failed f -> {
+                // Fichier que ce navigateur ne lirait de toute façon pas : la raison utile est celle-là, pas l'échec.
+                if (f.manifest() != null) {
+                    WebManifest planned = f.manifest().withProduced(f.manifest().subtitles(), f.manifest().fonts(), f.manifest().wantsHls());
+                    WebDecision.Result d = WebDecision.decide(planned, caps);
+                    if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
+                        yield Response.ok(unsupported(d.reason(), f.manifest(), episode, next, resume)).build();
+                    }
+                }
+                throw new ApiException(409, "WEB_PREP_FAILED",
+                        "Cet épisode n'a pas pu être préparé pour le navigateur (" + f.reason() + "). Regardez-le avec l'application Android.");
+            }
             case WebPrepService.Unavailable u -> throw new ApiException(503, "WEB_PREP_UNAVAILABLE",
                     "La préparation pour le navigateur est indisponible sur le serveur (" + u.reason() + ").");
         };
@@ -187,7 +197,7 @@ public class WebPlaybackResource {
 
     private WebPlayback unsupported(String reason, WebManifest m, EpisodeInfo e, NextEpisode next, Resume resume) {
         return new WebPlayback("UNSUPPORTED", null, null, null, null, false, m == null ? null : m.durationSeconds(), List.of(),
-                List.of(), List.of(), false, List.of(), null, reason, e, next, resume);
+                List.of(), List.of(), false, List.of(), null, reason, e, next, resume, 0);
     }
 
     /** Réponse « à lire » : original ou copie HLS, pistes proposées, sous-titres et polices signés. */
@@ -242,8 +252,10 @@ public class WebPlaybackResource {
                 .map(f -> base + f.file() + "?" + signer.webQuery(fileId, key, f.file(), userId, exp)).toList();
         List<String> missing = d.missingAudio().stream()
                 .map(a -> label(a.language(), a.title(), "Piste audio " + (a.n() + 1), false)).toList();
+        // Copie HLS : hls.js la fait commencer à 0, les sous-titres gardent l'horloge du fichier (§ WebManifest.Video).
+        double offset = d.mode() == WebDecision.Mode.HLS && m.video().start() != null ? -m.video().start() : 0;
         return new WebPlayback("READY", d.mode().name(), url, type, Instant.ofEpochSecond(exp), growing, m.durationSeconds(),
-                audio, subs, fonts, image && subs.isEmpty(), missing, info, null, e, next, resume);
+                audio, subs, fonts, image && subs.isEmpty(), missing, info, null, e, next, resume, offset);
     }
 
     private static int rank(WebManifest.Audio a) {

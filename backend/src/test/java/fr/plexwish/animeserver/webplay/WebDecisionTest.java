@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Choix de la source pour un navigateur (docs/WEB-PLAYER.md §4.1) et analyse des pistes. */
 class WebDecisionTest {
 
-    static WebManifest.Video h264 = new WebManifest.Video(0, "h264", 8, 1920, 1080);
+    static WebManifest.Video h264 = new WebManifest.Video(0, "h264", 8, 1920, 1080, 0.0);
 
     static WebManifest.Audio audio(int n, String codec, String lang, Integer rendition) {
         return new WebManifest.Audio(n, n + 1, codec, 2, lang, null, n == 0, rendition);
@@ -38,12 +38,12 @@ class WebDecisionTest {
 
     @Test
     void videoTheBrowserCannotDecodeIsUnsupportedWithAReason() {
-        WebManifest hi10 = manifest("matroska", new WebManifest.Video(0, "h264", 10, 1920, 1080), List.of(audio(0, "aac", "jpn", 1)), false, true);
+        WebManifest hi10 = manifest("matroska", new WebManifest.Video(0, "h264", 10, 1920, 1080, 0.0), List.of(audio(0, "aac", "jpn", 1)), false, true);
         WebDecision.Result r = WebDecision.decide(hi10, WebDecision.caps("h264,hevc,hevc10,aac"));
         assertEquals(WebDecision.Mode.UNSUPPORTED, r.mode());
         assertTrue(r.reason().contains("H.264 10 bits"), r.reason());
 
-        WebManifest hevc10 = manifest("matroska", new WebManifest.Video(0, "hevc", 10, 1920, 1080), List.of(audio(0, "aac", "jpn", 1)), false, true);
+        WebManifest hevc10 = manifest("matroska", new WebManifest.Video(0, "hevc", 10, 1920, 1080, 0.0), List.of(audio(0, "aac", "jpn", 1)), false, true);
         assertEquals(WebDecision.Mode.UNSUPPORTED, WebDecision.decide(hevc10, WebDecision.caps("h264,hevc,aac")).mode());
         assertEquals(WebDecision.Mode.HLS, WebDecision.decide(hevc10, WebDecision.caps("h264,hevc10,aac")).mode());
     }

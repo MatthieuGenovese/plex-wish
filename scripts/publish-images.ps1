@@ -29,10 +29,21 @@ if ((git status --porcelain --untracked-files=no) -and $env:ALLOW_DIRTY -ne "1")
 $backend = "$registry/anime-server-backend"
 $web = "$registry/anime-server-web"
 
+# Registre local d'essai, en HTTP : docker manifest a besoin de --insecure.
+$insecure = @()
+if ($registry -match '^(localhost|127\.0\.0\.1):') { $insecure = @("--insecure") }
 if (-not $NoPush) {
     foreach ($img in @($backend, $web)) {
-        docker manifest inspect "${img}:$version" *> $null
-        if ($LASTEXITCODE -eq 0) { Fail "${img}:$version existe déjà sur le registre : augmenter VERSION" }
+        # « manifest unknown » = version absente du registre, c'est le cas normal. Windows PowerShell transforme ce
+        # message d'erreur de docker en exception quand $ErrorActionPreference vaut Stop : on le lit donc en texte.
+        $ErrorActionPreference = "Continue"
+        $answer = (docker manifest inspect @insecure "${img}:$version" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($code -eq 0) { Fail "${img}:$version existe déjà sur le registre : augmenter VERSION" }
+        if ($answer -notmatch 'manifest unknown|not found|no such manifest') {
+            Fail "registre injoignable ou accès refusé pour ${img} ($answer). Avez-vous fait « docker login ghcr.io » avec le jeton d'écriture ?"
+        }
     }
 }
 

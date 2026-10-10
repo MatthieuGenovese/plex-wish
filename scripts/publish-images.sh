@@ -42,8 +42,13 @@ insecure=
 case "$registry" in localhost:*|127.0.0.1:*) insecure=--insecure ;; esac # registre local d'essai, en HTTP
 if [ "$push" = 1 ]; then
     for img in "$backend" "$web"; do
-        if docker manifest inspect $insecure "$img:$version" > /dev/null 2>&1; then
+        # « manifest unknown » = version absente, cas normal ; toute autre erreur (accès refusé…) arrête tout.
+        if answer=$(docker manifest inspect $insecure "$img:$version" 2>&1); then
             echo "$img:$version existe déjà sur le registre : augmenter VERSION." >&2
+            exit 1
+        fi
+        if ! echo "$answer" | grep -Eqi 'manifest unknown|not found|no such manifest'; then
+            echo "registre injoignable ou accès refusé pour $img ($answer). « docker login ghcr.io » fait avec le jeton d'écriture ?" >&2
             exit 1
         fi
     done

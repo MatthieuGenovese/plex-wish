@@ -89,6 +89,24 @@ public interface MediaConfig {
     @WithDefault("60m")
     java.time.Duration webPrepTimeout();
 
+    /**
+     * Délai maximal d'une conversion pour le navigateur (temps de calcul : une conversion suspendue pendant les
+     * lectures ne compte pas). Un épisode de 24 min 1080p prend ~30 min sur le DS923+ (estimation, §6).
+     */
+    @WithDefault("4h")
+    java.time.Duration webConvertTimeout();
+
+    /** Fenêtre de nuit du travail préventif (heures locales, variable TZ) : début inclus, fin exclue. */
+    @WithDefault("1")
+    int webNightStart();
+
+    @WithDefault("7")
+    int webNightEnd();
+
+    /** Fils de calcul de x264 (le R1600 en a 4 : 2 restent pour servir les lectures). */
+    @WithDefault("2")
+    int webConvertThreads();
+
     /** Une copie web lue depuis moins longtemps que ce délai n'est jamais effacée par la purge. */
     @WithDefault("3h")
     java.time.Duration webInUse();

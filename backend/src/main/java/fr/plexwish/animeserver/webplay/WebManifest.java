@@ -84,6 +84,59 @@ public record WebManifest(Double durationSeconds, String container, Video video,
         return new WebManifest(durationSeconds, container, video, audio, subs, fontList, direct, wantsHls, hlsDone);
     }
 
+    // --- Conversion (10.3) : copie lisible par tous les navigateurs ---------------------------------------------------
+
+    /** Vidéos que le ffmpeg de l'image sait décoder (donc convertir). */
+    static final Set<String> DECODABLE_VIDEO = Set.of("h264", "hevc", "mpeg4", "msmpeg4v1", "msmpeg4v2", "msmpeg4v3",
+            "mpeg1video", "mpeg2video", "vp8", "vp9", "mjpeg", "vc1", "wmv3", "theora");
+    /** Sons copiés tels quels dans la conversion (lus par tous les navigateurs) ; les autres deviennent AAC. */
+    static final Set<String> UNIVERSAL_AUDIO = Set.of("aac", "mp3");
+    static final int MAX_CONVERTED_AUDIO = 8;
+    /** Sorte de conversion, notée dans {@code container} du plan. */
+    public static final String AUDIO_ONLY = "conv-audio";
+    public static final String VIDEO = "conv-video";
+
+    /** Vidéo H.264 8 bits : lue partout, copiée telle quelle (seul le son est converti, « W2 »). */
+    public static boolean universalVideo(Video v) {
+        return v != null && "h264".equals(v.codec()) && (v.bitDepth() == null || v.bitDepth() <= 8);
+    }
+
+    /** Une conversion est possible : vidéo décodable par le ffmpeg du serveur, durée connue. */
+    public boolean convertible() {
+        return video != null && video.codec() != null && DECODABLE_VIDEO.contains(video.codec()) && durationSeconds != null
+                && durationSeconds > 0;
+    }
+
+    /**
+     * Plan de la conversion : vidéo H.264 8 bits (copiée si elle l'est déjà, sinon convertie, hauteur au plus
+     * {@code maxHeight}), chaque piste audio en AAC stéréo (AAC et MP3 copiés), sous-titres et polices laissés à la
+     * préparation de base. {@code video.codec} / {@code audio.codec} : ce qui sort de la conversion ; {@code container} :
+     * {@link #AUDIO_ONLY} (vidéo copiée, « W2 ») ou {@link #VIDEO} (vidéo convertie, « W3 »).
+     */
+    public WebManifest convertPlan(int maxHeight) {
+        Video v = video;
+        Integer w = v.width();
+        Integer h = v.height();
+        if (!universalVideo(v) && h != null && h > maxHeight) {
+            int nh = maxHeight - maxHeight % 2;
+            w = w == null ? null : (int) Math.round(w * (double) nh / h / 2) * 2;
+            h = nh;
+        }
+        Video out = new Video(v.index(), "h264", 8, w, h, v.start());
+        List<Audio> outAudio = new ArrayList<>();
+        int rendition = 1;
+        for (Audio a : audio) {
+            if (outAudio.size() >= MAX_CONVERTED_AUDIO) {
+                break;
+            }
+            String codec = a.codec() != null && UNIVERSAL_AUDIO.contains(a.codec()) ? a.codec() : "aac";
+            outAudio.add(new Audio(a.n(), a.index(), codec, codec.equals(a.codec()) ? a.channels() : Integer.valueOf(2),
+                    a.language(), a.title(), a.isDefault(), rendition++));
+        }
+        return new WebManifest(durationSeconds, universalVideo(v) ? AUDIO_ONLY : VIDEO, out, List.copyOf(outAudio), List.of(),
+                List.of(), false, true, false);
+    }
+
     // --- Analyse (ffprobe -show_format -show_streams -of json) --------------------------------------------------------
 
     private static final ObjectMapper JSON = new ObjectMapper();

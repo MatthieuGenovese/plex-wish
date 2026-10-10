@@ -14,15 +14,20 @@ import java.util.Set;
  * <ul>
  *     <li>DIRECT : l'original par Range (MP4 / WebM, une piste audio, codecs décodés) ;</li>
  *     <li>HLS : la copie HLS sans ré-encodage (pistes audio décodées seulement) ;</li>
- *     <li>UNSUPPORTED : vidéo ou son à convertir (10.3), avec la raison.</li>
+ *     <li>UNSUPPORTED : vidéo ou son à convertir, avec la raison ; {@code convert} : la conversion pour le navigateur
+ *     (copie H.264 + AAC, 10.3) le rendrait lisible.</li>
  * </ul>
  */
 public final class WebDecision {
 
     public enum Mode { DIRECT, HLS, UNSUPPORTED }
 
-    /** {@code audio} : pistes proposées (rang {@code n} dans le fichier), dans l'ordre ; {@code missingAudio} : non lisibles. */
-    public record Result(Mode mode, String reason, List<WebManifest.Audio> audio, List<WebManifest.Audio> missingAudio) {
+    /**
+     * {@code audio} : pistes proposées (rang {@code n} dans le fichier), dans l'ordre ; {@code missingAudio} : non
+     * lisibles. {@code convert} (UNSUPPORTED seulement) : une conversion pour le navigateur réglerait le problème.
+     */
+    public record Result(Mode mode, String reason, List<WebManifest.Audio> audio, List<WebManifest.Audio> missingAudio,
+                         boolean convert) {
     }
 
     /** Capacités qu'un navigateur peut annoncer (tout le reste est ignoré). */
@@ -70,13 +75,12 @@ public final class WebDecision {
 
     public static Result decide(WebManifest m, Set<String> caps) {
         if (m.video() == null) {
-            return unsupported("Ce fichier n'a pas de piste vidéo lisible.");
+            return unsupported("Ce fichier n'a pas de piste vidéo lisible.", false);
         }
         String vcap = videoCap(m.video());
         String label = videoLabel(m.video());
         if (vcap == null || !caps.contains(vcap)) {
-            return unsupported("La vidéo (" + label + ") n'est pas lisible par ce navigateur. La conversion pour le navigateur "
-                    + "n'est pas encore disponible : regardez cet épisode avec l'application Android.");
+            return unsupported(convertReason(m, "La vidéo (" + label + ") n'est pas lisible par ce navigateur"), convertible(m, caps));
         }
         List<WebManifest.Audio> ok = new ArrayList<>();
         List<WebManifest.Audio> missing = new ArrayList<>();
@@ -89,29 +93,38 @@ public final class WebDecision {
             }
         }
         if (!m.audio().isEmpty() && ok.isEmpty()) {
-            return unsupported("Le son (" + MediaRules.label(m.audio().get(0).codec()) + ") n'est pas lisible par ce navigateur. "
-                    + "La conversion pour le navigateur n'est pas encore disponible : regardez cet épisode avec l'application Android.");
+            return unsupported(convertReason(m, "Le son (" + MediaRules.label(m.audio().get(0).codec()) + ") n'est pas lisible par ce navigateur"),
+                    convertible(m, caps));
         }
         if (m.direct() && missing.isEmpty()) {
-            return new Result(Mode.DIRECT, null, List.copyOf(ok), List.of());
+            return new Result(Mode.DIRECT, null, List.copyOf(ok), List.of(), false);
         }
         if (!m.hls()) {
-            return unsupported(m.wantsHls() ? "La copie de cet épisode pour le navigateur n'a pas pu être faite."
-                    : "Ce fichier doit être converti pour le navigateur : ce n'est pas encore disponible. "
-                    + "Regardez cet épisode avec l'application Android.");
+            return unsupported(convertReason(m, m.wantsHls() ? "La copie de cet épisode pour le navigateur n'a pas pu être faite"
+                    : "Ce fichier doit être converti pour le navigateur"), convertible(m, caps));
         }
         List<WebManifest.Audio> inCopy = ok.stream().filter(a -> a.rendition() != null).toList();
         List<WebManifest.Audio> notInCopy = new ArrayList<>(missing);
         ok.stream().filter(a -> a.rendition() == null).forEach(notInCopy::add);
         if (!m.audio().isEmpty() && inCopy.isEmpty()) {
-            return unsupported("Le son de cet épisode doit être converti pour le navigateur : ce n'est pas encore disponible. "
-                    + "Regardez cet épisode avec l'application Android.");
+            return unsupported(convertReason(m, "Le son de cet épisode doit être converti pour le navigateur"), convertible(m, caps));
         }
-        return new Result(Mode.HLS, null, inCopy, List.copyOf(notInCopy));
+        return new Result(Mode.HLS, null, inCopy, List.copyOf(notInCopy), false);
     }
 
-    private static Result unsupported(String reason) {
-        return new Result(Mode.UNSUPPORTED, reason, List.of(), List.of());
+    /** La conversion (H.264 + AAC) servirait : fichier convertible et navigateur qui lit au moins ces deux formats. */
+    static boolean convertible(WebManifest m, Set<String> caps) {
+        return m.convertible() && caps.contains("h264") && caps.contains("aac");
+    }
+
+    /** Raison affichée si la conversion n'est pas faite (impossible, désactivée ou en échec). */
+    private static String convertReason(WebManifest m, String what) {
+        return what + (m.convertible() ? "." : ", et le serveur ne sait pas le convertir.")
+                + " Regardez cet épisode avec l'application Android.";
+    }
+
+    private static Result unsupported(String reason, boolean convert) {
+        return new Result(Mode.UNSUPPORTED, reason, List.of(), List.of(), convert);
     }
 
     static String videoLabel(WebManifest.Video v) {

@@ -117,8 +117,8 @@ class WebPlaybackTest {
 
     private String key(String fileName) throws Exception {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement();
-             var rs = st.executeQuery("SELECT j.cache_key FROM web_job j JOIN media_file f ON f.id = j.media_file_id WHERE f.file_name = '"
-                     + fileName + "'")) {
+             var rs = st.executeQuery("SELECT j.cache_key FROM web_job j JOIN media_file f ON f.id = j.media_file_id WHERE j.kind = 'BASE'"
+                     + " AND f.file_name = '" + fileName + "'")) {
             return rs.next() ? rs.getString(1) : null;
         }
     }
@@ -157,8 +157,21 @@ class WebPlaybackTest {
                 .body("reason", containsString("son")).body("url", nullValue());
         playback("Frieren - S01E01 hevc10.mkv", "h264,hevc,aac").then().statusCode(202);
         assertTrue(prep.processNext());
-        playback("Frieren - S01E01 hevc10.mkv", "h264,hevc,aac").then().statusCode(200).body("state", equalTo("UNSUPPORTED"))
+        // HEVC 10 bits non décodé : conversion pour le navigateur (H.264 + AAC) mise en file, attente annoncée ;
+        // un navigateur sans AAC n'en tirerait rien : raison tout de suite.
+        playback("Frieren - S01E01 hevc10.mkv", "h264,hevc,aac").then().statusCode(202).body("state", equalTo("PREPARING"))
+                .body("preparing.conversion", equalTo(true)).body("preparing.message", containsString("Conversion"));
+        assertEquals("QUEUED", status(convKey("Frieren - S01E01 hevc10.mkv")));
+        playback("Frieren - S01E01 hevc10.mkv", "h264,hevc").then().statusCode(200).body("state", equalTo("UNSUPPORTED"))
                 .body("reason", containsString("HEVC 10 bits"));
+    }
+
+    private String convKey(String fileName) throws Exception {
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement();
+             var rs = st.executeQuery("SELECT j.cache_key FROM web_job j JOIN media_file f ON f.id = j.media_file_id WHERE j.kind = 'CONV'"
+                     + " AND f.file_name = '" + fileName + "'")) {
+            return rs.next() ? rs.getString(1) : null;
+        }
     }
 
     @Inject
@@ -267,6 +280,52 @@ class WebPlaybackTest {
                 .body("reason", containsString("son"));
         playback("Days - S01E01.mp4", "h264,aac").then().statusCode(503).body("error", equalTo("WEB_CACHE_FULL"))
                 .body("message", containsString("manque de place"));
+    }
+
+    @Test
+    void aConversionThatKeepsFailingStopsAfterThreeAttempts() throws Exception {
+        library("Frieren/Frieren - S01E01 hevc10.mkv");
+        String file = "Frieren - S01E01 hevc10.mkv";
+        playback(file, "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            playback(file, "h264,aac").then().statusCode(202).body("preparing.conversion", equalTo(true));
+            // Faux ffmpeg : rien d'écrit, la vérification échoue.
+            assertTrue(prep.processNext(WebPrepService.CONV));
+            assertEquals("FAILED", status(convKey(file)));
+            assertEquals(String.valueOf(attempt), one("SELECT attempts FROM web_job WHERE kind = 'CONV'"));
+            if (attempt < 3) {
+                assertEquals("t", one("SELECT next_attempt_at > now() FROM web_job WHERE kind = 'CONV'"), "nouvel essai plus tard");
+                playback(file, "h264,aac").then().statusCode(409).body("message", containsString("converti"));
+                sql("UPDATE web_job SET next_attempt_at = now() - interval '1 second' WHERE kind = 'CONV'");
+            }
+        }
+        // Trois échecs : plus d'essai automatique, l'admin relancera.
+        assertEquals(null, one("SELECT next_attempt_at FROM web_job WHERE kind = 'CONV'"));
+        playback(file, "h264,aac").then().statusCode(409).body("error", equalTo("WEB_PREP_FAILED"));
+        assertFalse(prep.processNext(WebPrepService.CONV));
+    }
+
+    @Test
+    void interruptedConversionStartsAgainAfterARestart() throws Exception {
+        library("Frieren/Frieren - S01E01 hevc10.mkv");
+        String file = "Frieren - S01E01 hevc10.mkv";
+        playback(file, "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        playback(file, "h264,aac").then().statusCode(202);
+        String k = convKey(file);
+        sql("UPDATE web_job SET status = 'RUNNING', phase = 'CONVERT' WHERE cache_key = '" + k + "'");
+        Files.createDirectories(cache.partDir(k));
+        prep.recover();
+        assertEquals("QUEUED", status(k));
+        assertFalse(prep.partExists(k), "conversion entamée effacée (ffmpeg ne reprend pas un fichier)");
+        assertTrue(one("SELECT manifest::text FROM web_job WHERE cache_key = '" + k + "'").contains("conv-video"), "plan gardé");
+    }
+
+    private String one(String sql) throws Exception {
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement(); var rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getString(1) : null;
+        }
     }
 
     @Test

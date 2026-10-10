@@ -73,6 +73,46 @@ class WebDecisionTest {
     }
 
     @Test
+    void conversionIsOfferedWhenItWouldHelp() {
+        WebManifest hi10 = manifest("matroska", new WebManifest.Video(0, "h264", 10, 1920, 1080, 0.0), List.of(audio(0, "aac", "jpn", 1)), false, true);
+        assertTrue(WebDecision.decide(hi10, WebDecision.caps("h264,aac")).convert());
+        // Navigateur sans AAC : la conversion (H.264 + AAC) ne l'aiderait pas.
+        assertEquals(false, WebDecision.decide(hi10, WebDecision.caps("h264,opus")).convert());
+        WebManifest dts = manifest("mp4", h264, List.of(audio(0, "dts", "jpn", null)), true, false);
+        assertTrue(WebDecision.decide(dts, WebDecision.caps("h264,aac")).convert());
+        // Vidéo que ffmpeg ne sait pas décoder (pas de décodeur AV1 dans l'image) : raison, pas d'attente inutile.
+        WebManifest none = manifest("matroska", new WebManifest.Video(0, "prores", 10, 1920, 1080, 0.0), List.of(audio(0, "aac", "jpn", 1)), false, false);
+        WebDecision.Result r = WebDecision.decide(none, WebDecision.caps("h264,aac"));
+        assertEquals(false, r.convert());
+        assertTrue(r.reason().contains("ne sait pas le convertir"), r.reason());
+        assertEquals(false, WebDecision.decide(manifest("mp4", h264, List.of(audio(0, "aac", null, null)), true, false),
+                WebDecision.caps("h264,aac")).convert());
+    }
+
+    @Test
+    void conversionPlan() {
+        WebManifest hi10 = new WebManifest(1420.0, "matroska", new WebManifest.Video(0, "h264", 10, 1920, 1080, 0.042),
+                List.of(audio(0, "aac", "jpn", 1), audio(1, "ac3", "fre", 2), audio(2, "mp3", "eng", null)), List.of(), List.of(), false, false, false);
+        WebManifest p = hi10.convertPlan(720);
+        assertEquals(WebManifest.VIDEO, p.container());
+        assertEquals(new WebManifest.Video(0, "h264", 8, 1280, 720, 0.042), p.video());
+        assertEquals(List.of("aac", "aac", "mp3"), p.audio().stream().map(WebManifest.Audio::codec).toList());
+        assertEquals(List.of(1, 2, 3), p.audio().stream().map(WebManifest.Audio::rendition).toList());
+        assertEquals(1080, hi10.convertPlan(1080).video().height());
+        // Vidéo déjà lisible partout : copiée telle quelle, seul le son change (« W2 »).
+        WebManifest ac3 = new WebManifest(1420.0, "mp4", h264, List.of(audio(0, "ac3", "jpn", null)), List.of(), List.of(), true, false, false);
+        WebManifest q = ac3.convertPlan(720);
+        assertEquals(WebManifest.AUDIO_ONLY, q.container());
+        assertEquals(1080, q.video().height());
+        assertEquals(2, q.audio().get(0).channels());
+        // Petite vidéo : jamais agrandie ; dimensions paires.
+        WebManifest sd = new WebManifest(600.0, "avi", new WebManifest.Video(0, "mpeg4", null, 853, 481, null), List.of(), List.of(),
+                List.of(), false, false, false);
+        assertEquals(481, sd.convertPlan(720).video().height());
+        assertEquals(WebPrepService.convertedBytes(p, 1_000_000_000L) > 300_000_000L, true);
+    }
+
+    @Test
     void planFromFfprobe() {
         String json = """
                 {"format": {"format_name": "matroska,webm", "duration": "1420.5"},

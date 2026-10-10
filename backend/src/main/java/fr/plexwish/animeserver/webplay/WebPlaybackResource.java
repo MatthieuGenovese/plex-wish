@@ -64,8 +64,9 @@ public class WebPlaybackResource {
                                 String url, String vttUrl) {
     }
 
+    /** {@code conversion} : la vidéo ou le son est converti (minutes, la page peut être fermée) ; sinon simple préparation. */
     public record PreparingInfo(String phase, int position, Double progress, long estimatedSeconds, int retryAfterSeconds,
-                                String message) {
+                                String message, boolean conversion) {
     }
 
     public record EpisodeInfo(long id, long animeId, String animeTitle, int seasonNumber, int episodeNumber, String title,
@@ -104,6 +105,8 @@ public class WebPlaybackResource {
     UpNextService upNext;
     @Inject
     JsonWebToken jwt;
+    @Inject
+    fr.plexwish.animeserver.stream.PlaybackActivity playback;
 
     // --- 1. Que lire ? ------------------------------------------------------------------------------------------------
 
@@ -144,81 +147,149 @@ public class WebPlaybackResource {
         NextEpisode next = upNext.following(episodeId)
                 .map(t -> new NextEpisode(t.episodeId(), t.seasonNumber(), t.episodeNumber(), t.episodeTitle())).orElse(null);
         Resume resume = resume(userId, episodeId);
+        Request q = new Request(caps, fileId, fileName, size, modified, userId, episode, next, resume);
         return switch (prep.request(fileId, size, modified)) {
-            case WebPrepService.Ready r -> Response.ok(source(r.key(), r.manifest(), caps, fileId, fileName, userId, false, null,
-                    episode, next, resume)).build();
+            case WebPrepService.Ready r -> {
+                WebDecision.Result d = WebDecision.decide(r.manifest(), caps);
+                if (d.mode() == WebDecision.Mode.UNSUPPORTED && d.convert()) {
+                    yield conversion(q, r.manifest(), r.key(), true);
+                }
+                yield Response.ok(source(r.key(), r.manifest(), r.manifest(), r.key(), q, false, null)).build();
+            }
             case WebPrepService.Preparing p -> {
-                PreparingInfo info = new PreparingInfo(p.phase(), p.position(), p.progress(), p.estimatedSeconds(), p.retryAfterSeconds(),
-                        message(p));
+                PreparingInfo info = info(p);
                 if (p.manifest() != null) {
-                    // Pistes connues : « non lisible » se dit tout de suite ; copie HLS lisible avant la fin : on la donne.
+                    // Pistes connues : « non lisible » se dit tout de suite (ou la conversion démarre en parallèle) ;
+                    // copie HLS lisible avant la fin : on la donne.
                     WebManifest planned = p.manifest().withProduced(p.manifest().subtitles(), p.manifest().fonts(), p.manifest().wantsHls());
                     WebDecision.Result d = WebDecision.decide(planned, caps);
                     if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
-                        yield Response.ok(unsupported(d.reason(), p.manifest(), episode, next, resume)).build();
+                        yield d.convert() ? conversion(q, p.manifest(), p.key(), false)
+                                : Response.ok(unsupported(d.reason(), p.manifest(), q)).build();
                     }
                     if (p.playableEarly() && d.mode() == WebDecision.Mode.HLS) {
-                        yield Response.ok(source(p.key(), planned, caps, fileId, fileName, userId, true, info, episode, next, resume)).build();
+                        yield Response.ok(source(p.key(), planned, planned, p.key(), q, true, info)).build();
                     }
                 }
-                yield Response.status(Response.Status.ACCEPTED).header("Retry-After", p.retryAfterSeconds())
-                        .entity(new WebPlayback("PREPARING", null, null, null, null, false, null, List.of(), List.of(), List.of(),
-                                false, List.of(), info, null, episode, next, resume, 0)).build();
+                yield preparing(info, q);
             }
             case WebPrepService.CacheFull f -> {
                 // Fichier que ce navigateur ne lirait de toute façon pas : inutile de faire attendre.
                 if (f.manifest() != null) {
                     WebManifest planned = f.manifest().withProduced(f.manifest().subtitles(), f.manifest().fonts(), f.manifest().wantsHls());
                     WebDecision.Result d = WebDecision.decide(planned, caps);
-                    if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
-                        yield Response.ok(unsupported(d.reason(), f.manifest(), episode, next, resume)).build();
+                    if (d.mode() == WebDecision.Mode.UNSUPPORTED && !d.convert()) {
+                        yield Response.ok(unsupported(d.reason(), f.manifest(), q)).build();
                     }
                 }
-                throw new ApiException(503, "WEB_CACHE_FULL",
-                        "Le serveur manque de place pour préparer cet épisode pour le navigateur. Réessayez plus tard, ou regardez-le "
-                                + "avec l'application Android.");
+                throw cacheFull();
             }
             case WebPrepService.Failed f -> {
-                // Fichier que ce navigateur ne lirait de toute façon pas : la raison utile est celle-là, pas l'échec.
+                // Pistes connues : la conversion peut encore servir (copie sans ré-encodage ratée) ; fichier qu'un
+                // navigateur ne lira jamais : la raison utile est celle-là, pas l'échec.
                 if (f.manifest() != null) {
                     WebManifest planned = f.manifest().withProduced(f.manifest().subtitles(), f.manifest().fonts(), f.manifest().wantsHls());
                     WebDecision.Result d = WebDecision.decide(planned, caps);
                     if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
-                        yield Response.ok(unsupported(d.reason(), f.manifest(), episode, next, resume)).build();
+                        yield d.convert() ? conversion(q, f.manifest(), null, true)
+                                : Response.ok(unsupported(d.reason(), f.manifest(), q)).build();
                     }
                 }
                 throw new ApiException(409, "WEB_PREP_FAILED",
                         "Cet épisode n'a pas pu être préparé pour le navigateur (" + f.reason() + "). Regardez-le avec l'application Android.");
             }
-            case WebPrepService.Unavailable u -> throw new ApiException(503, "WEB_PREP_UNAVAILABLE",
-                    "La préparation pour le navigateur est indisponible sur le serveur (" + u.reason() + ").");
+            case WebPrepService.Unavailable u -> throw unavailable(u);
         };
+    }
+
+    /** Ce que la réponse doit rappeler de la demande. */
+    record Request(Set<String> caps, long fileId, String fileName, long size, OffsetDateTime modified, long userId,
+                   EpisodeInfo episode, NextEpisode next, Resume resume) {
+    }
+
+    /**
+     * Conversion pour le navigateur (10.3) : vidéo et son de la conversion, sous-titres et polices de la préparation de
+     * base ({@code baseKey}, null si elle a échoué : pas de sous-titres). Lue dès qu'elle a assez d'avance.
+     */
+    private Response conversion(Request q, WebManifest base, String baseKey, boolean baseDone) throws SQLException {
+        return switch (prep.requestConversion(q.fileId(), q.size(), q.modified(), base, WebPrepService.PRIORITY_USER)) {
+            case WebPrepService.Ready r -> baseDone
+                    ? Response.ok(source(r.key(), r.manifest(), base, baseKey, q, false, null)).build()
+                    : preparing(new PreparingInfo("SUBS", 0, null, 5, 2, "Extraction des sous-titres…", false), q);
+            case WebPrepService.Preparing p -> {
+                PreparingInfo info = info(p);
+                if (p.playableEarly() && baseDone && p.manifest() != null) {
+                    WebManifest planned = p.manifest().withProduced(List.of(), List.of(), true);
+                    yield Response.ok(source(p.key(), planned, base, baseKey, q, true, info)).build();
+                }
+                yield preparing(info, q);
+            }
+            case WebPrepService.Failed f -> throw new ApiException(409, "WEB_PREP_FAILED",
+                    "Cet épisode n'a pas pu être converti pour le navigateur (" + f.reason() + "). Regardez-le avec l'application Android.");
+            case WebPrepService.CacheFull f -> throw cacheFull();
+            case WebPrepService.Unavailable u -> throw unavailable(u);
+        };
+    }
+
+    private static Response preparing(PreparingInfo info, Request q) {
+        return Response.status(Response.Status.ACCEPTED).header("Retry-After", info.retryAfterSeconds())
+                .entity(new WebPlayback("PREPARING", null, null, null, null, false, null, List.of(), List.of(), List.of(),
+                        false, List.of(), info, null, q.episode(), q.next(), q.resume(), 0)).build();
+    }
+
+    private static PreparingInfo info(WebPrepService.Preparing p) {
+        return new PreparingInfo(p.phase(), p.position(), p.progress(), p.estimatedSeconds(), p.retryAfterSeconds(), message(p),
+                WebPrepService.CONV.equals(p.kind()));
+    }
+
+    private static ApiException cacheFull() {
+        return new ApiException(503, "WEB_CACHE_FULL",
+                "Le serveur manque de place pour préparer cet épisode pour le navigateur. Réessayez plus tard, ou regardez-le "
+                        + "avec l'application Android.");
+    }
+
+    private static ApiException unavailable(WebPrepService.Unavailable u) {
+        return new ApiException(503, "WEB_PREP_UNAVAILABLE",
+                "La préparation pour le navigateur est indisponible sur le serveur (" + u.reason() + ").");
     }
 
     private static String message(WebPrepService.Preparing p) {
+        boolean conv = WebPrepService.CONV.equals(p.kind());
         String what = switch (p.phase() == null ? "" : p.phase()) {
             case "SUBS" -> "Extraction des sous-titres…";
             case "HLS" -> "Préparation de la vidéo pour le navigateur…";
-            case "QUEUED" -> "Préparation pour le navigateur…";
+            case "CONVERT" -> "Conversion de la vidéo pour le navigateur…";
+            case "AUDIO" -> "Conversion du son pour le navigateur…";
+            case "VERIFY" -> "Vérification de la copie…";
+            case "QUEUED" -> conv ? "Conversion pour le navigateur en attente…" : "Préparation pour le navigateur…";
             default -> "Analyse de l'épisode…";
         };
+        if (p.paused()) {
+            what += " (en pause pendant une lecture sur le serveur)";
+        }
         return p.position() > 0 ? what + " (" + p.position() + " avant lui)" : what;
     }
 
-    private WebPlayback unsupported(String reason, WebManifest m, EpisodeInfo e, NextEpisode next, Resume resume) {
+    private WebPlayback unsupported(String reason, WebManifest m, Request q) {
         return new WebPlayback("UNSUPPORTED", null, null, null, null, false, m == null ? null : m.durationSeconds(), List.of(),
-                List.of(), List.of(), false, List.of(), null, reason, e, next, resume, 0);
+                List.of(), List.of(), false, List.of(), null, reason, q.episode(), q.next(), q.resume(), 0);
     }
 
-    /** Réponse « à lire » : original ou copie HLS, pistes proposées, sous-titres et polices signés. */
-    WebPlayback source(String key, WebManifest m, Set<String> caps, long fileId, String fileName, long userId, boolean growing,
-                       PreparingInfo info, EpisodeInfo e, NextEpisode next, Resume resume) {
-        WebDecision.Result d = WebDecision.decide(m, caps);
+    /**
+     * Réponse « à lire » : original ou copie HLS ({@code key} / {@code m}), pistes proposées, sous-titres et polices
+     * signés venant de la préparation de base ({@code subsKey} / {@code subsFrom} : la même, ou celle de base quand
+     * {@code m} est une conversion ; null : aucun sous-titre).
+     */
+    WebPlayback source(String key, WebManifest m, WebManifest subsFrom, String subsKey, Request q, boolean growing, PreparingInfo info) {
+        long fileId = q.fileId();
+        long userId = q.userId();
+        WebDecision.Result d = WebDecision.decide(m, q.caps());
         if (d.mode() == WebDecision.Mode.UNSUPPORTED) {
-            return unsupported(d.reason(), m, e, next, resume);
+            return unsupported(d.reason(), m, q);
         }
         long exp = signer.expiry();
         String base = "/api/stream/" + fileId + "/web/" + key + "/";
+        String subsBase = "/api/stream/" + fileId + "/web/" + subsKey + "/";
         // Piste audio par défaut : japonais s'il existe (comme sur Android), sinon celle marquée par défaut, sinon la première.
         List<WebManifest.Audio> ordered = new ArrayList<>(d.audio());
         ordered.sort((x, y) -> Integer.compare(rank(x), rank(y)));
@@ -234,7 +305,7 @@ public class WebPlaybackResource {
         if (d.mode() == WebDecision.Mode.DIRECT) {
             StreamSigner.SignedUrl signed = signer.sign(fileId, userId);
             url = signed.url();
-            type = VideoMediaTypes.forFileName(fileName).orElse("video/mp4");
+            type = VideoMediaTypes.forFileName(q.fileName()).orElse("video/mp4");
         } else {
             String list = String.join(",", ordered.stream().map(a -> String.valueOf(a.rendition())).toList());
             String resource = list.isEmpty() ? "master.m3u8" : "master.m3u8;a=" + list;
@@ -244,13 +315,17 @@ public class WebPlaybackResource {
         List<SubtitleTrack> subs = new ArrayList<>();
         Set<String> subLabels = new HashSet<>();
         boolean image = false;
-        for (WebManifest.Subtitle s : m.subtitles()) {
+        List<WebManifest.Subtitle> subtitleList = subsFrom == null ? List.of() : subsFrom.subtitles();
+        for (WebManifest.Subtitle s : subtitleList) {
             if ("image".equals(s.kind())) {
                 image = true;
                 continue;
             }
-            String vtt = s.vtt() == null ? null : base + s.vtt() + "?" + signer.webQuery(fileId, key, s.vtt(), userId, exp);
-            String ass = s.ass() == null ? null : base + s.ass() + "?" + signer.webQuery(fileId, key, s.ass(), userId, exp);
+            if (subsKey == null) {
+                continue;
+            }
+            String vtt = s.vtt() == null ? null : subsBase + s.vtt() + "?" + signer.webQuery(fileId, subsKey, s.vtt(), userId, exp);
+            String ass = s.ass() == null ? null : subsBase + s.ass() + "?" + signer.webQuery(fileId, subsKey, s.ass(), userId, exp);
             if (ass == null && vtt == null) {
                 continue;
             }
@@ -258,14 +333,14 @@ public class WebPlaybackResource {
             subs.add(new SubtitleTrack(subs.size(), label, s.language(), s.forced(), s.isDefault(), ass != null ? "ass" : "vtt",
                     ass != null ? ass : vtt, vtt));
         }
-        List<String> fonts = m.fonts().stream()
-                .map(f -> base + f.file() + "?" + signer.webQuery(fileId, key, f.file(), userId, exp)).toList();
+        List<String> fonts = subsKey == null || subsFrom == null ? List.of() : subsFrom.fonts().stream()
+                .map(f -> subsBase + f.file() + "?" + signer.webQuery(fileId, subsKey, f.file(), userId, exp)).toList();
         List<String> missing = d.missingAudio().stream()
                 .map(a -> label(a.language(), a.title(), "Piste audio " + (a.n() + 1), false)).toList();
         // Copie HLS : hls.js la fait commencer à 0, les sous-titres gardent l'horloge du fichier (§ WebManifest.Video).
         double offset = d.mode() == WebDecision.Mode.HLS && m.video().start() != null ? -m.video().start() : 0;
         return new WebPlayback("READY", d.mode().name(), url, type, Instant.ofEpochSecond(exp), growing, m.durationSeconds(),
-                audio, subs, fonts, image && subs.isEmpty(), missing, info, null, e, next, resume, offset);
+                audio, subs, fonts, image && subs.isEmpty(), missing, info, null, q.episode(), q.next(), q.resume(), offset);
     }
 
     private static int rank(WebManifest.Audio a) {
@@ -341,6 +416,7 @@ public class WebPlaybackResource {
             throw notReady();
         }
         checkUserAndFile(userId, fileId);
+        playback.mark();
         Optional<WebPrepService.Job> job = prep.served(fileId, key);
         if (job.isEmpty() || job.get().manifest() == null) {
             throw notReady();

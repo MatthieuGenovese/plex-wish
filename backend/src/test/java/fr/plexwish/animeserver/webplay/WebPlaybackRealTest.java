@@ -143,8 +143,8 @@ class WebPlaybackRealTest {
 
     private String key(String fileName) throws Exception {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement();
-             var rs = st.executeQuery("SELECT j.cache_key FROM web_job j JOIN media_file f ON f.id = j.media_file_id WHERE f.file_name = '"
-                     + fileName + "'")) {
+             var rs = st.executeQuery("SELECT j.cache_key FROM web_job j JOIN media_file f ON f.id = j.media_file_id WHERE j.kind = 'BASE'"
+                     + " AND f.file_name = '" + fileName + "'")) {
             return rs.next() ? rs.getString(1) : null;
         }
     }
@@ -211,7 +211,8 @@ class WebPlaybackRealTest {
         playback("Gen - S01E03.mkv", "h264,hevc,aac").then().statusCode(202);
         assertTrue(prep.processNext());
         playback("Gen - S01E03.mkv", "h264,hevc,aac").then().statusCode(200).body("mode", equalTo("HLS"));
-        playback("Gen - S01E03.mkv", "h264,aac").then().statusCode(200).body("state", equalTo("UNSUPPORTED"));
+        // Navigateur sans HEVC : conversion pour le navigateur (10.3).
+        playback("Gen - S01E03.mkv", "h264,aac").then().statusCode(202).body("preparing.conversion", equalTo(true));
         Path dir = cache.dir(key("Gen - S01E03.mkv"));
         assertEquals("hevc,hvc1", ffprobe(dir.resolve("s_0.m4s"), "stream=codec_name,codec_tag_string"));
     }

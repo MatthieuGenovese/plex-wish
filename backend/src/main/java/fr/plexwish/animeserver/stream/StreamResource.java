@@ -47,6 +47,8 @@ public class StreamResource {
     }
 
     @Inject
+    PlaybackActivity playback;
+    @Inject
     StreamSigner signer;
     @Inject
     AgroalDataSource dataSource;
@@ -169,6 +171,7 @@ public class StreamResource {
             case VALID -> {
             }
         }
+        playback.mark();
         String relativePath;
         long sourceSize;
         java.time.OffsetDateTime sourceModified;

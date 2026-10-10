@@ -41,6 +41,15 @@ public class WebPrepSteps {
         void update(String phase, double value);
     }
 
+    /**
+     * Commande d'une conversion en cours : {@code process} reçoit le processus (arrêt depuis un autre fil),
+     * {@code pause} suspend / relance ffmpeg (lectures en cours), {@code speed} reçoit la vitesse annoncée par ffmpeg
+     * (« 1.4 » = 1,4 fois le temps réel).
+     */
+    public record Control(java.util.concurrent.atomic.AtomicReference<Process> process, java.util.function.BooleanSupplier pause,
+                          DoubleConsumer speed) {
+    }
+
     @Inject
     MediaConfig config;
     @Inject
@@ -241,6 +250,107 @@ public class WebPrepSteps {
         return total;
     }
 
+    // --- Conversion (10.3) ------------------------------------------------------------------------------------------------
+
+    /**
+     * Copie lisible par tous les navigateurs ({@code plan} = {@link WebManifest#convertPlan}) : vidéo copiée si elle est
+     * déjà en H.264 8 bits (« W2 », quelques minutes), sinon convertie par x264 (« W3 », réglages de la décision D5) ;
+     * chaque piste audio copiée (AAC, MP3) ou convertie en AAC stéréo 160 kb/s. Même HLS fMP4 que la copie de base.
+     */
+    public WebManifest convert(Path source, Path part, WebManifest src, WebManifest plan, Control control, Progress progress)
+            throws WebPrepService.StepFailure, InterruptedException {
+        boolean video = !WebManifest.universalVideo(src.video());
+        progress.update(video ? "CONVERT" : "AUDIO", 0);
+        ProcessRunner.Result r;
+        try {
+            r = ProcessRunner.run(convertCommand(source, part, src, plan), config.webConvertTimeout(), 64 * 1024, control.process(),
+                    progressLines(f -> progress.update(null, f * 0.97), control.speed(), src.durationSeconds()), control.pause());
+        } catch (IOException e) {
+            throw new WebPrepService.StepFailure("ffmpeg introuvable ou non exécutable");
+        }
+        if (!r.ok()) {
+            throw new WebPrepService.StepFailure("conversion pour le navigateur impossible : " + reason(r, source, config.webConvertTimeout()));
+        }
+        progress.update("VERIFY", 0.97);
+        verifyHls(part, plan);
+        return plan.withProduced(List.of(), List.of(), true);
+    }
+
+    List<String> convertCommand(Path source, Path part, WebManifest src, WebManifest plan) {
+        List<String> cmd = base();
+        cmd.addAll(List.of("-i", "file:" + source, "-map", "0:" + plan.video().index()));
+        List<WebManifest.Audio> renditions = plan.audio().stream().sorted((x, y) -> Integer.compare(x.rendition(), y.rendition())).toList();
+        for (WebManifest.Audio a : renditions) {
+            cmd.addAll(List.of("-map", "0:" + a.index()));
+        }
+        if (WebManifest.universalVideo(src.video())) {
+            cmd.addAll(List.of("-c:v", "copy"));
+        } else {
+            Integer h = plan.video().height();
+            String scale = h == null ? "scale=w=trunc(iw/2)*2:h=trunc(ih/2)*2" : "scale=w=-2:h=" + (h - h % 2);
+            cmd.addAll(List.of("-vf", scale + ":flags=bicubic,format=yuv420p",
+                    "-c:v", "libx264", "-preset", "veryfast", "-tune", "animation", "-crf", "21",
+                    "-profile:v", "high", "-level:v", (h != null && h > 720) ? "4.1" : "4.0",
+                    "-g", "144", "-keyint_min", "48", "-force_key_frames", "expr:gte(t,n_forced*6)",
+                    "-threads", Integer.toString(Math.max(1, config.webConvertThreads()))));
+        }
+        for (int i = 0; i < renditions.size(); i++) {
+            WebManifest.Audio out = renditions.get(i);
+            String original = src.audio().stream().filter(a -> a.index() == out.index()).map(WebManifest.Audio::codec).findFirst().orElse(null);
+            if (out.codec().equals(original)) {
+                cmd.addAll(List.of("-c:a:" + i, "copy"));
+            } else {
+                cmd.addAll(List.of("-c:a:" + i, "aac", "-b:a:" + i, "160k", "-ac:a:" + i, "2"));
+            }
+        }
+        cmd.addAll(List.of("-max_muxing_queue_size", "4096",
+                "-f", "hls", "-hls_segment_type", "fmp4", "-hls_flags", "single_file+independent_segments",
+                "-hls_playlist_type", "event", "-hls_time", "6", "-hls_list_size", "0"));
+        if (renditions.isEmpty()) {
+            cmd.add(part.resolve("s_0.m3u8").toString());
+        } else {
+            StringBuilder map = new StringBuilder("v:0");
+            for (int i = 0; i < renditions.size(); i++) {
+                map.append(" a:").append(i);
+            }
+            cmd.addAll(List.of("-var_stream_map", map.toString(), part.resolve("s_%v.m3u8").toString()));
+        }
+        return cmd;
+    }
+
+    /** Lignes de {@code -progress} : position (fraction de la durée) et vitesse (« speed=1.4x »). */
+    static java.util.function.Consumer<String> progressLines(DoubleConsumer fraction, DoubleConsumer speed, Double duration) {
+        return line -> {
+            if (line.startsWith("out_time_us=") && duration != null && duration > 0) {
+                try {
+                    fraction.accept(Math.max(0, Math.min(0.99, Long.parseLong(line.substring(12)) / 1e6 / duration)));
+                } catch (NumberFormatException ignored) {
+                    // « N/A » au début
+                }
+            } else if (line.startsWith("speed=") && speed != null) {
+                String v = line.substring(6).replace("x", "").trim();
+                try {
+                    double d = Double.parseDouble(v);
+                    if (Double.isFinite(d) && d > 0) {
+                        speed.accept(d);
+                    }
+                } catch (NumberFormatException ignored) {
+                    // « N/A »
+                }
+            }
+        };
+    }
+
+    /** Durée déjà écrite (s) de la copie en cours : la piste vidéo fait foi. */
+    public double writtenSeconds(Path part) {
+        try {
+            Path pl = part.resolve("s_0.m3u8");
+            return Files.isRegularFile(pl, LinkOption.NOFOLLOW_LINKS) ? duration(Files.readString(pl, StandardCharsets.UTF_8)) : 0;
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
     // --- Outils -------------------------------------------------------------------------------------------------------
 
     private List<String> base() {
@@ -253,23 +363,19 @@ public class WebPrepSteps {
             throws WebPrepService.StepFailure, InterruptedException {
         try {
             Duration timeout = config.webPrepTimeout();
-            return ProcessRunner.run(cmd, timeout, 64 * 1024, null, line -> {
-                if (line.startsWith("out_time_us=") && duration != null && duration > 0) {
-                    try {
-                        progress.accept(Math.max(0, Math.min(0.99, Long.parseLong(line.substring(12)) / 1e6 / duration)));
-                    } catch (NumberFormatException ignored) {
-                        // « N/A » au début
-                    }
-                }
-            });
+            return ProcessRunner.run(cmd, timeout, 64 * 1024, null, progressLines(progress, null, duration));
         } catch (IOException e) {
             throw new WebPrepService.StepFailure("ffmpeg introuvable ou non exécutable");
         }
     }
 
     private String reason(ProcessRunner.Result r, Path source) {
+        return reason(r, source, config.webPrepTimeout());
+    }
+
+    private String reason(ProcessRunner.Result r, Path source, Duration timeout) {
         if (r.timedOut()) {
-            return "délai dépassé (" + config.webPrepTimeout().toMinutes() + " min)";
+            return "délai dépassé (" + timeout.toMinutes() + " min)";
         }
         String msg = probe.clean(r.stderrTail(), source);
         if (msg == null || msg.isBlank()) {

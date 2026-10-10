@@ -60,6 +60,92 @@ public final class ProcessRunner {
     /** {@code stdoutLines} (facultatif) reçoit chaque ligne de la sortie standard au fil de l'eau (ex. ffmpeg -progress). */
     public static Result run(List<String> command, Duration timeout, int maxStdout, AtomicReference<Process> current,
                              java.util.function.Consumer<String> stdoutLines) throws IOException, InterruptedException {
+        return run(command, timeout, maxStdout, current, stdoutLines, null);
+    }
+
+    /**
+     * Comme {@link #run(List, Duration, int, AtomicReference, java.util.function.Consumer)}, avec une mise en pause :
+     * {@code pause} (interrogé chaque seconde) vrai = processus suspendu (SIGSTOP, rien n'est perdu), faux = il
+     * reprend (SIGCONT). Le délai maximal ne compte que le temps de marche. {@code nice} et {@code ionice} remplacent
+     * leur processus par la commande : le signal atteint bien ffmpeg.
+     */
+    public static Result run(List<String> command, Duration timeout, int maxStdout, AtomicReference<Process> current,
+                             java.util.function.Consumer<String> stdoutLines, java.util.function.BooleanSupplier pause)
+            throws IOException, InterruptedException {
+        if (pause == null) {
+            return runPlain(command, timeout, maxStdout, current, stdoutLines);
+        }
+        long start = System.nanoTime();
+        Process p = new ProcessBuilder(command).redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null"))).start();
+        if (current != null) {
+            current.set(p);
+        }
+        Capture out = new Capture(p.getInputStream(), maxStdout, false, stdoutLines);
+        Capture err = new Capture(p.getErrorStream(), 4096, true, null);
+        Thread to = Thread.ofVirtual().start(out);
+        Thread te = Thread.ofVirtual().start(err);
+        boolean finished = false;
+        boolean paused = false;
+        long activeMs = 0;
+        try {
+            while (true) {
+                long t0 = System.nanoTime();
+                if (p.waitFor(1, TimeUnit.SECONDS)) {
+                    finished = true;
+                    break;
+                }
+                if (!paused) {
+                    activeMs += (System.nanoTime() - t0) / 1_000_000;
+                }
+                boolean want;
+                try {
+                    want = pause.getAsBoolean();
+                } catch (RuntimeException e) {
+                    want = false;
+                }
+                if (want != paused && signal(p, want ? "-STOP" : "-CONT")) {
+                    paused = want;
+                }
+                if (activeMs > timeout.toMillis()) {
+                    break;
+                }
+            }
+        } catch (InterruptedException e) {
+            p.destroyForcibly();
+            throw e;
+        } finally {
+            if (current != null) {
+                current.compareAndSet(p, null);
+            }
+        }
+        if (!finished) {
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
+            p.destroyForcibly(); // SIGKILL : agit aussi sur un processus suspendu
+            p.waitFor(5, TimeUnit.SECONDS);
+        }
+        to.join(2_000);
+        te.join(2_000);
+        int code = finished ? p.exitValue() : -1;
+        return new Result(code, !finished, out.text(), err.text(), (System.nanoTime() - start) / 1_000_000);
+    }
+
+    /** Suspend (-STOP) ou relance (-CONT) le processus ; faux si le signal n'a pas pu être envoyé. */
+    static boolean signal(Process p, String sig) {
+        try {
+            Process k = new ProcessBuilder("kill", sig, Long.toString(p.pid())).redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            return k.waitFor(5, TimeUnit.SECONDS) && k.exitValue() == 0;
+        } catch (IOException e) {
+            LOG.debugf("signal %s impossible (%s)", sig, e.getMessage());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static Result runPlain(List<String> command, Duration timeout, int maxStdout, AtomicReference<Process> current,
+                                   java.util.function.Consumer<String> stdoutLines) throws IOException, InterruptedException {
         long start = System.nanoTime();
         Process p = new ProcessBuilder(command).redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null"))).start();
         if (current != null) {

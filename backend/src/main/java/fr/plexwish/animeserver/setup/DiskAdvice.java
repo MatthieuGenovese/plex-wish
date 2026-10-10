@@ -13,7 +13,15 @@ package fr.plexwish.animeserver.setup;
  */
 public final class DiskAdvice {
 
-    public record Thresholds(int warnGb, int criticalGb, int remuxCapGb) {
+    /** {@code webCapGb} : plafond du cache web (phase 10) ; null = inchangé (anciens clients) ou non proposé ici. */
+    public record Thresholds(int warnGb, int criticalGb, int remuxCapGb, Integer webCapGb) {
+        public Thresholds(int warnGb, int criticalGb, int remuxCapGb) {
+            this(warnGb, criticalGb, remuxCapGb, null);
+        }
+
+        public Thresholds withWebCapGb(Integer gb) {
+            return new Thresholds(warnGb, criticalGb, remuxCapGb, gb);
+        }
     }
 
     private DiskAdvice() {
@@ -36,7 +44,8 @@ public final class DiskAdvice {
 
     /** Vérification d'une saisie : critique < alerte, valeurs raisonnables. Message lisible, ou null si correct. */
     public static String problem(Thresholds t) {
-        if (t.warnGb() < 1 || t.warnGb() > 10_000 || t.criticalGb() < 1 || t.remuxCapGb() < 1 || t.remuxCapGb() > 10_000) {
+        if (t.warnGb() < 1 || t.warnGb() > 10_000 || t.criticalGb() < 1 || t.remuxCapGb() < 1 || t.remuxCapGb() > 10_000
+                || (t.webCapGb() != null && (t.webCapGb() < 1 || t.webCapGb() > 10_000))) {
             return "Valeurs hors limites (1 à 10 000 Go).";
         }
         if (t.criticalGb() >= t.warnGb()) {

@@ -112,7 +112,7 @@ class SetupTest {
         from("lan", INTERNET_IP).body(admin).post("/api/setup/admin").then().statusCode(403);
         from("public", INTERNET_IP).get("/api/setup/checks").then().statusCode(403);
         from("lan", LAN_IP).get("/api/setup/checks").then().statusCode(200)
-                .body("id", hasItems("media", "posters", "remux", "ffmpeg", "disk", "database", "secrets"));
+                .body("id", hasItems("media", "posters", "remux", "web", "ffmpeg", "disk", "database", "secrets"));
     }
 
     @Test
@@ -156,6 +156,16 @@ class SetupTest {
                 .put("/api/setup/disk").then().statusCode(400).body("error", equalTo("DISK_THRESHOLDS_INVALID"));
         from("lan", LAN_IP).auth().oauth2(token).body(Map.of("warnGb", 40, "criticalGb", 15, "remuxCapGb", 30))
                 .put("/api/setup/disk").then().statusCode(200).body("saved", equalTo(true)).body("current.remuxCapGb", equalTo(30));
+        // Cache du lecteur web (phase 10) : plafond réglable, volume mesuré (WEB_CACHE_PATH peut être sur un autre volume).
+        from("lan", LAN_IP).auth().oauth2(token).body(Map.of("warnGb", 40, "criticalGb", 15, "remuxCapGb", 30, "webCapGb", 0))
+                .put("/api/setup/disk").then().statusCode(400).body("error", equalTo("DISK_THRESHOLDS_INVALID"));
+        from("lan", LAN_IP).auth().oauth2(token).body(Map.of("warnGb", 40, "criticalGb", 15, "remuxCapGb", 30, "webCapGb", 25))
+                .put("/api/setup/disk").then().statusCode(200).body("current.webCapGb", equalTo(25))
+                .body("proposed.webCapGb", org.hamcrest.Matchers.greaterThan(0))
+                .body("webCache.totalBytes", org.hamcrest.Matchers.notNullValue());
+        // Sans webCapGb (ancien client) : le plafond web ne change pas.
+        from("lan", LAN_IP).auth().oauth2(token).body(Map.of("warnGb", 40, "criticalGb", 15, "remuxCapGb", 30))
+                .put("/api/setup/disk").then().statusCode(200).body("current.webCapGb", equalTo(25));
 
         // Clé TMDB : rangée en secret (600), jamais renvoyée, utilisée tout de suite.
         String key = "eyJhbGciOiJIUzI1NiJ9.cle-tmdb-de-test-0123456789";

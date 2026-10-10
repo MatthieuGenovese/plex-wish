@@ -31,6 +31,7 @@ services:
       - pgdata:/pgdata:ro
       - ./posters:/data/posters
       - ./remux-cache:/data/remux-cache
+      - ${WEB_CACHE_PATH:-./web-cache}:/data/web
 
   postgres:
     image: postgres:16-alpine
@@ -99,6 +100,10 @@ services:
       CAST_ENABLED: ${CAST_ENABLED:-true}
       MEDIA_PROBE_ENABLED: ${MEDIA_PROBE_ENABLED:-true}
       REMUX_CACHE_PATH: /data/remux-cache
+      # Cache du lecteur web (copies et sous-titres préparés pour le navigateur) : WEB_CACHE_PATH de nas.env, monté
+      # ci-dessous sur /data/web ; le chemin du NAS n'est transmis que pour être affiché à l'admin.
+      WEB_CACHE_DIR: /data/web
+      WEB_CACHE_HOST_PATH: ${WEB_CACHE_PATH:-./web-cache}
       BACKEND_TRUSTED_PROXIES: ${DOCKER_SUBNET:-172.30.64.0/24}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx512m}
     volumes:
@@ -108,6 +113,7 @@ services:
       - secrets_app:/run/anime/secrets
       - ./posters:/data/posters
       - ./remux-cache:/data/remux-cache
+      - ${WEB_CACHE_PATH:-./web-cache}:/data/web
       # État des sauvegardes (status.json), en lecture seule : affiché dans Administration > Réglages.
       - ./backups:/data/backups:ro
     depends_on:

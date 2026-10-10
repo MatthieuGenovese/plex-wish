@@ -64,4 +64,39 @@ public interface MediaConfig {
      */
     @WithDefault("3h")
     java.time.Duration remuxInUse();
+
+    // --- Préparation pour le navigateur (phase 10, docs/WEB-PLAYER.md) -------------------------------------------
+
+    /** Fil d'exécution de la préparation web (désactivé dans les tests, qui appellent le service directement). */
+    @WithDefault("true")
+    boolean webWorkerEnabled();
+
+    /** Dossier du cache web dans le conteneur (volume en écriture, hors /media). */
+    @WithDefault("/data/web")
+    String webCachePath();
+
+    /** Le même dossier vu du NAS (WEB_CACHE_PATH de nas.env), seulement pour l'afficher à l'admin. */
+    java.util.Optional<String> webCacheHostPath();
+
+    /** Plafond du cache web (Go décimaux) ; absent : 15 % du volume, 200 Go au plus (réglable dans l'interface). */
+    java.util.Optional<Double> webCacheMaxGb();
+
+    /** Espace disque à toujours laisser libre sur le volume du cache web. */
+    @WithDefault("10")
+    double webCacheReserveGb();
+
+    /** Délai maximal d'une préparation (analyse + sous-titres + copie HLS sans ré-encodage). */
+    @WithDefault("60m")
+    java.time.Duration webPrepTimeout();
+
+    /** Une copie web lue depuis moins longtemps que ce délai n'est jamais effacée par la purge. */
+    @WithDefault("3h")
+    java.time.Duration webInUse();
+
+    /** Polices jointes d'un épisode : taille maximale d'une police (Mo) et du total (Mo). */
+    @WithDefault("30")
+    int webFontMaxMb();
+
+    @WithDefault("80")
+    int webFontsTotalMaxMb();
 }

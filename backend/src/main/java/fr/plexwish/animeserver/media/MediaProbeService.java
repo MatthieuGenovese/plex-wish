@@ -60,7 +60,7 @@ public class MediaProbeService {
         return ffprobeVersion;
     }
 
-    String version(String executable) {
+    public String version(String executable) {
         try {
             ProcessRunner.Result r = ProcessRunner.run(List.of(executable, "-version"), java.time.Duration.ofSeconds(10), 4096, null);
             return r.ok() ? r.stdout().lines().findFirst().map(l -> l.replaceAll(" Copyright.*", "")).orElse(null) : null;

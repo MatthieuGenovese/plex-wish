@@ -41,3 +41,4 @@ fake-media/
 
 # Catalogue de démonstration (scripts/demo-catalog.sh)
 /demo-catalog/
+web-cache/

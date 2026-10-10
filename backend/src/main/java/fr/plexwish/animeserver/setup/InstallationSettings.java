@@ -33,10 +33,19 @@ public class InstallationSettings {
     public static final String WARN_GB = "disk.warn_gb";
     public static final String CRITICAL_GB = "disk.critical_gb";
     public static final String REMUX_CAP_GB = "remux.cap_gb";
+    /** Plafond du cache web (phase 10), en Go ; absent : 15 % du volume, 200 Go au plus. */
+    public static final String WEB_CAP_GB = "web.cap_gb";
     private static final Set<String> VIDEO = Set.of("mkv", "mp4", "avi", "ogm", "m4v", "webm", "wmv", "mov", "ts", "m2ts", "flv");
 
+    /**
+     * {@code webCache} : dossier du cache du lecteur web (phase 10), qui peut être sur un autre volume (WEB_CACHE_PATH de
+     * nas.env) : chemin vu du NAS (si connu), espace du volume et place prise par les préparations.
+     */
     public record DiskView(long totalBytes, long freeBytes, DiskAdvice.Thresholds current, DiskAdvice.Thresholds proposed,
-                           boolean saved) {
+                           boolean saved, WebCacheView webCache) {
+    }
+
+    public record WebCacheView(String hostPath, long totalBytes, long freeBytes, long usedBytes) {
     }
 
     public record TmdbView(boolean configured, String source) {
@@ -62,6 +71,10 @@ public class InstallationSettings {
     RemuxCache remuxCache;
     @Inject
     RemuxService remux;
+    @Inject
+    fr.plexwish.animeserver.webplay.WebCache webCache;
+    @Inject
+    fr.plexwish.animeserver.webplay.WebPrepService webPrep;
     @Inject
     MediaProbeService probe;
     @Inject
@@ -130,13 +143,18 @@ public class InstallationSettings {
         } catch (IOException | SecurityException e) {
             // volume absent : valeurs inconnues
         }
-        DiskAdvice.Thresholds proposed = DiskAdvice.propose(Math.max(free, 0));
+        long webTotal = webCache.totalSpace();
+        int webProposed = (int) Math.max(1, Math.round(fr.plexwish.animeserver.webplay.WebPrepService.defaultMaxBytes(webTotal) / 1e9));
+        DiskAdvice.Thresholds proposed = DiskAdvice.propose(Math.max(free, 0)).withWebCapGb(webProposed);
         boolean saved = settings.get(WARN_GB).isPresent();
         DiskAdvice.Thresholds current = new DiskAdvice.Thresholds(
                 settings.getDouble(WARN_GB).map(Double::intValue).orElse(proposed.warnGb()),
                 settings.getDouble(CRITICAL_GB).map(Double::intValue).orElse(proposed.criticalGb()),
-                settings.getDouble(REMUX_CAP_GB).map(Double::intValue).orElse((int) Math.round(mediaConfig.remuxCacheMaxGb())));
-        return new DiskView(total, free, current, proposed, saved);
+                settings.getDouble(REMUX_CAP_GB).map(Double::intValue).orElse((int) Math.round(mediaConfig.remuxCacheMaxGb())),
+                (int) Math.max(1, Math.round(webPrep.maxBytes() / 1e9)));
+        WebCacheView web = new WebCacheView(mediaConfig.webCacheHostPath().orElse(null), webTotal, webCache.usableSpace(),
+                webPrep.usedBytes());
+        return new DiskView(total, free, current, proposed, saved, web);
     }
 
     public DiskView setDisk(DiskAdvice.Thresholds t) {
@@ -147,6 +165,9 @@ public class InstallationSettings {
         settings.put(WARN_GB, Integer.toString(t.warnGb()));
         settings.put(CRITICAL_GB, Integer.toString(t.criticalGb()));
         settings.put(REMUX_CAP_GB, Integer.toString(t.remuxCapGb()));
+        if (t.webCapGb() != null) {
+            settings.put(WEB_CAP_GB, Integer.toString(t.webCapGb()));
+        }
         return disk();
     }
 
@@ -177,6 +198,7 @@ public class InstallationSettings {
         }
         checks.add(writable("posters", "Dossier des affiches", posters.root(), user));
         checks.add(writable("remux", "Cache des copies remuxées", remuxCache.root(), user));
+        checks.add(writable("web", "Cache du lecteur web", webCache.root(), user));
         String ffmpeg = remux.ffmpegVersion();
         String ffprobe = probe.ffprobeVersion();
         checks.add(ffmpeg != null && ffprobe != null
@@ -204,8 +226,10 @@ public class InstallationSettings {
             Files.delete(probeFile);
             return new Check(id, label, "OK", "Accessible en écriture.", null);
         } catch (IOException | SecurityException e) {
-            return new Check(id, label, "FAIL", "Pas d'écriture possible pour l'utilisateur " + user + ".",
-                    "Redémarrer le projet (le conteneur init remet les droits) ; si le problème reste, vérifier le dossier du projet sur le NAS.");
+            return new Check(id, label, "FAIL", "Pas d'écriture possible pour l'utilisateur " + user + ".", "web".equals(id)
+                    ? "Vérifier WEB_CACHE_PATH dans nas.env (dossier existant sur un volume du NAS), puis redémarrer le projet "
+                    + "(le conteneur init remet les droits)."
+                    : "Redémarrer le projet (le conteneur init remet les droits) ; si le problème reste, vérifier le dossier du projet sur le NAS.");
         }
     }
 

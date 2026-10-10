@@ -82,6 +82,47 @@ public class StreamSigner {
         return clock.instant().getEpochSecond() >= exp ? Check.EXPIRED : Check.VALID;
     }
 
+    // --- Préparation pour le navigateur (phase 10, docs/WEB-PLAYER.md §9, S5) ----------------------------------------
+
+    /** Expiration d'une nouvelle URL (maintenant + durée de vie), en secondes epoch. */
+    public long expiry() {
+        return clock.instant().plus(lifetime).getEpochSecond();
+    }
+
+    /**
+     * Ressource du cache web : signature liée au fichier, à la préparation ({@code key}), au nom de la ressource
+     * ({@code resource}, ex. « s_1.m3u8 », « master.m3u8;a=1,2 »), à l'utilisateur et à l'expiration. Une signature
+     * n'ouvre donc ni une autre ressource, ni une autre préparation, ni l'original.
+     */
+    public String webQuery(long mediaFileId, String key, String resource, long userId, long exp) {
+        return "u=" + userId + "&exp=" + exp + "&sig=" + webSignature(mediaFileId, key, resource, userId, exp);
+    }
+
+    public Check checkWeb(long mediaFileId, String key, String resource, long userId, long exp, String sig) {
+        if (sig == null || sig.isEmpty()) {
+            return Check.INVALID;
+        }
+        byte[] expected = webSignature(mediaFileId, key, resource, userId, exp).getBytes(StandardCharsets.US_ASCII);
+        if (!MessageDigest.isEqual(expected, sig.getBytes(StandardCharsets.US_ASCII))) {
+            return Check.INVALID;
+        }
+        return clock.instant().getEpochSecond() >= exp ? Check.EXPIRED : Check.VALID;
+    }
+
+    String webSignature(long mediaFileId, String key, String resource, long userId, long exp) {
+        return mac("v1-web:" + mediaFileId + ":" + key + "/" + resource + ":" + userId + ":" + exp);
+    }
+
+    private String mac(String data) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     public String signature(long mediaFileId, long userId, long exp) {
         return signature(Target.ORIGINAL, mediaFileId, userId, exp);
     }

@@ -120,7 +120,7 @@ Dossier du projet : `/volume1/docker/anime-server` (`--data` pour un autre).
 | --- | --- | --- |
 | `init` | Au démarrage : crée les secrets (64 caractères aléatoires, fichiers 600), choisit l'utilisateur qui lit le dossier des vidéos, remet les droits des dossiers, puis s'arrête | volumes `secrets_app`, `secrets_pg` |
 | `postgres` | Base de données (PostgreSQL 16) | volume `pgdata` |
-| `backend` | Serveur (Java), sans root (utilisateur du dossier des vidéos), ffmpeg | `posters/`, `remux-cache/`, vidéos en **lecture seule** |
+| `backend` | Serveur (Java), sans root (utilisateur du dossier des vidéos), ffmpeg | `posters/`, `remux-cache/`, cache du lecteur web (`WEB_CACHE_PATH`), vidéos en **lecture seule** |
 | `web` | nginx : porte locale (port 8080 du NAS, **assistant seulement**) et porte publique (8081, interne, pour Caddy) | — |
 | `caddy` | HTTPS sur Internet (port 8443 du NAS), certificat Let's Encrypt renouvelé seul | volume `caddy_data` |
 | `backup` | Sauvegarde vérifiée chaque nuit à 3 h, rotation 7/4/6 | `backups/` |
@@ -132,6 +132,24 @@ Fichiers du dossier du projet :
 - `nas.env` : les réglages, sans secret.
 - `app/` : les scripts de maintenance, recopiés depuis l'image à chaque mise à jour.
 - `backups/`, `posters/`, `remux-cache/` : les données.
+- `web-cache/` (par défaut) : le **cache du lecteur web**, épisodes et sous-titres préparés pour le navigateur
+  (régénérable : l'effacer ne perd rien, les épisodes sont refaits à la demande).
+
+### Cache du lecteur web (`WEB_CACHE_PATH`)
+
+Le lecteur du site prépare les épisodes pour le navigateur (copie sans ré-encodage des MKV, sous-titres extraits ;
+`docs/WEB-PLAYER.md`). Ces copies prennent à peu près la taille des originaux : le plafond par défaut est **15 % du
+volume, 200 Go au plus**, réglable dans l'assistant et dans Administration › Réglages (« Place pour le lecteur
+web »). Au-delà, les copies les moins récemment lues sont effacées (jamais une copie en cours de lecture).
+
+- **À l'installation** : `--web-cache /volume2/anime-cache` pour le mettre sur un volume qui a de la place (défaut :
+  `<dossier du projet>/web-cache`). L'installateur crée le dossier et l'écrit dans `nas.env` (`WEB_CACHE_PATH=…`).
+- **Installation plus ancienne** : la mise à jour (`update.sh`) ajoute `WEB_CACHE_PATH=<dossier du projet>/web-cache`
+  à `nas.env` et crée le dossier.
+- **Le déplacer** : arrêter le projet (`docker compose --env-file nas.env down`), créer le nouveau dossier (ou y
+  déplacer l'ancien), changer la ligne `WEB_CACHE_PATH=` de `nas.env`, puis `sh app/restart.sh`. Les droits sont remis
+  par le conteneur `init` au démarrage ; l'assistant et Administration › Réglages montrent le dossier et la place libre.
+- Ne jamais le mettre **dans** le dossier des vidéos (monté en lecture seule ; l'installateur refuse).
 
 Les secrets sont dans des **volumes Docker**, pas dans un dossier partagé du DSM : leurs droits ne dépendent pas des
 ACL Synology, et ils ne sont visibles d'aucun utilisateur du DSM.

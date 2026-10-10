@@ -6,13 +6,14 @@
 #   sh install.sh --version 1.0.0 --registry ghcr.io/mon-compte-images \
 #                 --media /volume1/animes --domain mon-anime.duckdns.org [--dry-run]
 #
-# Options : --data DOSSIER (défaut /volume1/docker/anime-server), --lan-port 8080, --public-port 8443,
+# Options : --data DOSSIER (défaut /volume1/docker/anime-server), --web-cache DOSSIER (cache du lecteur web, défaut
+#           <data>/web-cache ; un volume qui a de la place), --lan-port 8080, --public-port 8443,
 #           --funnel (plan B, box derrière un CGNAT : accès par Tailscale Funnel au lieu de Caddy).
 # Relancer la commande ne casse rien : les réglages existants (nas.env) et les données sont gardés.
 set -eu
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-VERSION=""; REGISTRY=""; MEDIA=""; DOMAIN=""; DATA=/volume1/docker/anime-server
+VERSION=""; REGISTRY=""; MEDIA=""; DOMAIN=""; DATA=/volume1/docker/anime-server; WEB_CACHE=
 LAN_PORT=8080; PUBLIC_PORT=8443; PROFILE=caddy; DRY=no
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -21,6 +22,7 @@ while [ $# -gt 0 ]; do
         --media) MEDIA=$2; shift 2 ;;
         --domain) DOMAIN=$2; shift 2 ;;
         --data) DATA=$2; shift 2 ;;
+        --web-cache) WEB_CACHE=$2; shift 2 ;;
         --lan-port) LAN_PORT=$2; shift 2 ;;
         --public-port) PUBLIC_PORT=$2; shift 2 ;;
         --funnel) PROFILE=funnel; shift ;;
@@ -40,12 +42,16 @@ echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "--version manquan
 [ -n "$REGISTRY" ] || fail "--registry manquant"
 echo "$DOMAIN" | grep -Eq '^[a-z0-9.-]+\.[a-z]{2,}$' || fail "--domain manquant ou invalide (ex. mon-anime.duckdns.org)"
 [ -d "$MEDIA" ] || fail "dossier des vidéos introuvable : $MEDIA"
+WEB_CACHE=${WEB_CACHE:-$DATA/web-cache}
+case "$WEB_CACHE" in /*) ;; *) fail "--web-cache : chemin absolu attendu (ex. /volume2/anime-cache)" ;; esac
+case "$WEB_CACHE/" in "$MEDIA"/*) fail "--web-cache ne doit pas être dans le dossier des vidéos (lecture seule)" ;; esac
 [ "$(id -u)" = 0 ] || fail "à lancer en root (Planificateur de tâches : utilisateur « root »)"
 command -v docker > /dev/null || fail "docker introuvable : installer Container Manager depuis le Centre de paquets"
 if docker compose version > /dev/null 2>&1; then COMPOSE="docker compose"
 elif command -v docker-compose > /dev/null; then COMPOSE="docker-compose"
 else fail "docker compose introuvable : mettre à jour Container Manager"; fi
 echo "    vidéos : $MEDIA (lecture seule) · dossier du projet : $DATA · adresse : https://$DOMAIN"
+echo "    cache du lecteur web : $WEB_CACHE"
 
 IMAGE="$REGISTRY/anime-server-backend:$VERSION"
 # Accès aux images vérifié dès maintenant, même en simulation (rien n'est téléchargé) : un jeton refusé se voit ici.
@@ -70,7 +76,7 @@ run docker pull -q "$IMAGE"
 run docker pull -q "$REGISTRY/anime-server-web:$VERSION"
 
 say "Dossiers du projet dans $DATA"
-run mkdir -p "$DATA/app" "$DATA/backups" "$DATA/posters" "$DATA/remux-cache"
+run mkdir -p "$DATA/app" "$DATA/backups" "$DATA/posters" "$DATA/remux-cache" "$WEB_CACHE"
 run chmod 700 "$DATA/backups"
 
 say "Fichiers de déploiement (copiés depuis l'image : compose.yml, scripts de maintenance)"
@@ -127,8 +133,15 @@ PUBLIC_PORT=$PUBLIC_PORT
 LAN_PORT=$LAN_PORT
 TZ=Europe/Paris
 DOCKER_SUBNET=$DOCKER_SUBNET
+# Cache du lecteur web (régénérable) : un volume qui a de la place. Le déplacer : docs/DEPLOIEMENT.md.
+WEB_CACHE_PATH=$WEB_CACHE
 ENV
     chmod 644 "$DATA/nas.env"
+fi
+# Installation antérieure à la phase 10 : nas.env sans cache web → ligne ajoutée (rien d'autre n'est touché).
+if [ -f "$DATA/nas.env" ] && ! grep -q '^WEB_CACHE_PATH=' "$DATA/nas.env"; then
+    if [ "$DRY" = yes ]; then echo "    [simulation] ajout de WEB_CACHE_PATH=$WEB_CACHE dans nas.env"
+    else printf '%s\n' "WEB_CACHE_PATH=$WEB_CACHE" >> "$DATA/nas.env"; echo "    nas.env : cache du lecteur web ajouté ($WEB_CACHE)"; fi
 fi
 
 if [ "$PROFILE" = funnel ]; then

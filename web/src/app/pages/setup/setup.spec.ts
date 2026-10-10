@@ -102,6 +102,25 @@ describe('Installation (assistant de premier lancement)', () => {
     expect(el.textContent).toContain('500 Go');
   });
 
+  it('espace disque : cache du lecteur web montré (dossier, place) et plafond enregistré', async () => {
+    withStatus({ adminExists: true });
+    const { fixture, el } = await render();
+    http.expectOne('/api/setup/checks').flush([]);
+    (fixture.componentInstance as unknown as { go(s: string): void }).go('disk');
+    await fixture.whenStable();
+    http.expectOne('/api/setup/disk').flush({ totalBytes: 4e12, freeBytes: 5e11, saved: false,
+      current: { warnGb: 50, criticalGb: 20, remuxCapGb: 50, webCapGb: 200 },
+      proposed: { warnGb: 50, criticalGb: 20, remuxCapGb: 75, webCapGb: 200 },
+      webCache: { hostPath: '/volume2/anime-cache', totalBytes: 2e12, freeBytes: 1.5e12, usedBytes: 0 } });
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid=web-cache]')!.textContent).toContain('/volume2/anime-cache');
+    expect(el.querySelector<HTMLInputElement>('#d-web')!.value).toBe('200');
+    type(el, '#d-web', '120');
+    el.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const put = http.expectOne((r) => r.url === '/api/setup/disk' && r.method === 'PUT');
+    expect(put.request.body.webCapGb).toBe(120);
+  });
+
   it('fin de l’installation : le site s’ouvre, l’assistant se ferme', async () => {
     withStatus({ adminExists: true });
     const { fixture, el } = await render();

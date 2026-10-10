@@ -3,7 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { APP_NAME } from '../../core/app-name';
 import { errorCode, errorMessage } from '../../core/errors';
-import { DdnsStatus, DiskView, ScanState, SetupCheck, SetupService, TmdbView } from '../../core/setup.service';
+import { DdnsStatus, DiskView, ScanState, SetupCheck, SetupService, TmdbView, diskFormValue } from '../../core/setup.service';
 
 const MIN_PASSWORD = 10;
 
@@ -146,9 +146,18 @@ const STEPS: { id: Step; label: string }[] = [
                     <label for="d-cap">Place pour les copies converties (Go)</label>
                     <input id="d-cap" type="number" min="1" formControlName="remuxCapGb" inputmode="numeric" />
                   </div>
+                  <div class="field">
+                    <label for="d-web">Place pour le lecteur web (Go)</label>
+                    <input id="d-web" type="number" min="1" formControlName="webCapGb" inputmode="numeric" />
+                  </div>
                 </div>
                 <p class="hint">Les alertes préviennent l’administrateur quand l’espace libre passe sous ces seuils. Les « copies converties »
                   sont les vidéos AVI et OGM réécrites pour le téléphone ; au-delà de cette place, les plus anciennes sont effacées.</p>
+                @if (d.webCache; as w) {
+                  <p class="hint" data-testid="web-cache">Lecteur web : épisodes et sous-titres préparés pour le navigateur, dans
+                    <code>{{ w.hostPath ?? 'le dossier du projet (web-cache)' }}</code> ({{ gb(w.freeBytes) }} Go libres sur {{ gb(w.totalBytes) }} Go).
+                    Pour le mettre sur un autre volume : <code>WEB_CACHE_PATH</code> dans <code>nas.env</code> (guide de déploiement).</p>
+                }
                 <div class="setup-actions">
                   <button type="submit" class="btn btn-primary" [disabled]="busy()">Enregistrer et continuer</button>
                 </div>
@@ -270,7 +279,7 @@ export class SetupPage implements OnDestroy {
 
   protected readonly adminForm = this.fb.group({ username: ['', Validators.required], password: [''], confirm: [''] });
   protected readonly loginForm = this.fb.group({ login: ['', Validators.required], password: ['', Validators.required] });
-  protected readonly diskForm = this.fb.group({ warnGb: [0], criticalGb: [0], remuxCapGb: [0] });
+  protected readonly diskForm = this.fb.group({ warnGb: [0], criticalGb: [0], remuxCapGb: [0], webCapGb: [0] });
   protected readonly ddnsForm = this.fb.group({ token: [''] });
   protected readonly tmdbForm = this.fb.group({ token: [''] });
 
@@ -303,7 +312,7 @@ export class SetupPage implements OnDestroy {
     if (step === 'disk') {
       this.call(this.setup.disk(), (d) => {
         this.disk.set(d);
-        this.diskForm.setValue(d.saved ? d.current : d.proposed);
+        this.diskForm.setValue(diskFormValue(d.saved ? d.current : d.proposed));
       });
     } else if (step === 'domain') {
       this.call(this.setup.ddns(), (d) => this.ddns.set(d));
@@ -348,7 +357,7 @@ export class SetupPage implements OnDestroy {
 
   saveDisk(): void {
     const v = this.diskForm.getRawValue();
-    this.call(this.setup.setDisk({ warnGb: Number(v.warnGb), criticalGb: Number(v.criticalGb), remuxCapGb: Number(v.remuxCapGb) }),
+    this.call(this.setup.setDisk({ warnGb: Number(v.warnGb), criticalGb: Number(v.criticalGb), remuxCapGb: Number(v.remuxCapGb), webCapGb: Number(v.webCapGb) || null }),
       () => this.go('domain'));
   }
 

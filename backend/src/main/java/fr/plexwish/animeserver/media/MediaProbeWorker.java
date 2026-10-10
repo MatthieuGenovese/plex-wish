@@ -28,6 +28,8 @@ public class MediaProbeWorker extends BackgroundLoop {
     RemuxTestService remuxTest;
     @Inject
     RemuxService remux;
+    @Inject
+    fr.plexwish.animeserver.webplay.WebPrepService webPrep;
 
     private volatile boolean syncNeeded = true;
     private volatile String state = "idle";
@@ -59,7 +61,7 @@ public class MediaProbeWorker extends BackgroundLoop {
         wake();
     }
 
-    /** « scan » / « remux » / « remux-test » (en pause), « working », « idle ». */
+    /** « scan » / « remux » / « web » / « remux-test » (en pause), « working », « idle ». */
     public String state() {
         return running() ? state : "stopped";
     }
@@ -72,6 +74,10 @@ public class MediaProbeWorker extends BackgroundLoop {
         }
         if (remux.busy()) {
             state = "remux";
+            return new Idle(Duration.ofSeconds(30));
+        }
+        if (webPrep.busy()) {
+            state = "web";
             return new Idle(Duration.ofSeconds(30));
         }
         if (remuxTest.running()) {

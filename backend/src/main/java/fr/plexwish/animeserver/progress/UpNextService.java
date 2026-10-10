@@ -142,6 +142,42 @@ public class UpNextService {
         }
     }
 
+    /**
+     * Épisode qui suit {@code episodeId} dans l'ordre de l'animé, dans le même groupe (saisons normales ou Spéciaux),
+     * qu'il soit vu ou non (lecteur web : « Épisode suivant »). Vide pour le dernier.
+     */
+    public Optional<Target> following(long episodeId) throws SQLException {
+        try (Connection c = dataSource.getConnection()) {
+            Long animeId = null;
+            try (PreparedStatement a = c.prepareStatement("SELECT s.anime_id FROM episode e JOIN season s ON s.id = e.season_id WHERE e.id = ?")) {
+                a.setLong(1, episodeId);
+                try (ResultSet rs = a.executeQuery()) {
+                    if (rs.next()) {
+                        animeId = rs.getLong(1);
+                    }
+                }
+            }
+            if (animeId == null) {
+                return Optional.empty();
+            }
+            try (PreparedStatement st = c.prepareStatement("WITH o AS (" + VISIBLE_EPISODES + """
+                    ), cur AS (SELECT rn, season_number FROM o WHERE id = ?)
+                    SELECT o.id, o.episode_number, o.title, o.season_id, o.season_number, o.anime_id, o.anime_title, o.duration
+                    FROM o CROSS JOIN cur WHERE o.rn > cur.rn AND (o.season_number = 0) = (cur.season_number = 0)
+                    ORDER BY o.rn LIMIT 1""")) {
+                st.setLong(1, animeId);
+                st.setLong(2, episodeId);
+                try (ResultSet rs = st.executeQuery()) {
+                    if (!rs.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new Target(Kind.NEXT, rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getLong(4), rs.getInt(5),
+                            rs.getLong(6), rs.getString(7), 0, rs.getInt(8), null));
+                }
+            }
+        }
+    }
+
     /** Premier épisode : saisons normales d'abord, sinon Spéciaux. */
     private Optional<Target> first(Connection c, long animeId, Kind kind) throws SQLException {
         try (PreparedStatement st = c.prepareStatement("SELECT * FROM (" + VISIBLE_EPISODES + ") o ORDER BY rn LIMIT 1")) {

@@ -3,7 +3,7 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { errorMessage } from '../../core/errors';
-import { DdnsStatus, DiskThresholds, DiskView, TmdbView } from '../../core/setup.service';
+import { DdnsStatus, DiskThresholds, DiskView, TmdbView, diskFormValue } from '../../core/setup.service';
 import { formatDateTime } from '../../shared/format';
 import { loadOn } from '../../shared/load-state';
 
@@ -107,6 +107,11 @@ interface Overview {
         <p>{{ gb(v.disk.freeBytes) }} Go libres sur {{ gb(v.disk.totalBytes) }} Go.
           Proposition pour cet espace libre : alerte à {{ v.disk.proposed.warnGb }} Go, critique à {{ v.disk.proposed.criticalGb }} Go,
           {{ v.disk.proposed.remuxCapGb }} Go pour les copies converties.</p>
+        @if (v.disk.webCache; as w) {
+          <p data-testid="web-cache">Lecteur web : <code>{{ w.hostPath ?? 'dossier du projet (web-cache)' }}</code>,
+            {{ gb(w.usedBytes) }} Go utilisés, {{ gb(w.freeBytes) }} Go libres sur {{ gb(w.totalBytes) }} Go
+            (proposition : {{ v.disk.proposed.webCapGb }} Go). Autre volume : <code>WEB_CACHE_PATH</code> dans <code>nas.env</code>.</p>
+        }
         <form [formGroup]="diskForm" (ngSubmit)="saveDisk()" novalidate>
           <div class="form-row form-top">
             <div class="field">
@@ -121,9 +126,13 @@ interface Overview {
               <label for="sk-cap">Place pour les copies converties (Go)</label>
               <input id="sk-cap" type="number" min="1" formControlName="remuxCapGb" inputmode="numeric" />
             </div>
+            <div class="field">
+              <label for="sk-web">Place pour le lecteur web (Go)</label>
+              <input id="sk-web" type="number" min="1" formControlName="webCapGb" inputmode="numeric" />
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="btn" (click)="diskForm.setValue(v.disk.proposed)">Reprendre la proposition</button>
+            <button type="button" class="btn" (click)="resetDisk(v.disk.proposed)">Reprendre la proposition</button>
             <button type="submit" class="btn btn-primary" [disabled]="busy()">Enregistrer</button>
           </div>
         </form>
@@ -145,7 +154,7 @@ export class SettingsPage {
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
   protected readonly tmdbForm = this.fb.group({ token: [''] });
   protected readonly ddnsForm = this.fb.group({ token: [''] });
-  protected readonly diskForm = this.fb.group({ warnGb: [0], criticalGb: [0], remuxCapGb: [0] });
+  protected readonly diskForm = this.fb.group({ warnGb: [0], criticalGb: [0], remuxCapGb: [0], webCapGb: [0] });
   protected readonly overview = loadOn(signal(null), () => this.http.get<Overview>('/api/admin/settings'));
   private diskFilled = false;
 
@@ -154,7 +163,7 @@ export class SettingsPage {
     effect(() => {
       const d = this.overview().data?.disk;
       if (d && !this.diskFilled) {
-        untracked(() => this.diskForm.setValue(d.current));
+        untracked(() => this.diskForm.setValue(diskFormValue(d.current)));
         this.diskFilled = true;
       }
     });
@@ -189,9 +198,13 @@ export class SettingsPage {
     this.call(this.http.delete<DdnsStatus>('/api/admin/settings/ddns'), 'Jeton retiré : l’adresse n’est plus mise à jour automatiquement.');
   }
 
+  protected resetDisk(t: DiskThresholds): void {
+    this.diskForm.setValue(diskFormValue(t));
+  }
+
   saveDisk(): void {
     const v = this.diskForm.getRawValue();
-    const t: DiskThresholds = { warnGb: Number(v.warnGb), criticalGb: Number(v.criticalGb), remuxCapGb: Number(v.remuxCapGb) };
+    const t: DiskThresholds = { warnGb: Number(v.warnGb), criticalGb: Number(v.criticalGb), remuxCapGb: Number(v.remuxCapGb), webCapGb: Number(v.webCapGb) || null };
     this.call(this.http.put<DiskView>('/api/admin/settings/disk', t), 'Seuils d’espace disque enregistrés.');
   }
 

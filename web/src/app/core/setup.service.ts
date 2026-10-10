@@ -26,6 +26,21 @@ export interface DiskThresholds {
   warnGb: number;
   criticalGb: number;
   remuxCapGb: number;
+  /** Plafond du cache du lecteur web (Go) ; absent : inchangé. */
+  webCapGb?: number | null;
+}
+
+/** Cache du lecteur web (WEB_CACHE_PATH de nas.env), éventuellement sur un autre volume. */
+export interface WebCacheView {
+  hostPath: string | null;
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+}
+
+/** Valeurs du formulaire des seuils (tous les champs présents, pour FormGroup.setValue). */
+export function diskFormValue(t: DiskThresholds) {
+  return { warnGb: t.warnGb, criticalGb: t.criticalGb, remuxCapGb: t.remuxCapGb, webCapGb: t.webCapGb ?? 0 };
 }
 
 export interface DiskView {
@@ -34,6 +49,7 @@ export interface DiskView {
   current: DiskThresholds;
   proposed: DiskThresholds;
   saved: boolean;
+  webCache?: WebCacheView;
 }
 
 export interface TmdbView {

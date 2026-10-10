@@ -48,6 +48,12 @@ docker run --rm --entrypoint tar "$prefix/anime-server-backend:$new" -C /app/dep
 find app -mindepth 1 -delete && cp -a app.new/. app/ && rm -rf app.new && cp app/compose.yml compose.yml
 env_set ANIME_VERSION "$new"
 env_set PREVIOUS_VERSION "$old"
+# Versions antérieures à la phase 10 : cache du lecteur web dans le dossier du projet (déplaçable ensuite, DEPLOIEMENT.md).
+if [ -z "$(env_get WEB_CACHE_PATH)" ]; then
+    env_set WEB_CACHE_PATH "$PWD/web-cache"
+    log "    cache du lecteur web : $PWD/web-cache (WEB_CACHE_PATH ajouté à nas.env)"
+fi
+mkdir -p "$(env_get WEB_CACHE_PATH)"
 compose up -d --remove-orphans > /dev/null 2>&1 || true
 
 log "4/5 vérification de santé"

@@ -27,7 +27,7 @@ $lines = @(
     "set -e",
     "export PATH=/usr/local/bin:`$PATH",
     "echo '$token' | docker login ghcr.io -u $LoginUser --password-stdin",
-    "docker run --rm --entrypoint cat $registry/anime-server-backend:$Version /app/deploy/install.sh > /tmp/anime-install.sh",
+    "docker run --rm --pull always --entrypoint cat $registry/anime-server-backend:$Version /app/deploy/install.sh > /tmp/anime-install.sh",
     "sh /tmp/anime-install.sh --version $Version --registry $registry --media '$Media' --domain $Domain$extra"
 )
 Write-Host ""

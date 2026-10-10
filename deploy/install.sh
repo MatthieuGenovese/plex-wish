@@ -48,6 +48,23 @@ else fail "docker compose introuvable : mettre à jour Container Manager"; fi
 echo "    vidéos : $MEDIA (lecture seule) · dossier du projet : $DATA · adresse : https://$DOMAIN"
 
 IMAGE="$REGISTRY/anime-server-backend:$VERSION"
+# Accès aux images vérifié dès maintenant, même en simulation (rien n'est téléchargé) : un jeton refusé se voit ici.
+say "Accès aux images de la version $VERSION"
+insecure=""
+case "$REGISTRY" in localhost:*|127.0.0.1:*) insecure="--insecure" ;; esac # registre local d'essai, en HTTP
+for img in "$IMAGE" "$REGISTRY/anime-server-web:$VERSION"; do
+    # shellcheck disable=SC2086
+    if ! answer=$(docker manifest inspect $insecure "$img" 2>&1); then
+        case "$answer" in
+            *unauthorized*|*denied*|*authentication*)
+                fail "accès refusé à $img : jeton de lecture absent, invalide ou révoqué (refaire la ligne « docker login ghcr.io » avec le bon jeton)" ;;
+            *"manifest unknown"*|*"no such manifest"*|*"not found"*)
+                fail "version $VERSION introuvable sur $REGISTRY : publiée ? (publish-images)" ;;
+            *) fail "registre injoignable pour $img : $answer" ;;
+        esac
+    fi
+done
+echo "    OK"
 say "Téléchargement de la version $VERSION (quelques minutes la première fois)"
 run docker pull -q "$IMAGE"
 run docker pull -q "$REGISTRY/anime-server-web:$VERSION"
@@ -64,9 +81,37 @@ else
     cp "$DATA/app/compose.yml" "$DATA/compose.yml"
 fi
 
+# free_subnet : première plage /24 libre pour le réseau interne du projet (aucun réseau Docker ni route de la machine
+# ne la chevauche). Les autres projets Docker du NAS (ou d'un PC d'essai) en occupent souvent une.
+overlaps() { # overlaps <a.b.c.d/n> <e.f.g.h/m> : vrai si les deux plages se chevauchent
+    echo "$1 $2" | awk '
+        function ip(s, p) { split(s, p, "."); return ((p[1] * 256 + p[2]) * 256 + p[3]) * 256 + p[4] }
+        { split($1, a, "/"); split($2, b, "/"); na = 2 ^ (32 - a[2]); nb = 2 ^ (32 - b[2])
+          sa = ip(a[1]); sa -= sa % na; sb = ip(b[1]); sb -= sb % nb
+          exit !(sa < sb + nb && sb < sa + na) }'
+}
+free_subnet() {
+    used=$( { docker network ls -q | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2> /dev/null
+              ip -4 route 2> /dev/null | awk '$1 ~ /\// { print $1 }'; } | tr ' ' '\n' | grep -E '^[0-9.]+/[0-9]+$' || true)
+    for c in 172.30.64.0/24 172.30.66.0/24 172.30.70.0/24 172.30.80.0/24 172.30.90.0/24 10.213.17.0/24 10.213.18.0/24 10.213.19.0/24 192.168.213.0/24; do
+        clash=no
+        for u in $used; do overlaps "$c" "$u" && { clash=yes; break; }; done
+        [ "$clash" = no ] && { echo "$c"; return 0; }
+    done
+    return 1
+}
+
 say "Réglages (nas.env, aucun secret dedans)"
 if [ -f "$DATA/nas.env" ]; then
     echo "    nas.env existe déjà : gardé tel quel"
+else
+    if [ -z "${DOCKER_SUBNET:-}" ]; then
+        DOCKER_SUBNET=$(free_subnet) || fail "aucune plage réseau libre pour Docker : indiquer DOCKER_SUBNET=a.b.c.0/24 avant la commande"
+    fi
+    echo "    réseau interne du projet : $DOCKER_SUBNET (plage libre sur cette machine)"
+fi
+if [ -f "$DATA/nas.env" ]; then
+    :
 elif [ "$DRY" = yes ]; then
     echo "    [simulation] écriture de $DATA/nas.env (version, registre, dossier des vidéos, adresse, ports)"
 else
@@ -81,7 +126,7 @@ COMPOSE_PROFILES=$PROFILE
 PUBLIC_PORT=$PUBLIC_PORT
 LAN_PORT=$LAN_PORT
 TZ=Europe/Paris
-DOCKER_SUBNET=${DOCKER_SUBNET:-172.30.64.0/24}
+DOCKER_SUBNET=$DOCKER_SUBNET
 ENV
     chmod 644 "$DATA/nas.env"
 fi
@@ -109,5 +154,7 @@ if [ "$DRY" = no ]; then
 fi
 
 ip=$(ip -4 route get 1.1.1.1 2> /dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+# Essai sur un PC Windows (WSL) : l'adresse de WSL n'est pas joignable depuis le navigateur, localhost l'est.
+grep -qi microsoft /proc/version 2> /dev/null && ip=localhost
 say "Terminé. Ouvrir dans un navigateur, depuis la maison : http://${ip:-ADRESSE-DU-NAS}:$LAN_PORT"
 echo "    (l'adresse du NAS, celle qui sert à ouvrir le DSM, avec :$LAN_PORT à la fin), puis suivre l'assistant."

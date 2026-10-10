@@ -16,7 +16,7 @@ cat <<CMD
 set -e
 export PATH=/usr/local/bin:\$PATH
 echo '$token' | docker login ghcr.io -u $owner --password-stdin
-docker run --rm --entrypoint cat $registry/anime-server-backend:$version /app/deploy/install.sh > /tmp/anime-install.sh
+docker run --rm --pull always --entrypoint cat $registry/anime-server-backend:$version /app/deploy/install.sh > /tmp/anime-install.sh
 sh /tmp/anime-install.sh --version $version --registry $registry --media '$media' --domain $domain$extra
 
 Pour une SIMULATION d'abord : ajouter --dry-run à la fin de la dernière ligne.

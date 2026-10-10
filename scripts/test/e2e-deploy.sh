@@ -13,7 +13,6 @@ VERSION=${VERSION:-1.0.0}
 LAN_PORT=18080
 PUBLIC_PORT=18443
 DOMAIN=anime.e2e.test
-SUBNET=172.31.99.0/24
 LAN="http://localhost:$LAN_PORT"
 PUB="https://$DOMAIN:$PUBLIC_PORT"
 # Porte publique : Caddy en HTTPS (certificat interne de Caddy pour l'essai : -k), nom résolu vers cette machine.
@@ -52,8 +51,20 @@ setup() {
     sh "$E2E/anime-install.sh" $args --dry-run > "$E2E/dry.log" 2>&1 || { cat "$E2E/dry.log"; fail "simulation"; }
     [ ! -e "$DATA" ] && grep -q "SIMULATION : rien ne sera modifié" "$E2E/dry.log" \
         && ok "simulation (--dry-run) : étapes affichées, rien créé" || fail "la simulation a modifié quelque chose"
+    # Accès aux images vérifié dès la simulation : une version absente du registre est refusée avec un message clair.
     # shellcheck disable=SC2086
-    DOCKER_SUBNET=$SUBNET sh "$E2E/anime-install.sh" $args > "$E2E/install.log" 2>&1 || { tail -30 "$E2E/install.log"; fail "installation"; }
+    if sh "$E2E/anime-install.sh" $(echo "$args" | sed "s/--version $VERSION/--version 9.9.9/") --dry-run > "$E2E/dry-bad.log" 2>&1; then
+        fail "version absente acceptée"; fi
+    grep -q "version 9.9.9 introuvable" "$E2E/dry-bad.log" && ok "version absente du registre : refusée dès la simulation" || { cat "$E2E/dry-bad.log"; fail "message"; }
+    # Plage réseau par défaut déjà prise par un autre projet Docker (cas vécu sur un PC d'essai) : une autre est choisie.
+    docker network rm e2e-occupe > /dev/null 2>&1 || true
+    docker network create --subnet 172.30.64.0/24 e2e-occupe > /dev/null
+    # shellcheck disable=SC2086
+    sh "$E2E/anime-install.sh" $args > "$E2E/install.log" 2>&1 || { tail -30 "$E2E/install.log"; docker network rm e2e-occupe > /dev/null; fail "installation"; }
+    docker network rm e2e-occupe > /dev/null
+    chosen=$(sed -n 's/^DOCKER_SUBNET=//p' "$DATA/nas.env")
+    [ -n "$chosen" ] && [ "$chosen" != 172.30.64.0/24 ] && docker network inspect anime-server_default > /dev/null 2>&1 \
+        && ok "plage réseau déjà prise : une plage libre choisie ($chosen)" || fail "plage réseau : '$chosen'"
     grep -q "Ouvrir dans un navigateur, depuis la maison : http://.*:$LAN_PORT" "$E2E/install.log" && ok "installation en une commande, adresse de l'assistant affichée" \
         || { cat "$E2E/install.log"; fail "fin d'installation"; }
     # Essai : certificat interne de Caddy au lieu de Let's Encrypt (pas de vrai nom de domaine ici).

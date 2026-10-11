@@ -269,13 +269,17 @@ class WebConvertRealTest {
     }
 
     @Test
-    void xvidAviIsConverted() throws Exception {
-        playback("Conv - S01E03.avi", "h264,aac,mp3").then().statusCode(202);
+    void xvidAviWithMp3IsConvertedToH264AndAac() throws Exception {
+        // Capacités de Chrome : ni MPEG-4 ASP, ni MP3 dans une copie HLS (constat du 2026-10-11).
+        playback("Conv - S01E03.avi", "h264,aac").then().statusCode(202);
         assertTrue(prep.processNext());
-        playback("Conv - S01E03.avi", "h264,aac,mp3").then().statusCode(202);
+        playback("Conv - S01E03.avi", "h264,aac").then().statusCode(202);
         assertTrue(prep.processNext(WebPrepService.CONV));
-        playback("Conv - S01E03.avi", "h264,aac,mp3").then().statusCode(200).body("mode", equalTo("HLS"));
-        assertEquals("h264", ffprobe(cache.dir(key("Conv - S01E03.avi", "CONV")).resolve("s_0.m4s"), "stream=codec_name"));
+        playback("Conv - S01E03.avi", "h264,aac").then().statusCode(200).body("mode", equalTo("HLS"))
+                .body("audio.size()", equalTo(1));
+        Path dir = cache.dir(key("Conv - S01E03.avi", "CONV"));
+        assertEquals("h264", ffprobe(dir.resolve("s_0.m4s"), "stream=codec_name"));
+        assertEquals("aac", ffprobe(dir.resolve("s_1.m4s"), "stream=codec_name"), "MP3 converti en AAC");
     }
 
     @Test

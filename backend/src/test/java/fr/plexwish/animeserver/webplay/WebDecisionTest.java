@@ -23,8 +23,8 @@ class WebDecisionTest {
 
     @Test
     void capsAreWhitelistedWithASafeDefault() {
-        assertEquals(Set.of("h264", "aac", "mp3"), WebDecision.caps(null));
-        assertEquals(Set.of("h264", "aac", "mp3"), WebDecision.caps(" , ,inconnu"));
+        assertEquals(Set.of("h264", "aac"), WebDecision.caps(null));
+        assertEquals(Set.of("h264", "aac"), WebDecision.caps(" , ,inconnu"));
         assertEquals(Set.of("hevc", "opus"), WebDecision.caps("HEVC, opus,<script>"));
     }
 
@@ -96,7 +96,8 @@ class WebDecisionTest {
         WebManifest p = hi10.convertPlan(720);
         assertEquals(WebManifest.VIDEO, p.container());
         assertEquals(new WebManifest.Video(0, "h264", 8, 1280, 720, 0.042), p.video());
-        assertEquals(List.of("aac", "aac", "mp3"), p.audio().stream().map(WebManifest.Audio::codec).toList());
+        // MP3 converti aussi : Chrome ne le lit pas dans une copie HLS.
+        assertEquals(List.of("aac", "aac", "aac"), p.audio().stream().map(WebManifest.Audio::codec).toList());
         assertEquals(List.of(1, 2, 3), p.audio().stream().map(WebManifest.Audio::rendition).toList());
         assertEquals(1080, hi10.convertPlan(1080).video().height());
         // Vidéo déjà lisible partout : copiée telle quelle, seul le son change (« W2 »).

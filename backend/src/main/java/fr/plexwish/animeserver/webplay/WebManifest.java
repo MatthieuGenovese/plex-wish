@@ -89,8 +89,11 @@ public record WebManifest(Double durationSeconds, String container, Video video,
     /** Vidéos que le ffmpeg de l'image sait décoder (donc convertir). */
     static final Set<String> DECODABLE_VIDEO = Set.of("h264", "hevc", "mpeg4", "msmpeg4v1", "msmpeg4v2", "msmpeg4v3",
             "mpeg1video", "mpeg2video", "vp8", "vp9", "mjpeg", "vc1", "wmv3", "theora");
-    /** Sons copiés tels quels dans la conversion (lus par tous les navigateurs) ; les autres deviennent AAC. */
-    static final Set<String> UNIVERSAL_AUDIO = Set.of("aac", "mp3");
+    /**
+     * Sons copiés tels quels dans la conversion (lus par tous les navigateurs) ; les autres deviennent AAC. Pas le MP3 :
+     * dans une copie HLS fMP4, Chrome ne le lit pas (constat du 2026-10-11 : MediaSource refuse « mp4a.40.34 »).
+     */
+    static final Set<String> UNIVERSAL_AUDIO = Set.of("aac");
     static final int MAX_CONVERTED_AUDIO = 8;
     /** Sorte de conversion, notée dans {@code container} du plan. */
     public static final String AUDIO_ONLY = "conv-audio";
@@ -109,7 +112,7 @@ public record WebManifest(Double durationSeconds, String container, Video video,
 
     /**
      * Plan de la conversion : vidéo H.264 8 bits (copiée si elle l'est déjà, sinon convertie, hauteur au plus
-     * {@code maxHeight}), chaque piste audio en AAC stéréo (AAC et MP3 copiés), sous-titres et polices laissés à la
+     * {@code maxHeight}), chaque piste audio en AAC stéréo (AAC copié), sous-titres et polices laissés à la
      * préparation de base. {@code video.codec} / {@code audio.codec} : ce qui sort de la conversion ; {@code container} :
      * {@link #AUDIO_ONLY} (vidéo copiée, « W2 ») ou {@link #VIDEO} (vidéo convertie, « W3 »).
      */

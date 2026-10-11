@@ -62,7 +62,7 @@ de rien sur le terrain : elles servent seulement à estimer le volume de convers
 | **VP9** | oui | oui | supposé |
 | **AV1** | oui (logiciel dav1d si pas de matériel) | oui | supposé |
 | **MPEG-4 ASP (Xvid/DivX), MPEG-2, VC-1** | non | non | supposé |
-| **AAC, MP3** | oui | oui | supposé |
+| **AAC, MP3** | oui (MP3 : pas dans une copie HLS fMP4, refusé par Chrome, constat du 2026-10-11) | oui | AAC supposé ; MP3 en HLS vérifié (Chrome 155) |
 | **Opus** (MP4/WebM), **FLAC** (MP4) | oui | oui | supposé (FLAC-in-MP4 annoncé par Chrome) |
 | **Vorbis** | WebM/Ogg seulement | idem | supposé |
 | **AC3 / E-AC3** | non fiable (Edge Windows selon le système, codec retiré de Windows 11 24H2) | non | supposé → toujours converti |
@@ -505,7 +505,8 @@ polices, copie sans conversion) :
 
 - vidéo H.264 8 bits copiée (« W2 », son seul converti : minutes), sinon x264 `veryfast`, CRF 21, `-tune animation`,
   2 fils, image clé toutes les 6 s, hauteur au plus 720 (réglable en 1080) (« W3 ») ;
-- chaque piste audio copiée (AAC, MP3) ou convertie en AAC stéréo 160 kb/s ;
+- chaque piste audio copiée (AAC) ou convertie en AAC stéréo 160 kb/s (MP3 compris depuis le 2026-10-11 : Chrome ne le
+  lit pas dans une copie HLS ; les conversions faites avant sont refaites à leur prochaine demande) ;
 - sous-titres et polices toujours ceux de la préparation de base.
 
 Quand un navigateur ne lit ni la vidéo ni le son (et qu'il lit H.264 + AAC), `web-playback` met la conversion en file

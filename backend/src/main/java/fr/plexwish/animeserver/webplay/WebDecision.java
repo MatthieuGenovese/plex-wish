@@ -32,8 +32,8 @@ public final class WebDecision {
 
     /** Capacités qu'un navigateur peut annoncer (tout le reste est ignoré). */
     public static final Set<String> KNOWN = Set.of("h264", "hevc", "hevc10", "vp9", "av1", "aac", "mp3", "opus", "flac", "ac3", "eac3");
-    /** Sans annonce : le minimum que tout navigateur lit. */
-    static final Set<String> DEFAULT = Set.of("h264", "aac", "mp3");
+    /** Sans annonce : le minimum que tout navigateur lit (dans une copie HLS : pas le MP3, refusé par Chrome). */
+    static final Set<String> DEFAULT = Set.of("h264", "aac");
 
     private WebDecision() {
     }

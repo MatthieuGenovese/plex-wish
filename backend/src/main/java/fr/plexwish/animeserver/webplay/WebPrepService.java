@@ -298,8 +298,14 @@ public class WebPrepService {
                 base.convertPlan(height), priority);
     }
 
+    /**
+     * Version du plan de conversion, dans la clé : la changer refait les conversions à leur prochaine demande
+     * (2 : MP3 converti en AAC, illisible par Chrome dans une copie HLS).
+     */
+    static final int PLAN_VERSION = 2;
+
     static String convKey(long id, long size, OffsetDateTime modified, int height) {
-        return WebCache.key(CONV + height, id, size, modified);
+        return WebCache.key(CONV + height + "v" + PLAN_VERSION, id, size, modified);
     }
 
     private Decision obtain(String kind, String key, long mediaFileId, long sourceSize, OffsetDateTime sourceModified,

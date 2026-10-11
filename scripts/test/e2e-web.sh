@@ -3,8 +3,8 @@
 # serveur avec ffmpeg), fichiers vidéo générés, puis les essais Playwright de web/e2e dans Google Chrome.
 # Tout est créé dans un dossier jetable et supprimé à la fin (KEEP=1 pour garder la pile).
 #
-#   scripts/test/build-test-images.sh 1.10.1      (après scripts/test/refresh-test-builds.sh)
-#   VERSION=1.10.1 scripts/test/e2e-web.sh
+#   scripts/test/build-test-images.sh 1.10.2      (après scripts/test/refresh-test-builds.sh)
+#   VERSION=1.10.2 scripts/test/e2e-web.sh
 #
 # Prérequis sur la machine : docker, ffmpeg avec libx264 (pour fabriquer les fichiers), Node, Google Chrome
 # (CHROME_PATH, défaut /opt/google/chrome/chrome ; le Chromium de Playwright ne décode ni H.264 ni AAC).
@@ -14,7 +14,7 @@ E2E=${E2E_DIR:-/tmp/claude-0/e2e-web}
 DATA=$E2E/data
 MEDIA=$E2E/media
 REGISTRY=${REGISTRY:-localhost:5000/test}
-VERSION=${VERSION:-1.10.1}
+VERSION=${VERSION:-1.10.2}
 LAN_PORT=18081
 PUBLIC_PORT=18444
 DOMAIN=anime.e2e.test
@@ -64,7 +64,7 @@ ASS
         -map 0 -map 1 -map 2 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -c:s mov_text -metadata:s:s:0 language=fre \
         -movflags +faststart "$MEDIA/Frieren/Saison 1/Frieren - S01E02.mp4"
     ff -f lavfi -i "testsrc2=size=640x360:rate=25:duration=8" -f lavfi -i "sine=f=550:duration=8" -c:v mpeg4 -vtag XVID \
-        -c:a mp2 "$MEDIA/Air Gear/Air Gear - S01E01.avi"
+        -c:a libmp3lame "$MEDIA/Air Gear/Air Gear - S01E01.avi"
     # H.264 10 bits (Hi10P, illisible dans un navigateur) 1080p avec ASS : converti en H.264 720p (10.3).
     ff -f lavfi -i "testsrc2=size=1920x1080:rate=24:duration=40" -f lavfi -i "sine=f=440:duration=40" -i "$E2E/subs.ass" \
         -map 0 -map 1 -map 2 -c:v libx264 -preset ultrafast -pix_fmt yuv420p10le -c:a aac -c:s ass -metadata:s:a:0 language=jpn \

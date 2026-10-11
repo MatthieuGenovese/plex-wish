@@ -109,6 +109,32 @@ public class StreamSigner {
         return clock.instant().getEpochSecond() >= exp ? Check.EXPIRED : Check.VALID;
     }
 
+    // --- Sous-titre externe pour Android (1.3.1, accord du 2026-10-11) -------------------------------------------------
+
+    /**
+     * Sous-titre externe (.ass sous /media) : signature liée au fichier vidéo, au sous-titre, à l'utilisateur et à
+     * l'expiration, préfixe propre ({@code v1-sub}) : elle n'ouvre ni la vidéo, ni un autre sous-titre.
+     */
+    public String subtitleUrl(long mediaFileId, long subtitleId, long userId, long exp) {
+        return "/api/stream/" + mediaFileId + "/subtitle/" + subtitleId + "?u=" + userId + "&exp=" + exp + "&sig="
+                + subtitleSignature(mediaFileId, subtitleId, userId, exp);
+    }
+
+    public Check checkSubtitle(long mediaFileId, long subtitleId, long userId, long exp, String sig) {
+        if (sig == null || sig.isEmpty()) {
+            return Check.INVALID;
+        }
+        byte[] expected = subtitleSignature(mediaFileId, subtitleId, userId, exp).getBytes(StandardCharsets.US_ASCII);
+        if (!MessageDigest.isEqual(expected, sig.getBytes(StandardCharsets.US_ASCII))) {
+            return Check.INVALID;
+        }
+        return clock.instant().getEpochSecond() >= exp ? Check.EXPIRED : Check.VALID;
+    }
+
+    String subtitleSignature(long mediaFileId, long subtitleId, long userId, long exp) {
+        return mac("v1-sub:" + mediaFileId + ":" + subtitleId + ":" + userId + ":" + exp);
+    }
+
     String webSignature(long mediaFileId, String key, String resource, long userId, long exp) {
         return mac("v1-web:" + mediaFileId + ":" + key + "/" + resource + ":" + userId + ":" + exp);
     }

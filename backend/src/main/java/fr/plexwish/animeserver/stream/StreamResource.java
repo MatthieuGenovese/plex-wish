@@ -2,6 +2,8 @@ package fr.plexwish.animeserver.stream;
 
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.library.LibraryConfig;
+import fr.plexwish.animeserver.library.parse.AssTiming;
+import fr.plexwish.animeserver.library.subs.ExternalSubtitleService;
 import fr.plexwish.animeserver.media.RemuxCache;
 import fr.plexwish.animeserver.media.RemuxService;
 import io.agroal.api.AgroalDataSource;
@@ -28,6 +30,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Lecture vidéo (ARCHITECTURE §6) en deux temps :
@@ -43,7 +49,19 @@ import java.time.Instant;
 @Path("/api")
 public class StreamResource {
 
-    public record StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize) {
+    /**
+     * {@code subtitles} : sous-titres externes (.ass) associés à l'épisode, chacun avec son URL signée (1.3.1), complets
+     * d'abord, le premier complet par défaut.
+     */
+    public record StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize, List<SubtitleLink> subtitles) {
+        StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize) {
+            this(url, expiresAt, mimeType, fileSize, List.of());
+        }
+    }
+
+    /** Sous-titre externe pour le lecteur Android ; {@code mimeType} : {@code text/x-ssa}. */
+    public record SubtitleLink(long id, String url, String label, String language, boolean forced, boolean isDefault,
+                               String mimeType) {
     }
 
     @Inject
@@ -60,6 +78,8 @@ public class StreamResource {
     RemuxService remux;
     @Inject
     RemuxCache remuxCache;
+    @Inject
+    ExternalSubtitleService externalSubtitles;
 
     /** Préparation en cours (copie remuxée pour Android, §23) : réponse 202, distincte d'une erreur. */
     public record Preparing(String state, int position, Double progress, long estimatedSeconds, int retryAfterSeconds, String message) {
@@ -95,16 +115,17 @@ public class StreamResource {
             }
         }
         long userId = Long.parseLong(jwt.getSubject());
+        List<SubtitleLink> subs = subtitles(fileId, userId);
         if (!remux.needsRemux(fileId, container)) {
             StreamSigner.SignedUrl signed = signer.sign(fileId, userId);
-            return Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), mimeType(fileName), size)).build();
+            return Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), mimeType(fileName), size, subs)).build();
         }
         // Fichier illisible tel quel sur Android (AVI, OGM) : jamais l'URL de l'original, toujours la copie remuxée.
         return switch (remux.request(fileId, size, modified)) {
             case RemuxService.Ready r -> {
                 StreamSigner.SignedUrl signed = signer.sign(fileId, userId, StreamSigner.Target.REMUX);
                 yield Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), "video/x-matroska",
-                        remuxCache.size(r.key()))).build();
+                        remuxCache.size(r.key()), subs)).build();
             }
             case RemuxService.Preparing p -> Response.status(Response.Status.ACCEPTED)
                     .header("Retry-After", p.retryAfterSeconds())
@@ -121,9 +142,83 @@ public class StreamResource {
                     "Ce fichier doit être converti pour Android, mais la conversion est indisponible sur le serveur (" + u.reason() + ").");
             case RemuxService.NotNeeded n -> {
                 StreamSigner.SignedUrl signed = signer.sign(fileId, userId);
-                yield Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), mimeType(fileName), size)).build();
+                yield Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), mimeType(fileName), size, subs)).build();
             }
         };
+    }
+
+    /** Sous-titres externes de l'épisode, URL signées (même durée de vie que celle de la vidéo). */
+    private List<SubtitleLink> subtitles(long fileId, long userId) throws SQLException {
+        long exp = signer.expiry();
+        List<SubtitleLink> out = new ArrayList<>();
+        Set<String> labels = new HashSet<>();
+        boolean defaultTaken = false;
+        for (ExternalSubtitleService.External x : externalSubtitles.forFile(fileId)) {
+            boolean isDefault = !x.forced() && !defaultTaken;
+            defaultTaken |= isDefault;
+            String label = ExternalSubtitleService.label(x.language(), x.forced());
+            String unique = label;
+            for (int i = 2; !labels.add(unique); i++) {
+                unique = label + " " + i;
+            }
+            out.add(new SubtitleLink(x.id(), signer.subtitleUrl(fileId, x.id(), userId, exp), unique, x.language(), x.forced(),
+                    isDefault, SSA));
+        }
+        return out;
+    }
+
+    static final String SSA = "text/x-ssa";
+
+    /**
+     * Sous-titre externe (Android, 1.3.1) : signature liée au fichier et au sous-titre ; le sous-titre doit être associé
+     * à l'épisode de ce fichier et disponible ; chemin venu de la base, revérifié sous la bibliothèque. Texte brut, petit :
+     * envoyé en entier (pas de Range).
+     */
+    @GET
+    @Path("/stream/{fileId}/subtitle/{subId}")
+    @PermitAll
+    public Response subtitle(@PathParam("fileId") long fileId, @PathParam("subId") long subId, @QueryParam("u") Long userId,
+                             @QueryParam("exp") Long exp, @QueryParam("sig") String sig) throws SQLException {
+        if (userId == null || exp == null) {
+            throw invalidUrl();
+        }
+        switch (signer.checkSubtitle(fileId, subId, userId, exp, sig)) {
+            case INVALID -> throw invalidUrl();
+            case EXPIRED -> throw new ApiException(403, "STREAM_URL_EXPIRED", "Lien de lecture expiré : en demander un nouveau");
+            case VALID -> {
+            }
+        }
+        String relativePath;
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement st = c.prepareStatement("""
+                     SELECT (SELECT enabled FROM app_user WHERE id = ?), x.relative_path
+                     FROM (SELECT 1) one LEFT JOIN (external_subtitle x JOIN episode e ON e.id = x.episode_id
+                         JOIN media_file f ON f.id = e.media_file_id AND f.available)
+                       ON x.id = ? AND x.available AND e.media_file_id = ?""")) {
+            st.setLong(1, userId);
+            st.setLong(2, subId);
+            st.setLong(3, fileId);
+            try (ResultSet rs = st.executeQuery()) {
+                rs.next();
+                if (!rs.getBoolean(1)) {
+                    throw new ApiException(403, "USER_DISABLED", "Compte désactivé");
+                }
+                relativePath = rs.getString(2);
+            }
+        }
+        java.nio.file.Path file = externalSubtitles.resolve(relativePath).orElseThrow(StreamResource::unavailable);
+        long size;
+        try {
+            size = Files.size(file);
+        } catch (IOException e) {
+            throw unavailable();
+        }
+        if (size > AssTiming.MAX_BYTES) {
+            throw unavailable();
+        }
+        return Response.ok(new PathPart(file, 0, size)).type(SSA + "; charset=utf-8")
+                .header(HttpHeaders.CONTENT_LENGTH, size).header("Cache-Control", "private, max-age=0")
+                .header("X-Content-Type-Options", "nosniff").build();
     }
 
     @GET

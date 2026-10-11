@@ -172,8 +172,8 @@ sécurité (CSP, jetons, URL signées) sans accord ; aucune ressource externe.
 ## 1.3.0 — Sous-titres externes
 `.ass` / `.ssa` posés à côté des vidéos ou rangés à part dans le dossier de l'animé : associés au scan (même nom, sinon
 numéro reconnu), forcés repérés, polices du dossier, contrôle de durée au rapport, correction manuelle dans
-Corrections ; lus par le navigateur (copiés dans la préparation de base). Android : après accord sur l'URL signée des
-sous-titres. Détail : ARCHITECTURE §7.8.
+Corrections ; lus par le navigateur (copiés dans la préparation de base). 1.3.1 : lus par Android (URL signée
+propre à chaque sous-titre, accordée le 2026-10-11). Détail : ARCHITECTURE §6 et §7.8.
 
 ## Phase D1 — Déploiement sur le NAS (plan validé le 2026-10-09)
 

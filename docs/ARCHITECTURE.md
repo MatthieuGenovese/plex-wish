@@ -207,6 +207,7 @@ sig = base64url(HMAC-SHA256(STREAM_SIGNING_SECRET, mediaFileId + ":" + userId + 
 - Signature : `HMAC-SHA256(STREAM_SIGNING_SECRET, "v1:" + mediaFileId + ":" + userId + ":" + exp)`, base64url sans `=`. Le préfixe `v1` permettra de changer le format sans accepter d'anciennes URL par erreur. Durée : `STREAM_URL_LIFETIME` (6 h par défaut).
 - `GET` et `HEAD /api/stream/{mediaFileId}?u=&exp=&sig=` : pas d'en-tête d'authentification. Ordre des contrôles : signature (`403 STREAM_URL_INVALID`), expiration (`403 STREAM_URL_EXPIRED`), utilisateur actif (`403 USER_DISABLED`, relu en base à chaque requête), fichier disponible et chemin réel sous la racine (`404 EPISODE_UNAVAILABLE`). **Sur un 403, le client redemande une URL** (pause longue) ; s'il obtient à nouveau 403 ou 401, il renvoie à la connexion.
 - Le chemin vient de la base, et il est revérifié : `..`, chemin absolu ou lien symbolique qui sortirait de la racine → 404 (`StreamTest`).
+- **Sous-titres externes pour Android (1.3.1, accordé le 2026-10-11)** : `stream-url` ajoute `subtitles` (`{id, url, label, language, forced, isDefault, mimeType: "text/x-ssa"}`), chacun avec `GET /api/stream/{mediaFileId}/subtitle/{subtitleId}?u=&exp=&sig=`. Signature `HMAC-SHA256(STREAM_SIGNING_SECRET, "v1-sub:" + mediaFileId + ":" + subtitleId + ":" + userId + ":" + exp)`, même durée de vie : elle n'ouvre ni la vidéo ni un autre sous-titre, et une URL de la vidéo n'ouvre pas un sous-titre. Mêmes contrôles (signature, expiration, utilisateur actif) ; le sous-titre doit être associé à l'épisode de ce fichier et disponible (sinon 404), chemin venu de la base et revérifié sous la racine. Fichier envoyé en entier (`text/x-ssa; charset=utf-8`, `Cache-Control: private`, 20 Mo au plus) (`SubtitleStreamTest`).
 - `Cache-Control: private` : un cache partagé ne garde pas la vidéo d'un utilisateur.
 - Logs : nginx journalise `$uri` (sans query string) et ne met pas `/api/stream/` en tampon (`proxy_buffering off`, sinon il recopierait la vidéo dans un fichier temporaire). Côté Quarkus, le format du journal d'accès (désactivé par défaut) utilise `%R`, le chemin sans query string, et le logger `ForwardedParser`, qui recopie l'URL complète en DEBUG, reste en INFO (`LogLeakTest`). ⚠️ Le reverse proxy du DSM a son propre journal : ne pas y activer les journaux détaillés.
 
@@ -390,7 +391,10 @@ au-delà de la durée de la vidéo + 1 min ou 5 %, signalé au rapport, « mauva
 secours) avec les polices de son dossier et des sous-dossiers « Polices » / « Fonts » (`font_<n>`, mêmes plafonds que
 les polices jointes) ; ils sont servis par les URL signées du cache (S5), proposés en premier, le premier complet par
 défaut. La clé de la préparation contient une empreinte des sous-titres externes : en ajouter, en retirer ou en
-corriger refait la préparation à la demande suivante. Android : en attente (nouvelle URL signée à valider).
+corriger refait la préparation à la demande suivante. Android (1.3.1) : `stream-url` liste les sous-titres externes
+avec une URL signée chacun (§6) ; le lecteur les joint à la vidéo (`MediaItem.SubtitleConfiguration`, SSA de Media3 :
+texte, position et styles simples, sans les polices du dossier), avec langue, « par défaut » et « forcés » donnés par
+le serveur.
 
 ### 7.9 Idempotence
 - Clé d'un fichier : `relative_path`. Nouveau chemin → création ; chemin connu → mise à jour de `file_size`, `last_modified`, `last_seen_at`.

@@ -6,6 +6,7 @@ import fr.plexwish.animeserver.library.parse.FilenameParser;
 import fr.plexwish.animeserver.library.parse.ParseResult;
 import fr.plexwish.animeserver.library.parse.SubtitleNames;
 import fr.plexwish.animeserver.library.scan.Titles;
+import fr.plexwish.animeserver.webplay.WebDecision;
 import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -211,6 +212,16 @@ public class ExternalSubtitleService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * Libellé d'une piste externe, comme dans le lecteur web : « Français (externe) », « Sous-titres externes » sans
+     * langue connue, « — forcés » pour les panneaux et chansons.
+     */
+    public static String label(String language, boolean forced) {
+        String name = WebDecision.languageName(language);
+        String l = name == null ? "Sous-titres externes" : name + " (externe)";
+        return forced ? l + " — forcés" : l;
     }
 
     /** Chemin réel sous la racine de la bibliothèque (lien qui sort, « .. », fichier absent : vide). */

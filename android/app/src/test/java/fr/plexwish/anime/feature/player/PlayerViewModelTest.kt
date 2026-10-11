@@ -40,6 +40,8 @@ open class PlayerTestBase {
     /** Nombre de réponses « préparation en cours » (202) avant le lien. */
     val preparing = AtomicInteger(0)
     var streamErrorBody = ""
+    /** Champs ajoutés à la réponse de stream-url (ex. sous-titres externes). */
+    var streamExtra = ""
     val progressPuts = java.util.concurrent.CopyOnWriteArrayList<String>()
     var progressStatus = 200
 
@@ -59,7 +61,7 @@ open class PlayerTestBase {
                 } else if (streamUrlStatus != 200) MockResponse().setResponseCode(streamUrlStatus).setBody(streamErrorBody) else {
                     val n = urls.incrementAndGet()
                     val exp = Instant.now().plusSeconds(urlLifetimeSeconds)
-                    MockResponse().setBody("""{"url":"/api/stream/12?u=1&exp=${exp.epochSecond}&sig=SECRETSIG$n","expiresAt":"$exp","mimeType":"video/x-matroska","fileSize":1000}""")
+                    MockResponse().setBody("""{"url":"/api/stream/12?u=1&exp=${exp.epochSecond}&sig=SECRETSIG$n","expiresAt":"$exp","mimeType":"video/x-matroska","fileSize":1000$streamExtra}""")
                 }
                 "/api/episodes/5/progress" -> {
                     progressPuts += request.body.readUtf8()
@@ -112,6 +114,25 @@ class PlayerViewModelTest : PlayerTestBase() {
         assertTrue(engine.loads[0].url.startsWith("http://localhost:${server.port}/api/stream/12?"))
         assertEquals("Épisode 3 · Tuer des magiciens", vm.state.value.title)
         assertEquals("Frieren · Saison 1", vm.state.value.subtitle)
+    }
+
+    @Test
+    fun externalSubtitlesAreJoinedToTheVideoWithAbsoluteUrlsOnTheSameServer() {
+        streamExtra = ""","subtitles":[
+            {"url":"/api/stream/12/subtitle/3?u=1&exp=9&sig=SUBSIG","label":"Français (externe)","language":"fre","forced":false,"isDefault":true,"mimeType":"text/x-ssa"},
+            {"url":"/api/stream/12/subtitle/4?u=1&exp=9&sig=SUBSIG2","label":"Sous-titres externes — forcés","forced":true},
+            {"url":"https://ailleurs.example/x.ass","label":"Autre serveur"}]"""
+        val engine = FakeEngine()
+        player(engine)
+        await("chargement") { engine.loads.size == 1 }
+        val subs = engine.loads[0].subtitles
+        assertEquals(2, subs.size) // l'URL vers un autre hôte est ignorée
+        assertEquals("http://localhost:${server.port}/api/stream/12/subtitle/3?u=1&exp=9&sig=SUBSIG", subs[0].url)
+        assertEquals("fre", subs[0].language)
+        assertTrue(subs[0].isDefault)
+        assertTrue(subs[1].forced)
+        assertEquals(null, subs[1].language)
+        assertTrue(!subs[0].toString().contains("SUBSIG"))
     }
 
     @Test

@@ -166,7 +166,7 @@ class PlayerViewModel(
     private suspend fun load(fresh: Boolean, positionMs: Long, play: Boolean) {
         if (fresh || stream == null) stream = obtainStream()
         _state.update { it.copy(preparing = null) }
-        engine.load(stream!!.url, positionMs.coerceAtLeast(0), play)
+        engine.load(stream!!.url, positionMs.coerceAtLeast(0), play, stream!!.subtitles)
     }
 
     /**

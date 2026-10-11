@@ -1,5 +1,7 @@
 package fr.plexwish.anime.feature.player
 
+import fr.plexwish.anime.data.api.ExternalSubtitle
+
 /** Pistes et erreurs du lecteur, sans type Media3 : la logique (diagnostic, reprise) se teste sur la JVM. */
 enum class TrackType { VIDEO, AUDIO, TEXT, OTHER }
 
@@ -68,8 +70,11 @@ interface PlaybackEngine {
 
     fun setListener(listener: Listener?)
 
-    /** Charge l'URL (signée) et se place à {@code startMs}. L'URL n'est jamais journalisée. */
-    fun load(url: String, startMs: Long, playWhenReady: Boolean)
+    /**
+     * Charge l'URL (signée) et se place à {@code startMs}, avec les sous-titres externes (.ass) à joindre. Les URL ne
+     * sont jamais journalisées.
+     */
+    fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle> = emptyList())
 
     /** Position courante (ms), y compris après un seek pendant la pause ou après une erreur. */
     val positionMs: Long

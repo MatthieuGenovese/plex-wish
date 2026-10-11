@@ -164,8 +164,28 @@ data class EpisodeDetail(
 
 /** URL de lecture signée (relative au serveur). Secrète : jamais dans un log ni un message. */
 @Serializable
-data class StreamUrlDto(val url: String, val expiresAt: String? = null, val mimeType: String? = null, val fileSize: Long = 0) {
-    override fun toString() = "StreamUrlDto(url=***, expiresAt=$expiresAt)"
+data class StreamUrlDto(
+    val url: String,
+    val expiresAt: String? = null,
+    val mimeType: String? = null,
+    val fileSize: Long = 0,
+    /** Sous-titres externes (.ass posés à côté de la vidéo, serveur 1.3.1 et plus), chacun avec son URL signée. */
+    val subtitles: List<SubtitleLinkDto> = emptyList(),
+) {
+    override fun toString() = "StreamUrlDto(url=***, expiresAt=$expiresAt, subtitles=${subtitles.size})"
+}
+
+/** Sous-titre externe : URL signée (secrète), libellé, langue, forcés, par défaut. */
+@Serializable
+data class SubtitleLinkDto(
+    val url: String,
+    val label: String? = null,
+    val language: String? = null,
+    val forced: Boolean = false,
+    val isDefault: Boolean = false,
+    val mimeType: String? = null,
+) {
+    override fun toString() = "SubtitleLinkDto(url=***, label=$label)"
 }
 
 /** Réponse 202 de stream-url : épisode en cours de conversion pour Android sur le serveur. */

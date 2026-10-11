@@ -1,11 +1,13 @@
 package fr.plexwish.anime.playback
 
 import android.content.Context
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
@@ -23,6 +25,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import fr.plexwish.anime.data.api.ExternalSubtitle
 import fr.plexwish.anime.data.log.SafeLog
 import fr.plexwish.anime.feature.player.PlaybackEngine
 import fr.plexwish.anime.feature.player.PlaybackFailure
@@ -193,10 +196,10 @@ class ExoPlaybackEngine(
         this.listener = listener
     }
 
-    override fun load(url: String, startMs: Long, playWhenReady: Boolean) {
+    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>) {
         loading = true
         try {
-            player.setMediaItem(MediaItem.fromUri(url), startMs)
+            player.setMediaItem(mediaItem(url, subtitles), startMs)
             player.playWhenReady = playWhenReady
             player.prepare()
         } finally {
@@ -205,6 +208,24 @@ class ExoPlaybackEngine(
     }
 
     override val positionMs: Long get() = player.currentPosition
+
+    /**
+     * Vidéo + sous-titres externes (.ass, lus par le lecteur de sous-titres SSA de Media3 : texte, position et styles
+     * simples ; les polices du dossier ne sont pas utilisées sur le téléphone). Langue, libellé, « par défaut » et
+     * « forcés » viennent du serveur : la sélection de pistes les traite comme celles du fichier.
+     */
+    private fun mediaItem(url: String, subtitles: List<ExternalSubtitle>): MediaItem = MediaItem.Builder()
+        .setUri(url)
+        .setSubtitleConfigurations(subtitles.mapIndexed { i, s ->
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
+                .setId("externe-$i")
+                .setMimeType(MimeTypes.TEXT_SSA)
+                .setLanguage(s.language)
+                .setLabel(s.label)
+                .setSelectionFlags((if (s.isDefault) C.SELECTION_FLAG_DEFAULT else 0) or (if (s.forced) C.SELECTION_FLAG_FORCED else 0))
+                .build()
+        })
+        .build()
     override val durationMs: Long get() = player.duration.takeIf { it != C.TIME_UNSET } ?: -1
     override val isPlaying: Boolean get() = player.isPlaying
     override val isBuffering: Boolean get() = player.playbackState == Player.STATE_BUFFERING

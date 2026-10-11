@@ -84,6 +84,8 @@ Plein écran en paysage. Un toucher (ou une touche de la télécommande) affiche
 
 Ceux du fichier : piste de sous-titres (MKV, MP4, copies préparées des AVI et OGM) ou sous-titres incrustés dans l'image (fréquent dans les AVI). Vérifié sur le S24 pour les quatre formats. L'app n'affiche aucun message à leur sujet : l'absence de piste ne veut pas dire qu'il n'y a pas de sous-titres. Pour les sous-titres ASS, le texte et sa position sont respectés, les effets typographiques avancés des fansubs (karaoké, animations) sont simplifiés par Media3.
 
+**Sous-titres externes** (serveur 1.3.1 et plus) : les `.ass` posés à côté de la vidéo ou rangés à part dans le dossier de l'animé (associés par le serveur au scan) sont joints à la vidéo, avec leur propre lien signé. Ils apparaissent dans « Audio et sous-titres » (« Français (externe) », « Sous-titres externes — forcés »…) ; le premier complet est marqué par défaut. Les polices du dossier ne sont pas utilisées sur le téléphone (police du système, réglages d'accessibilité).
+
 ### Quand un fichier ne se lit pas
 
 Message clair, puis **Détails** : fichier (conteneur), code d'erreur Media3, réponse HTTP éventuelle, codec en cause, pistes détectées (codec, langue, lisible ou non). Jamais d'URL ni de jeton (le texte peut être sélectionné et copié pour un signalement). Cas distingués :

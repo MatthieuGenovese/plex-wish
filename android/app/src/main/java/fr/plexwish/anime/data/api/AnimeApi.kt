@@ -112,7 +112,12 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
             throw ApiException(0, null, "Réponse inattendue du serveur.") // jamais une URL vers un autre hôte
         }
         val expires = dto.expiresAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
-        return StreamAnswer.Ready(SignedStream(absolute.toString(), expires))
+        // Sous-titres externes : même serveur obligatoire, sinon la piste est simplement ignorée.
+        val subtitles = dto.subtitles.mapNotNull { s ->
+            server.resolve(s.url)?.takeIf { it.host == server.host && it.port == server.port }
+                ?.let { ExternalSubtitle(it.toString(), s.label, s.language, s.forced, s.isDefault) }
+        }
+        return StreamAnswer.Ready(SignedStream(absolute.toString(), expires, subtitles))
     }
 }
 
@@ -127,6 +132,11 @@ sealed interface StreamAnswer {
 }
 
 /** URL signée absolue et son expiration (ms epoch, null si inconnue). {@code toString} masqué. */
-class SignedStream(val url: String, val expiresAtMs: Long?) {
-    override fun toString() = "SignedStream(url=***, expiresAtMs=$expiresAtMs)"
+class SignedStream(val url: String, val expiresAtMs: Long?, val subtitles: List<ExternalSubtitle> = emptyList()) {
+    override fun toString() = "SignedStream(url=***, expiresAtMs=$expiresAtMs, subtitles=${subtitles.size})"
+}
+
+/** Sous-titre externe (.ass) à joindre à la vidéo ; {@code url} absolue et signée : jamais journalisée. */
+class ExternalSubtitle(val url: String, val label: String?, val language: String?, val forced: Boolean, val isDefault: Boolean) {
+    override fun toString() = "ExternalSubtitle(url=***, label=$label, language=$language, forced=$forced, isDefault=$isDefault)"
 }

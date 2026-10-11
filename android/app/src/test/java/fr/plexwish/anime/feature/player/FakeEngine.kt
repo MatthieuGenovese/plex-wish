@@ -1,10 +1,11 @@
 package fr.plexwish.anime.feature.player
 
+import fr.plexwish.anime.data.api.ExternalSubtitle
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Faux moteur : enregistre les chargements, et laisse le test simuler lecture, pause, seek et erreurs. */
 class FakeEngine : PlaybackEngine {
-    data class Load(val url: String, val startMs: Long, val play: Boolean)
+    data class Load(val url: String, val startMs: Long, val play: Boolean, val subtitles: List<ExternalSubtitle> = emptyList())
 
     val loads = CopyOnWriteArrayList<Load>()
     @Volatile
@@ -27,8 +28,8 @@ class FakeEngine : PlaybackEngine {
         current = listener
     }
 
-    override fun load(url: String, startMs: Long, playWhenReady: Boolean) {
-        loads += Load(url, startMs, playWhenReady)
+    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>) {
+        loads += Load(url, startMs, playWhenReady, subtitles)
         positionMs = startMs
         this.playWhenReady = playWhenReady
     }

@@ -47,7 +47,7 @@ interface Overview {
         } @else {
           <p>Aucune sauvegarde pour l’instant (la première a lieu peu après l’installation, puis chaque nuit à 3 h).</p>
         }
-        <p class="hint">Chaque nuit, vérifiée par une restauration d’essai ; 7 quotidiennes, 4 hebdomadaires et 6 mensuelles sont gardées
+        <p class="hint">Chaque nuit, et avant chaque mise à jour, vérifiée par une restauration d’essai ; seule la dernière est gardée,
           dans le dossier « backups » du projet sur le NAS.</p>
       </section>
 

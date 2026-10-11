@@ -54,7 +54,7 @@ services:
       init:
         condition: service_completed_successfully
 
-  # Sauvegarde de la base chaque nuit, vérifiée par une restauration d'essai, avec rotation (deploy/backup-loop.sh).
+  # Sauvegarde de la base chaque nuit, vérifiée par une restauration d'essai ; seule la dernière est gardée (deploy/backup-loop.sh).
   # Dossier « backups » du projet : visible dans le DSM, à inclure dans Hyper Backup pour une copie hors du NAS.
   backup:
     image: postgres:16-alpine

@@ -4,19 +4,18 @@
 #
 #   backup-loop.sh                     boucle : une sauvegarde chaque nuit à BACKUP_HOUR (3 h par défaut)
 #   backup-loop.sh once [préfixe]      une sauvegarde tout de suite (update.sh : « avant-maj », restore.sh : « avant-restauration »)
-#   backup-loop.sh rotate              rotation seule (essais)
+#   backup-loop.sh rotate              ne garde que la sauvegarde la plus récente (essais)
 #
 # Chaque sauvegarde est VÉRIFIÉE : restaurée dans une base temporaire (puis supprimée), et la version du schéma
-# comparée à celle de la base. Rotation : 7 quotidiennes, 4 hebdomadaires, 6 mensuelles ; les sauvegardes de sécurité
-# (avant mise à jour, avant restauration) : les 5 dernières de chaque sorte. État dans status.json (lu par le serveur).
+# comparée à celle de la base. Une fois vérifiée, **elle seule est gardée** : toutes les autres (de la nuit, avant mise
+# à jour, avant restauration, invalides) sont supprimées (choix du 2026-10-11 : seule la dernière compte). Une
+# sauvegarde ratée ne supprime rien. Exception : la sauvegarde « avant-restauration » ne supprime rien, le fichier
+# qu'on s'apprête à restaurer doit rester (le ménage se fait à la sauvegarde suivante). État dans status.json.
 # Le mot de passe de la base est lu dans le fichier créé par init, jamais affiché.
 set -eu
 
 DIR=${BACKUP_DIR:-/backups}
 HOUR=${BACKUP_HOUR:-3}
-KEEP_DAILY=${KEEP_DAILY:-7}
-KEEP_WEEKLY=${KEEP_WEEKLY:-4}
-KEEP_MONTHLY=${KEEP_MONTHLY:-6}
 export PGHOST=${PGHOST:-postgres} PGUSER=${PGUSER:-anime} PGDATABASE=${PGDATABASE:-anime}
 if [ -z "${PGPASSWORD:-}" ] && [ -r /run/secrets/pg/db_password ]; then
     PGPASSWORD=$(cat /run/secrets/pg/db_password); export PGPASSWORD
@@ -67,45 +66,25 @@ backup_once() {
     size=$(stat -c %s "$DIR/$name")
     log "OK : $name ($size octets, $message)"
     status true true "$name" "$size" "$message"
-    rotate
+    if [ "$prefix" != avant-restauration ]; then
+        keep_only "$name"
+    fi
 }
 
-# Rotation : du plus récent au plus ancien, une sauvegarde par jour (7 jours), puis la plus récente de chaque semaine
-# pas encore représentée (4), puis de chaque mois pas encore représenté (6). Seules les sauvegardes gardées
-# « représentent » leur jour, leur semaine et leur mois.
-rotate() {
-    days=""; weeks=""; months=""; nd=0; nw=0; nm=0
-    for f in $(ls -1 "$DIR" 2> /dev/null | grep -E '^anime-db-[0-9]{8}-[0-9]{6}\.dump$' | sort -r); do
-        d=$(echo "$f" | cut -c10-17)
-        iso="$(echo "$d" | cut -c1-4)-$(echo "$d" | cut -c5-6)-$(echo "$d" | cut -c7-8)"
-        w=$(date -d "$iso" '+%G%V' 2> /dev/null || echo "$d")
-        m=$(echo "$d" | cut -c1-6)
-        keep=no
-        case " $days " in *" $d "*) ;; *)
-            if [ "$nd" -lt "$KEEP_DAILY" ]; then
-                keep=yes; nd=$((nd + 1))
-            else
-                case " $weeks " in *" $w "*) ;; *)
-                    if [ "$nw" -lt "$KEEP_WEEKLY" ]; then keep=yes; nw=$((nw + 1)); fi ;;
-                esac
-                if [ "$keep" = no ]; then
-                    case " $months " in *" $m "*) ;; *)
-                        if [ "$nm" -lt "$KEEP_MONTHLY" ]; then keep=yes; nm=$((nm + 1)); fi ;;
-                    esac
-                fi
-            fi ;;
-        esac
-        if [ "$keep" = yes ]; then
-            days="$days $d"; weeks="$weeks $w"; months="$months $m"
-        else
-            rm -f "$DIR/$f"; log "rotation : $f supprimée"
+# Ménage : supprime toutes les sauvegardes (.dump, .dump.invalide) sauf celle nommée.
+keep_only() {
+    for f in $(ls -1 "$DIR" 2> /dev/null | grep -E '\.dump(\.invalide)?$'); do
+        if [ "$f" != "$1" ]; then
+            rm -f "$DIR/$f"; log "ménage : $f supprimée"
         fi
     done
-    for p in avant-maj avant-restauration; do
-        ls -1 "$DIR" 2> /dev/null | grep -E "^$p-[0-9]{8}-[0-9]{6}\.dump$" | sort -r | tail -n +6 | while read -r f; do
-            rm -f "$DIR/$f"; log "rotation : $f supprimée"
-        done
-    done
+}
+
+# Garde seulement la sauvegarde la plus récente (date du fichier).
+rotate() {
+    newest=$(ls -1t "$DIR" 2> /dev/null | grep -E '\.dump$' | head -n 1 || true)
+    [ -n "$newest" ] && keep_only "$newest"
+    return 0
 }
 
 case "${1:-loop}" in

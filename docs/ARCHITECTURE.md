@@ -930,7 +930,8 @@ Mode d'emploi : [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Décisions :
   révoqué par un nouveau lien ou la désactivation ; même mécanisme pour un mot de passe oublié (sessions fermées).
   Essais de liens invalides comptés dans l'anti brute force (clé `#invitation`).
 - **Sauvegardes** : conteneur `backup` (postgres:16-alpine, mêmes outils que la base) ; chaque nuit, vérifiée par une
-  restauration dans une base jetable et la comparaison de la version du schéma ; rotation 7/4/6. `restore.sh` en une
+  restauration dans une base jetable et la comparaison de la version du schéma ; seule la dernière sauvegarde
+  vérifiée est gardée (2026-10-11, auparavant rotation 7/4/6). `restore.sh` en une
   transaction après une sauvegarde de sécurité.
 - **Mises à jour** : `update.sh`, lancée par l'administrateur, jamais automatique (pas de socket Docker dans un
   conteneur exposé ; une migration ne se défait que par une restauration). Sauvegarde, santé, retour arrière et

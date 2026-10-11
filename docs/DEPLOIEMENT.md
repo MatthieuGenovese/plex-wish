@@ -123,7 +123,7 @@ Dossier du projet : `/volume1/docker/anime-server` (`--data` pour un autre).
 | `backend` | Serveur (Java), sans root (utilisateur du dossier des vidéos), ffmpeg | `posters/`, `remux-cache/`, cache du lecteur web (`WEB_CACHE_PATH`), vidéos en **lecture seule** |
 | `web` | nginx : porte locale (port 8080 du NAS, **assistant seulement**) et porte publique (8081, interne, pour Caddy) | — |
 | `caddy` | HTTPS sur Internet (port 8443 du NAS), certificat Let's Encrypt renouvelé seul | volume `caddy_data` |
-| `backup` | Sauvegarde vérifiée chaque nuit à 3 h, rotation 7/4/6 | `backups/` |
+| `backup` | Sauvegarde vérifiée chaque nuit à 3 h ; seule la dernière est gardée | `backups/` |
 | `tailscale` | Plan B seulement (profil `funnel`) | volumes `secrets_ts`, `tailscale_state` |
 
 Fichiers du dossier du projet :
@@ -293,7 +293,9 @@ tâches) ou sur place.
 
 - **Chaque nuit à 3 h**, plus un rattrapage si la dernière a plus de 26 h. Chaque sauvegarde est **restaurée dans une
   base d'essai** et sa version de schéma comparée avant d'être gardée.
-- Rotation : 7 quotidiennes, 4 hebdomadaires, 6 mensuelles, plus les 5 dernières « avant-maj » et « avant-restauration ».
+- **Une seule sauvegarde gardée** (choix du 2026-10-11) : une fois une sauvegarde faite **et vérifiée**, toutes les
+  autres sont supprimées (de la nuit, « avant-maj », invalides). Une sauvegarde ratée ne supprime rien. La sauvegarde
+  « avant-restauration » ne fait pas le ménage (le fichier restauré reste) : il se fait à la sauvegarde suivante.
 - État visible dans *Administration › Réglages* (fichier `backups/status.json`).
 - **Restaurer** : `sudo sh app/restore.sh backups/anime-db-AAAAMMJJ-HHMMSS.dump`. Le script vérifie le fichier, fait
   une sauvegarde de sécurité, restaure en une transaction, redémarre et vérifie la santé.

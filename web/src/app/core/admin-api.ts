@@ -8,8 +8,12 @@ import {
   MetadataEntry,
   MetadataSheet,
   MetadataSummary,
+  ExternalSubtitle,
   Override,
   OverrideRequest,
+  SubtitleAttach,
+  SubtitleFilter,
+  SubtitlePage,
   Page,
   PosterEntry,
   PosterSummary,
@@ -107,6 +111,28 @@ export class AdminApi {
 
   overrides(): Observable<Override[]> {
     return this.http.get<Override[]>('/api/admin/library/overrides');
+  }
+
+  // --- Sous-titres externes (1.3.0) ----------------------------------------------------------------
+
+  subtitles(query: { filter: SubtitleFilter; anime?: string; page: number; size: number }): Observable<SubtitlePage> {
+    let params = new HttpParams().set('filter', query.filter).set('page', query.page).set('size', query.size);
+    if (query.anime) params = params.set('anime', query.anime);
+    return this.http.get<SubtitlePage>('/api/admin/library/subtitles', { params });
+  }
+
+  /** 404 EPISODE_NOT_FOUND si l'épisode n'existe pas. */
+  attachSubtitle(id: number, request: SubtitleAttach): Observable<ExternalSubtitle> {
+    return this.http.put<ExternalSubtitle>(`/api/admin/library/subtitles/${id}/episode`, request);
+  }
+
+  detachSubtitle(id: number): Observable<ExternalSubtitle> {
+    return this.http.delete<ExternalSubtitle>(`/api/admin/library/subtitles/${id}/episode`);
+  }
+
+  /** Retire la correction : association automatique recalculée. */
+  automaticSubtitle(id: number): Observable<ExternalSubtitle> {
+    return this.http.delete<ExternalSubtitle>(`/api/admin/library/subtitles/${id}/override`);
   }
 
   // --- Métadonnées ---------------------------------------------------------------------------------

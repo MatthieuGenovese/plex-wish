@@ -1,17 +1,18 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Override } from '../../core/api-types';
 import { AdminApi } from '../../core/admin-api';
 import { errorMessage } from '../../core/errors';
 import { formatDateTime } from '../../shared/format';
 import { loadOn } from '../../shared/load-state';
+import { SubtitlesSection } from './subtitles';
 
 const ACTIONS = { EPISODE: 'Épisode', EXTRA: 'Extra', IGNORE: 'Ignoré' } as const;
 
 /** Corrections manuelles enregistrées : jamais écrasées par un scan, annulables ici. */
 @Component({
   selector: 'app-admin-overrides',
-  imports: [RouterLink],
+  imports: [RouterLink, SubtitlesSection],
   template: `
     <h2>Corrections manuelles</h2>
     <p class="muted">Une correction s’applique au scan suivant et n’est jamais écrasée. Pour en ajouter une : <a routerLink="/admin/report" [queryParams]="{ categorie: 'UNRESOLVED' }">fichiers non résolus</a>.</p>
@@ -62,10 +63,13 @@ const ACTIONS = { EPISODE: 'Épisode', EXTRA: 'Extra', IGNORE: 'Ignoré' } as co
     } @else {
       <p class="muted" role="status">Chargement…</p>
     }
+    <app-admin-subtitles [initialFilter]="sousTitres()" />
   `,
 })
 export class OverridesPage {
   private readonly api = inject(AdminApi);
+  /** ?sousTitres=UNMATCHED|DURATION… : filtre de la section des sous-titres externes (liens du rapport). */
+  readonly sousTitres = input<string>();
   protected readonly list = loadOn(signal(null), () => this.api.overrides());
   protected readonly busy = signal(false);
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);

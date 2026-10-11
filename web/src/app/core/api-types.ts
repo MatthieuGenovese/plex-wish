@@ -169,6 +169,11 @@ export interface ScanStats {
   animeCount: number;
   durationMs: number;
   otherFiles: Record<string, number>;
+  /** Sous-titres externes (1.3.0) : absents des rapports plus anciens. */
+  externalSubtitles?: number;
+  subtitlesLinked?: number;
+  subtitlesUnmatched?: number;
+  subtitleDurationIssues?: number;
 }
 
 export interface ScanReport {
@@ -191,6 +196,8 @@ export const ISSUE_CATEGORIES = [
   'DECIMAL_EPISODE',
   'MISSING',
   'UNREADABLE',
+  'SUBTITLE_UNMATCHED',
+  'SUBTITLE_DURATION',
 ] as const;
 export type IssueCategory = (typeof ISSUE_CATEGORIES)[number];
 
@@ -202,7 +209,38 @@ export const CATEGORY_LABELS: Record<IssueCategory, string> = {
   DECIMAL_EPISODE: 'Numéros décimaux',
   MISSING: 'Disparus',
   UNREADABLE: 'Illisibles',
+  SUBTITLE_UNMATCHED: 'Sous-titres sans épisode',
+  SUBTITLE_DURATION: 'Sous-titres trop longs',
 };
+
+/** Sous-titre externe (.ass / .ssa posé à côté des vidéos, 1.3.0). */
+export interface ExternalSubtitle {
+  id: number;
+  relativePath: string;
+  animeFolder: string | null;
+  available: boolean;
+  /** SAME_NAME : même nom que la vidéo ; NAME : numéro lu dans le nom ; MANUAL : correction ; null : aucun épisode. */
+  match: 'SAME_NAME' | 'NAME' | 'MANUAL' | null;
+  manual: boolean;
+  forced: boolean;
+  language: string | null;
+  episode: { id: number; animeTitle: string; seasonNumber: number; episodeNumber: number } | null;
+  lastCueSeconds: number | null;
+  videoDurationSeconds: number | null;
+  tooLong: boolean;
+}
+
+export type SubtitleFilter = 'ALL' | 'UNMATCHED' | 'MANUAL' | 'DURATION';
+
+export interface SubtitlePage extends Page<ExternalSubtitle> {
+  summary: { total: number; linked: number; unmatched: number; manual: number; tooLong: number };
+}
+
+export interface SubtitleAttach {
+  animeTitle?: string;
+  seasonNumber: number;
+  episodeNumber: number;
+}
 
 export interface Issue {
   id: number;

@@ -50,7 +50,10 @@ const SOURCE_LABELS: Record<string, string> = {
       @if (r.stats; as s) {
         <p class="muted">{{ num(s.videos) }} vidéos · {{ num(s.animeCount) }} animés · {{ num(s.newFiles) }} nouveaux fichiers ·
           {{ num(s.overridesApplied) }} correction{{ s.overridesApplied > 1 ? 's' : '' }} appliquée{{ s.overridesApplied > 1 ? 's' : '' }}
-          @if (subtitles(); as n) { · {{ num(n) }} sous-titres externes (non associés) }
+          @if (s.externalSubtitles) {
+            · <a routerLink="/admin/corrections" fragment="sous-titres">{{ num(s.externalSubtitles) }} sous-titres externes</a>
+            ({{ num(s.subtitlesLinked ?? 0) }} associés)
+          } @else if (subtitles(); as n) { · {{ num(n) }} fichiers de sous-titres }
         </p>
         <ul class="summary">
           <li class="tile ok"><span class="value">{{ num(s.episodes) }}</span><span>Épisodes reconnus</span></li>
@@ -121,7 +124,11 @@ const SOURCE_LABELS: Record<string, string> = {
                         @if (i.detail) { <div class="muted">{{ i.detail }}</div> }
                       </td>
                       <td>
-                        @if (i.mediaFileId !== null && i.category !== 'MISSING') {
+                        @if (i.category === 'SUBTITLE_UNMATCHED' || i.category === 'SUBTITLE_DURATION') {
+                          <a class="btn btn-small" routerLink="/admin/corrections" fragment="sous-titres"
+                             [queryParams]="{ sousTitres: i.category === 'SUBTITLE_UNMATCHED' ? 'UNMATCHED' : 'DURATION' }"
+                             [attr.aria-label]="'Corriger le sous-titre ' + i.relativePath">Corriger</a>
+                        } @else if (i.mediaFileId !== null && i.category !== 'MISSING') {
                           <button type="button" class="btn-small" (click)="dialog().open(i)"
                                   [attr.aria-label]="'Corriger le fichier ' + i.mediaFileId">Corriger</button>
                         }

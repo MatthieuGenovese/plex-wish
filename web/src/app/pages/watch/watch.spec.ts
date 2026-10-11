@@ -80,7 +80,7 @@ describe('WatchPage (lecteur web)', () => {
     const { fixture, el } = await open();
     ask().flush(base({ resume: { positionSeconds: 300, durationSeconds: 1440, completed: false } }));
     await fixture.whenStable();
-    expect(el.querySelector('[data-testid=notice]')?.textContent).toContain('Reprise à 5:00');
+    expect(el.querySelector('[data-testid=notice]')).toBeNull();
     expect(await a11yViolations(el)).toEqual([]);
 
     el.querySelector<HTMLButtonElement>('[data-testid=tracks-button]')!.click();

@@ -420,10 +420,6 @@ export class WatchPage {
       // Lecture automatique refusée (son) : on attend un geste de l'utilisateur.
       this.playing.set(false);
     });
-    if (keepPosition === undefined && this.resumeAt > 0) {
-      this.notice.set({ text: `Reprise à ${formatTime(this.resumeAt)}`, action: { label: 'Recommencer', run: () => this.restart() } });
-      setTimeout(() => this.notice.update((n) => (n?.text.startsWith('Reprise') ? null : n)), 8000);
-    }
     if (info.imageSubtitles) {
       this.notice.set({ text: 'Sous-titres en image : non affichables dans le navigateur. Utilisez l’application Android.' });
     }
@@ -511,11 +507,6 @@ export class WatchPage {
 
   protected onSeekInput(e: Event): void {
     this.seekTo(Number((e.target as HTMLInputElement).value));
-  }
-
-  protected restart(): void {
-    this.seekTo(0);
-    this.notice.set(null);
   }
 
   protected toggleMute(): void {

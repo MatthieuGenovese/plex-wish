@@ -107,13 +107,15 @@ test('MKV : copie HLS, deux pistes audio, ASS rendu par JASSUB, clavier, progres
   await page.keyboard.press('m');
   expect(await page.evaluate(() => document.querySelector('video')!.muted)).toBe(true);
 
-  // Position enregistrée (pause), reprise proposée au retour.
+  // Position enregistrée (pause), reprise directe au retour (sans bandeau).
   const saved = page.waitForResponse((r) => /\/api\/episodes\/\d+\/progress$/.test(r.url()) && r.request().method() === 'PUT');
   await page.keyboard.press('k');
   await page.keyboard.press('k');
   expect((await saved).status()).toBe(200);
   await page.reload();
-  await expect(page.getByTestId('notice')).toContainText('Reprise à');
+  await waitPlaying(page);
+  expect(await page.evaluate(() => document.querySelector('video')!.currentTime)).toBeGreaterThan(before);
+  await expect(page.getByTestId('notice')).toHaveCount(0);
   await noCspViolation(page);
 });
 

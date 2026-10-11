@@ -35,6 +35,11 @@ public class ScanStats {
     /** Plus de la moitié des fichiers connus ont disparu, et l'admin l'a confirmé. */
     public boolean massRemovalConfirmed;
     public int animeCount;
+    /** Sous-titres externes .ass / .ssa vus (1.3.0, §7.8), associés à un épisode, sans épisode, trop longs. */
+    public int externalSubtitles;
+    public int subtitlesLinked;
+    public int subtitlesUnmatched;
+    public int subtitleDurationIssues;
     public long durationMs;
 
     void countOther(String type) {

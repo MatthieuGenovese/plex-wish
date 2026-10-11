@@ -4,6 +4,7 @@ import fr.plexwish.animeserver.library.LibraryConfig;
 import fr.plexwish.animeserver.library.parse.FilenameParser;
 import fr.plexwish.animeserver.library.parse.LibraryFiles;
 import fr.plexwish.animeserver.library.parse.ParseResult;
+import fr.plexwish.animeserver.library.parse.SubtitleNames;
 import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -141,6 +142,8 @@ public class LibraryScanner {
     FilenameParser parser;
     @Inject
     LibraryConfig config;
+    @Inject
+    SubtitleSync subtitleSync;
 
     /**
      * @param confirmMassRemoval l'admin a confirmé qu'une disparition de plus de la moitié des fichiers
@@ -153,7 +156,8 @@ public class LibraryScanner {
 
         ScanStats stats = new ScanStats();
         List<Issue> walkIssues = new ArrayList<>();
-        List<Found> videos = walk(root, stats, walkIssues);
+        List<Found> subtitles = new ArrayList<>();
+        List<Found> videos = walk(root, stats, walkIssues, subtitles);
         if (videos.isEmpty()) {
             throw new ScanAbortedException("MEDIA_ROOT_UNAVAILABLE", "aucune vidéo trouvée dans " + root + " — montage NAS absent ?");
         }
@@ -176,6 +180,8 @@ public class LibraryScanner {
                 }
                 insertIssues(c, runId, walkIssues);
                 insertIssues(c, runId, markMissing(c, scanTime, stats));
+                subtitles.sort(Comparator.comparing(Found::path));
+                insertIssues(c, runId, subtitleSync.sync(c, root, subtitles, scanTime, stats));
                 stats.animeCount = countVisibleAnime(c);
                 c.commit();
             } catch (SQLException | RuntimeException e) {
@@ -207,7 +213,7 @@ public class LibraryScanner {
      * Parcours récursif sans suivre aucun lien symbolique (ceux qui sortiraient de /media compris) ;
      * dossiers techniques Synology ignorés ; une erreur sur la racine interrompt le scan.
      */
-    private List<Found> walk(Path root, ScanStats stats, List<Issue> issues) {
+    private List<Found> walk(Path root, ScanStats stats, List<Issue> issues, List<Found> subtitles) {
         List<Found> videos = new ArrayList<>();
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -235,6 +241,10 @@ public class LibraryScanner {
                                 attrs.lastModifiedTime().toInstant().atOffset(ZoneOffset.UTC)));
                     } else {
                         stats.countOther(type.name().toLowerCase());
+                        if (type == LibraryFiles.Type.SUBTITLE && SubtitleNames.isSubtitle(name)) {
+                            subtitles.add(new Found(relative(root, file), name, attrs.size(),
+                                    attrs.lastModifiedTime().toInstant().atOffset(ZoneOffset.UTC)));
+                        }
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -260,7 +270,7 @@ public class LibraryScanner {
         return root.relativize(file).toString().replace(File.separatorChar, '/');
     }
 
-    private static String topFolder(String relativePath) {
+    static String topFolder(String relativePath) {
         int slash = relativePath.indexOf('/');
         return slash < 0 ? null : relativePath.substring(0, slash);
     }

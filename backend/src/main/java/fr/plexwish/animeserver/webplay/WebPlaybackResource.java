@@ -344,7 +344,10 @@ public class WebPlaybackResource {
         List<SubtitleTrack> subs = new ArrayList<>();
         Set<String> subLabels = new HashSet<>();
         boolean image = false;
-        List<WebManifest.Subtitle> subtitleList = subsFrom == null ? List.of() : subsFrom.subtitles();
+        // Sous-titres externes d'abord (posés à côté de la vidéo, souvent les seuls en français), le premier complet par défaut.
+        List<WebManifest.Subtitle> subtitleList = new ArrayList<>(subsFrom == null ? List.of() : subsFrom.subtitles());
+        subtitleList.sort((x, y) -> Boolean.compare(y.external(), x.external()));
+        boolean externalDefault = false;
         for (WebManifest.Subtitle s : subtitleList) {
             if ("image".equals(s.kind())) {
                 image = true;
@@ -358,8 +361,13 @@ public class WebPlaybackResource {
             if (ass == null && vtt == null) {
                 continue;
             }
-            String label = unique(subLabels, label(s.language(), s.title(), "Sous-titres " + (s.n() + 1), s.forced()));
-            subs.add(new SubtitleTrack(subs.size(), label, s.language(), s.forced(), s.isDefault(), ass != null ? "ass" : "vtt",
+            String title = s.external() ? (s.language() == null ? "Sous-titres externes" : "externe") : s.title();
+            String label = unique(subLabels, label(s.language(), title, "Sous-titres " + (s.n() + 1), s.forced()));
+            boolean isDefault = s.isDefault();
+            if (s.external() && !s.forced() && !externalDefault) {
+                isDefault = externalDefault = true;
+            }
+            subs.add(new SubtitleTrack(subs.size(), label, s.language(), s.forced(), isDefault, ass != null ? "ass" : "vtt",
                     ass != null ? ass : vtt, vtt));
         }
         List<String> fonts = subsKey == null || subsFrom == null ? List.of() : subsFrom.fonts().stream()
@@ -382,7 +390,8 @@ public class WebPlaybackResource {
     static String label(String language, String title, String fallback, boolean forced) {
         String lang = WebDecision.languageName(language);
         String l = lang == null ? (title == null ? fallback : title) : (title == null ? lang : lang + " (" + title + ")");
-        return forced ? l + " — forcés" : l;
+        // « Français (Forcés) — forcés » : le titre le dit déjà.
+        return forced && (title == null || !title.toLowerCase(Locale.ROOT).contains("forc")) ? l + " — forcés" : l;
     }
 
     private static String unique(Set<String> seen, String label) {

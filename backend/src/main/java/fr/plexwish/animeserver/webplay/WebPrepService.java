@@ -2,6 +2,7 @@ package fr.plexwish.animeserver.webplay;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fr.plexwish.animeserver.library.subs.ExternalSubtitleService;
 import fr.plexwish.animeserver.media.MediaConfig;
 import fr.plexwish.animeserver.media.MediaProbeService;
 import fr.plexwish.animeserver.media.ProcessRunner;
@@ -145,6 +146,8 @@ public class WebPrepService {
     PlaybackActivity playback;
     @Inject
     ObjectMapper json;
+    @Inject
+    ExternalSubtitleService externalSubtitles;
 
     private final Lane baseLane = new Lane(BASE);
     private final Lane convLane = new Lane(CONV);
@@ -283,8 +286,17 @@ public class WebPrepService {
 
     /** Lecture demandée : préparation de base prête, en cours (mise en file si besoin), en échec, cache plein ou indisponible. */
     public Decision request(long mediaFileId, long sourceSize, OffsetDateTime sourceModified) throws SQLException {
-        return obtain(BASE, WebCache.key(BASE, mediaFileId, sourceSize, sourceModified), mediaFileId, sourceSize, sourceModified,
+        return obtain(BASE, baseKey(mediaFileId, sourceSize, sourceModified), mediaFileId, sourceSize, sourceModified,
                 null, PRIORITY_USER);
+    }
+
+    /**
+     * Clé de la préparation de base : fichier, taille, date, et sous-titres externes associés (1.3.0) ; en ajouter, en
+     * retirer ou en modifier refait la préparation à sa prochaine demande. Sans sous-titre externe : clé d'avant 1.3.0.
+     */
+    public String baseKey(long mediaFileId, long sourceSize, OffsetDateTime sourceModified) throws SQLException {
+        String fp = ExternalSubtitleService.fingerprint(externalSubtitles.forFile(mediaFileId));
+        return WebCache.key(fp.isEmpty() ? BASE : BASE + "+x" + fp, mediaFileId, sourceSize, sourceModified);
     }
 
     /**
@@ -384,7 +396,7 @@ public class WebPrepService {
             key = convKey(mediaFileId, sourceSize, sourceModified, height);
             plan = base.convertPlan(height);
         } else {
-            key = WebCache.key(BASE, mediaFileId, sourceSize, sourceModified);
+            key = baseKey(mediaFileId, sourceSize, sourceModified);
         }
         Optional<Job> job = job(mediaFileId, kind);
         if (job.isPresent() && !job.get().key().equals(key) && !"RUNNING".equals(job.get().status())) {
@@ -773,7 +785,7 @@ public class WebPrepService {
         long start = System.currentTimeMillis();
         WebManifest done;
         try {
-            done = steps.run(file.get(), part, m, (phase, value) -> progress(job, phase, value));
+            done = steps.run(file.get(), part, m, externals(id), (phase, value) -> progress(job, phase, value));
         } catch (StepFailure e) {
             cache.delete(job.key());
             fail(job, e.getMessage(), false);
@@ -787,6 +799,16 @@ public class WebPrepService {
             bytesPerMs = 0.7 * bytesPerMs + 0.3 * ((double) job.sourceSize() / elapsed);
         }
         afterBase(job, done);
+    }
+
+    /** Sous-titres externes de ce fichier, chemins revérifiés sous la bibliothèque, avec les polices de leur dossier. */
+    private List<WebPrepSteps.ExternalSub> externals(long mediaFileId) throws SQLException {
+        List<WebPrepSteps.ExternalSub> out = new ArrayList<>();
+        for (ExternalSubtitleService.External x : externalSubtitles.forFile(mediaFileId)) {
+            externalSubtitles.resolve(x.relativePath()).ifPresent(p ->
+                    out.add(new WebPrepSteps.ExternalSub(p, x.forced(), x.language(), externalSubtitles.fonts(p))));
+        }
+        return out;
     }
 
     /**

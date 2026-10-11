@@ -60,7 +60,7 @@ Règles :
 5. Doublons d'épisode (même animé, saison, épisode) : garder un fichier, signaler l'autre. Un épisode déjà lié ne change pas ; sinon on garde le plus fiable (SxxExx ou NxEE, puis E\d+, puis numéro seul), l'ordre alphabétique en dernier recours. Doubles épisodes ("03-04") et numéros décimaux ("E05.5", "0.89") : signalés, correction manuelle.
 6. Rapport de scan : résumé par catégorie (reconnus, extras, non résolus, doublons, désaccords dossier/fichier) et liste filtrable.
 7. Correction manuelle par l'admin (fichier → animé, saison, épisode), stockée en base, jamais écrasée par un rescan.
-8. Sous-titres externes (.ass, .sup, .srt) : comptés, pas associés dans le MVP. La lecture s'appuie sur les sous-titres muxés dans la vidéo.
+8. Sous-titres externes : les .ass / .ssa sont associés à un épisode au scan (même dossier et même nom que la vidéo, sinon numéro reconnu par le parser n'importe où dans le dossier de l'animé), avec correction manuelle et contrôle de durée (1.3.0, ARCHITECTURE §7.8). Les .sup et .srt externes restent comptés seulement.
 9. Performance : scan par lots (jamais une requête par fichier), ffprobe hors du scan (à la demande ou tâche séparée). Le scan ne suit pas les liens symboliques qui sortent de /media.
 10. Tests du parser sur library-sample.txt, sur des chaînes (jamais de vrais fichiers : certains noms sont interdits sous Windows) : au moins 97 % d'épisodes reconnus, plus un test par piège (Slime 300 S1 - 01 ; Genshiken 01X01 ; AH! My Goddess E12 ; S00E18 dans un dossier OAV ; Devilman Crybaby en doublon ; One_Piece_Fish_Man_Island_01_ ; Naruto Shippuden Kai 113 - Hebi ; liste complète : ARCHITECTURE §7.11).
 

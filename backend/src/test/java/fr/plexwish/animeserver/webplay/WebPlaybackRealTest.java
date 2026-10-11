@@ -206,6 +206,37 @@ class WebPlaybackRealTest {
     }
 
     @Test
+    void externalAssNextToTheVideoIsServedWithItsFolderFonts() throws Exception {
+        // 1.3.0 : .ass dans un dossier séparé (« Épisode 2 »), police dans « Polices », copiés par la préparation de base.
+        Path subs = ROOT.resolve("Gen/Subs");
+        Files.createDirectories(subs.resolve("Polices"));
+        Files.writeString(subs.resolve("[Team] Gen - Épisode 2.ass"), """
+                [Script Info]
+                ScriptType: v4.00+
+
+                [Events]
+                Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+                Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,Texte externe
+                """);
+        byte[] font = "POLICE-DU-DOSSIER".getBytes();
+        Files.write(subs.resolve("Polices/Externe.ttf"), font);
+        assertEquals("SUCCESS", scan(true).getString("status"));
+
+        playback("Gen - S01E02.mp4", "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        Response r = playback("Gen - S01E02.mp4", "h264,aac");
+        r.then().statusCode(200).body("mode", equalTo("DIRECT"))
+                .body("subtitles[0].label", equalTo("Sous-titres externes")).body("subtitles[0].format", equalTo("ass"))
+                .body("subtitles[0].isDefault", equalTo(true)).body("subtitles.size()", equalTo(2)).body("fonts.size()", equalTo(1));
+        assertFalse(r.asString().contains("Subs") || r.asString().contains("Externe.ttf"), r.asString());
+        String text = given().get(r.jsonPath().getString("subtitles[0].url")).then().statusCode(200).extract().asString();
+        assertTrue(text.contains("Texte externe"), text);
+        given().get(r.jsonPath().getString("subtitles[0].vttUrl")).then().statusCode(200)
+                .body(org.hamcrest.Matchers.containsString("Texte externe"));
+        assertArrayEquals(font, given().get(r.jsonPath().getString("fonts[0]")).then().statusCode(200).extract().asByteArray());
+    }
+
+    @Test
     void hevcCopyIsTaggedHvc1() throws Exception {
         assumeTrue(Files.exists(ROOT.resolve("Gen/Gen - S01E03.mkv")), "libx265 absent");
         playback("Gen - S01E03.mkv", "h264,hevc,aac").then().statusCode(202);

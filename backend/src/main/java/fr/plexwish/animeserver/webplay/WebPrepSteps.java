@@ -55,8 +55,25 @@ public class WebPrepSteps {
     @Inject
     MediaProbeService probe;
 
+    /**
+     * Sous-titre externe à joindre (1.3.0) : fichier .ass sous /media (chemin venu de la base, revérifié), polices de son
+     * dossier.
+     */
+    public record ExternalSub(Path file, boolean forced, String language, List<Path> fonts) {
+    }
+
+    /** Sous-titres externes pris par préparation (au-delà : ignorés), sous {@code sub_<n>} après ceux du fichier. */
+    static final int MAX_EXTERNAL = 10;
+    /** Taille maximale d'un .ass copié. */
+    static final long MAX_EXTERNAL_BYTES = 20 * MB;
+
     /** Produit les fichiers dans {@code part} et renvoie le manifeste complété. */
     public WebManifest run(Path source, Path part, WebManifest m, Progress progress)
+            throws WebPrepService.StepFailure, InterruptedException {
+        return run(source, part, m, List.of(), progress);
+    }
+
+    public WebManifest run(Path source, Path part, WebManifest m, List<ExternalSub> externals, Progress progress)
             throws WebPrepService.StepFailure, InterruptedException {
         boolean anySubs = m.subtitles().stream().anyMatch(s -> "ass".equals(s.kind()) || "text".equals(s.kind()));
         double subsShare = m.wantsHls() ? 0.15 : 0.95;
@@ -67,6 +84,11 @@ public class WebPrepSteps {
             Extracted e = extractSubtitles(source, part, m, f -> progress.update(null, f * subsShare));
             subs = e.subtitles();
             fonts = e.fonts();
+        }
+        if (!externals.isEmpty()) {
+            Extracted x = addExternal(part, subs, fonts, externals, m.durationSeconds());
+            subs = x.subtitles();
+            fonts = x.fonts();
         }
         boolean hls = false;
         if (m.wantsHls()) {
@@ -127,6 +149,70 @@ public class WebPrepSteps {
             }
             total += size;
             fonts.add(f);
+        }
+        return new Extracted(List.copyOf(subs), List.copyOf(fonts));
+    }
+
+    /**
+     * Sous-titres externes : le .ass copié tel quel ({@code sub_<n>.ass}, rendu par JASSUB avec ses styles), une version
+     * WebVTT en secours, les polices de son dossier ({@code font_<n>}), dans les mêmes plafonds que les polices jointes.
+     * Un fichier illisible est ignoré sans faire échouer la préparation.
+     */
+    Extracted addExternal(Path part, List<WebManifest.Subtitle> embedded, List<WebManifest.Font> embeddedFonts,
+                          List<ExternalSub> externals, Double duration) throws WebPrepService.StepFailure, InterruptedException {
+        List<WebManifest.Subtitle> subs = new ArrayList<>(embedded);
+        List<WebManifest.Font> fonts = new ArrayList<>(embeddedFonts);
+        int n = embedded.stream().mapToInt(WebManifest.Subtitle::n).max().orElse(-1) + 1;
+        int f = embeddedFonts.stream().mapToInt(WebManifest.Font::n).max().orElse(-1) + 1;
+        long total = 0;
+        for (WebManifest.Font font : embeddedFonts) {
+            total += size(part.resolve(font.file()));
+        }
+        java.util.Set<String> seenFonts = new java.util.HashSet<>();
+        int taken = 0;
+        for (ExternalSub x : externals) {
+            if (taken >= MAX_EXTERNAL || n > 99) {
+                break;
+            }
+            long bytes = size(x.file());
+            if (bytes <= 0 || bytes > MAX_EXTERNAL_BYTES) {
+                continue;
+            }
+            String ass = "sub_" + n + ".ass";
+            String vtt = "sub_" + n + ".vtt";
+            try {
+                Files.copy(x.file(), part.resolve(ass), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                LOG.infof("Préparation web : sous-titre externe illisible (%s)", e.getClass().getSimpleName());
+                continue;
+            }
+            List<String> cmd = base();
+            cmd.addAll(List.of("-i", "file:" + part.resolve(ass), "-c:s", "webvtt", "-f", "webvtt", "file:" + part.resolve(vtt)));
+            ProcessRunner.Result r = run(cmd, x.file(), v -> { }, duration);
+            if (!r.ok()) {
+                delete(part.resolve(vtt));
+            }
+            subs.add(new WebManifest.Subtitle(n, -1, "ass", x.language(), null, false, x.forced(), "ass", ass,
+                    nonEmpty(part.resolve(vtt)) ? vtt : null, true));
+            n++;
+            taken++;
+            for (Path font : x.fonts()) {
+                String name = font.getFileName().toString();
+                String ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+                long size = size(font);
+                if (f > 999 || !seenFonts.add(name.toLowerCase(Locale.ROOT) + ":" + size) || size <= 0
+                        || size > config.webFontMaxMb() * MB || total + size > config.webFontsTotalMaxMb() * MB) {
+                    continue;
+                }
+                String file = "font_" + f + ("otf".equals(ext) ? ".otf" : ".ttf");
+                try {
+                    Files.copy(font, part.resolve(file), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    continue;
+                }
+                total += size;
+                fonts.add(new WebManifest.Font(f++, -1, file));
+            }
         }
         return new Extracted(List.copyOf(subs), List.copyOf(fonts));
     }

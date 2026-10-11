@@ -53,7 +53,8 @@ public final class LibraryTestSupport {
     /** Vide les tables de la bibliothèque (les comptes utilisateurs ne sont pas touchés). */
     public static void truncateLibrary(AgroalDataSource ds) throws SQLException {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
-            st.execute("TRUNCATE scan_issue, scan_run, episode, season, anime, media_file, media_file_override RESTART IDENTITY CASCADE");
+            st.execute("TRUNCATE scan_issue, scan_run, episode, season, anime, media_file, media_file_override, external_subtitle,"
+                    + " external_subtitle_override RESTART IDENTITY CASCADE");
         }
     }
 

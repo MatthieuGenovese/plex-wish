@@ -251,7 +251,7 @@ public class WebNightService extends BackgroundLoop {
             }
         }
         Optional<WebPrepService.Job> base = prep.job(fileId, WebPrepService.BASE);
-        String key = WebCache.key(WebPrepService.BASE, fileId, size, modified);
+        String key = prep.baseKey(fileId, size, modified);
         if (base.isEmpty() || !base.get().key().equals(key)) {
             prep.enqueue(WebPrepService.BASE, fileId, size, modified, null, priority);
             return true;

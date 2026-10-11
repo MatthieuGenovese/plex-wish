@@ -53,7 +53,8 @@ import java.util.Set;
 public class LibraryAdminResource {
 
     public static final Set<String> CATEGORIES = Set.of(
-            "UNRESOLVED", "DUPLICATE", "MULTI_EPISODE", "DECIMAL_EPISODE", "SEASON_MISMATCH", "MISSING", "UNREADABLE");
+            "UNRESOLVED", "DUPLICATE", "MULTI_EPISODE", "DECIMAL_EPISODE", "SEASON_MISMATCH", "MISSING", "UNREADABLE",
+            "SUBTITLE_UNMATCHED", "SUBTITLE_DURATION");
 
     public record ScanStarted(long scanId) {
     }

@@ -22,7 +22,7 @@ Hors scope de l'étape en cours. Rien ici n'est implémenté.
 - FFmpeg de NextLib compilé sans assembleur (`--disable-asm`) : si la fluidité déçoit en 1080p, compiler NextLib nous-mêmes avec les optimisations NEON (même licence).
 - R8 (réduction du code) désactivé en release : s'il est activé un jour, les règles de NextLib suffisent pour les classes JNI (vérifié le 2026-10-10 dans `seeds.txt` : méthodes natives, `VideoDecoderOutputBuffer`, `growOutputBuffer` conservés).
 - Rendu fidèle des sous-titres ASS (styles, positionnement) : ExoPlayer les affiche sans styles, les navigateurs pas du tout.
-- Association des sous-titres externes (`.ass`, `.srt`, `.sup`) aux vidéos : même nom de base (24 cas sur 434), puis dossiers du type `sous-titres + police/` (avec les polices ASS à charger).
+- Sous-titres externes `.srt` et `.sup` (PGS) : les `.ass` / `.ssa` sont associés depuis la 1.3.0 (ARCHITECTURE §7.8), pas ceux-là (`.sup` : images, non affichables dans un navigateur).
 - Sous-titres image VobSub (et PGS) : à tester sur le téléphone ; les navigateurs ne les lisent pas du tout (incrustation ou OCR à étudier).
 
 ## Interface web

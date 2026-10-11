@@ -42,16 +42,20 @@ public record WebManifest(Double durationSeconds, String container, Video video,
     /**
      * {@code kind} : {@code ass} (ASS/SSA : rendu par JASSUB, WebVTT en secours), {@code text} (SRT, WebVTT… : WebVTT),
      * {@code image} (PGS, VobSub : non affichable dans un navigateur), {@code other}. {@code ass} / {@code vtt} :
-     * fichiers extraits ({@code sub_<n>.ass|vtt}), null tant qu'ils ne le sont pas.
+     * fichiers extraits ({@code sub_<n>.ass|vtt}), null tant qu'ils ne le sont pas. {@code external} : fichier .ass
+     * posé à côté de la vidéo (1.3.0, index -1), copié dans le cache par la préparation de base.
      */
     public record Subtitle(int n, int index, String codec, String language, String title, boolean isDefault, boolean forced,
-                           String kind, String ass, String vtt) {
+                           String kind, String ass, String vtt, boolean external) {
         public Subtitle withFiles(String assFile, String vttFile) {
-            return new Subtitle(n, index, codec, language, title, isDefault, forced, kind, assFile, vttFile);
+            return new Subtitle(n, index, codec, language, title, isDefault, forced, kind, assFile, vttFile, external);
         }
     }
 
-    /** Police jointe au fichier (pièce jointe MKV), extraite sous {@code file} ({@code font_<n>.ttf|otf}). */
+    /**
+     * Police jointe au fichier (pièce jointe MKV), extraite sous {@code file} ({@code font_<n>.ttf|otf}) ; index -1 :
+     * police du dossier d'un sous-titre externe, copiée.
+     */
     public record Font(int n, int index, String file) {
     }
 
@@ -188,7 +192,7 @@ public record WebManifest(Double durationSeconds, String container, Video video,
                 String kind = codec == null ? "other" : ASS.contains(codec) ? "ass" : TEXT.contains(codec) ? "text"
                         : IMAGE.contains(codec) ? "image" : "other";
                 subs.add(new Subtitle(s++, index, codec, lang, title, disp.path("default").asInt(0) == 1,
-                        disp.path("forced").asInt(0) == 1, kind, null, null));
+                        disp.path("forced").asInt(0) == 1, kind, null, null, false));
             } else if ("attachment".equals(type) && fontCandidates.size() < MAX_FONTS) {
                 String mime = text(tags.path("mimetype"));
                 String file = text(tags.path("filename"));

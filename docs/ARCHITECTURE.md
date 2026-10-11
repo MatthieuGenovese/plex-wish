@@ -364,8 +364,33 @@ L'admin peut associer un fichier à un animé (par son **titre**, existant ou no
 **Épisode déjà fourni par un autre fichier** (décision du 2026-10-02) : si l'épisode visé est déjà lié à un autre fichier disponible (lien actuel, sauf si la correction de ce fichier l'envoie ailleurs) ou visé par la correction d'un autre fichier, le `PUT` répond **409 `EPISODE_ALREADY_LINKED`** avec l'épisode, le ou les fichiers qui seraient déliés (`currentFiles`, avec `viaOverride`) et le fichier visé (`targetFile`), **sans rien modifier**. `?replace=true` (après confirmation dans l'interface) enregistre la correction et supprime la correction de l'autre fichier s'il en avait une. Au scan, une correction l'emporte sur un fichier sans correction, même déjà lié ; le fichier délié reste disponible et ressort au rapport (doublon, avec le fichier conservé, ou non résolu s'il perd sa correction), donc corrigeable. Annuler la correction rétablit l'ancien lien au scan suivant, sur le même épisode (même id).
 Le scan ne dépend pas de l'ordre des fichiers : un lien est **périmé** quand le fichier lié ne réclame plus cet épisode (correction vers ailleurs, extra, ignoré) ; le fichier qui réclame l'épisode le reprend alors, qu'il passe avant ou après dans l'ordre alphabétique (`OverrideConflictTest`).
 
-### 7.8 Sous-titres externes
-Seuls 24 des 434 sous-titres externes ont le même nom de base qu'une vidéo ; beaucoup sont rangés dans des dossiers du type `sous-titres + police/` avec des polices. Le MVP **ne les associe pas** : il les compte. La lecture s'appuie sur les sous-titres **intégrés (muxés) dans la vidéo**. L'association externe → FUTURE.
+### 7.8 Sous-titres externes (1.3.0)
+La vraie bibliothèque compte 402 `.ass` dans 12 animés (plus 32 `.sup` PGS, non associés). Un tiers seulement porte le
+même nom qu'une vidéo de son dossier ; les autres sont rangés à part (`sous-titres + police/`, `Subs/`, un dossier
+par épisode avec ses polices) et nommés autrement (« [Team] Captain Tsubasa - Épisode 27 », « E01ts », « Tokyo
+Ghoul-re - saison 3 - Episode 13 »).
+
+**Association, au scan** (`SubtitleSync`, `ExternalSubtitleService`), pour chaque `.ass` / `.ssa` :
+1. correction de l'admin s'il y en a une (rattaché à un épisode, ou détaché), jamais écrasée par un scan ;
+2. sinon **même dossier et même nom** qu'une vidéo, suffixes de langue et « forcés » ignorés (`.fre`, `.fr`,
+   `.forced`…) ;
+3. sinon le **parser des vidéos** (§7.2) sur le nom du sous-titre, n'importe où dans le dossier de l'animé, réécrit
+   pour les formes vues (`SubtitleNames.parserPath`) : « Épisode 7 » → `E7`, `E01ts` → `E01`, « saison 2 » → `S2` ;
+   saison du nom, sinon d'un dossier qui la porte (« Tokyo Ghoul S1 », « Saison 3 »), sinon 1 ;
+4. numérotation continue : un épisode au-delà de la fin de sa saison passe à la saison suivante, une fois
+   (« saison 3 - Episode 13 » = S04E01 quand la saison 3 a 12 épisodes).
+
+Sur la vraie bibliothèque (`ExternalSubtitleLinkTest`) : 402 sur 402 associés (108 par le nom, 294 par le numéro).
+Un fichier dont le nom contient « forced » / « forcés » est une piste **forcés** ; la langue vient du nom quand il la
+donne (`.fre`, `VF`…). La fin du dernier sous-titre est lue dans le fichier quand il change (**contrôle de durée** :
+au-delà de la durée de la vidéo + 1 min ou 5 %, signalé au rapport, « mauvais épisode ? »). Rapport : catégories
+`SUBTITLE_UNMATCHED` et `SUBTITLE_DURATION` ; correction dans Administration › Corrections › Sous-titres externes.
+
+**Lecture.** Navigateur : la préparation de base copie le `.ass` dans le cache web (`sub_<n>.ass`, plus un WebVTT de
+secours) avec les polices de son dossier et des sous-dossiers « Polices » / « Fonts » (`font_<n>`, mêmes plafonds que
+les polices jointes) ; ils sont servis par les URL signées du cache (S5), proposés en premier, le premier complet par
+défaut. La clé de la préparation contient une empreinte des sous-titres externes : en ajouter, en retirer ou en
+corriger refait la préparation à la demande suivante. Android : en attente (nouvelle URL signée à valider).
 
 ### 7.9 Idempotence
 - Clé d'un fichier : `relative_path`. Nouveau chemin → création ; chemin connu → mise à jour de `file_size`, `last_modified`, `last_seen_at`.
@@ -502,7 +527,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 3. Saison 0 = Spéciaux ; un numéro d'épisode l'emporte sur les mots OAV / Bonus / Extra (§7.3).
 4. Extras = vidéos sans numéro d'épisode, exclues de la liste des épisodes (§7.4).
 5. Doublons, doubles épisodes, décimaux et désaccords : rapport + correction manuelle, stockée en base et jamais écrasée (§7.5–7.7).
-6. Sous-titres externes comptés, pas associés (§7.8).
+6. Sous-titres externes comptés, pas associés (§7.8) ; associés à partir de la 1.3.0.
 7. Scan par lots, ffprobe hors du scan (§7.1).
 8. Tests du parser sur chaînes, seuil ≥ 97 % (§7.11).
 

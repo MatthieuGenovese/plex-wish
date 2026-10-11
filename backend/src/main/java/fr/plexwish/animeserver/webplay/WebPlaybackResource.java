@@ -64,9 +64,12 @@ public class WebPlaybackResource {
                                 String url, String vttUrl) {
     }
 
-    /** {@code conversion} : la vidéo ou le son est converti (minutes, la page peut être fermée) ; sinon simple préparation. */
+    /**
+     * {@code conversion} : la vidéo ou le son est converti (minutes, la page peut être fermée) ; sinon simple préparation.
+     * {@code resumeAt} : la lecture reprendra à cette position (s) dès que la copie en cours l'aura dépassée.
+     */
     public record PreparingInfo(String phase, int position, Double progress, long estimatedSeconds, int retryAfterSeconds,
-                                String message, boolean conversion) {
+                                String message, boolean conversion, Integer resumeAt) {
     }
 
     public record EpisodeInfo(long id, long animeId, String animeTitle, int seasonNumber, int episodeNumber, String title,
@@ -114,7 +117,8 @@ public class WebPlaybackResource {
     @Path("/episodes/{id}/web-playback")
     @Authenticated
     @Produces(MediaType.APPLICATION_JSON)
-    public Response playback(@PathParam("id") long episodeId, @QueryParam("caps") String rawCaps) throws SQLException {
+    public Response playback(@PathParam("id") long episodeId, @QueryParam("caps") String rawCaps, @QueryParam("at") Integer at)
+            throws SQLException {
         long userId = Long.parseLong(jwt.getSubject());
         Set<String> caps = WebDecision.caps(rawCaps);
         long fileId;
@@ -147,7 +151,7 @@ public class WebPlaybackResource {
         NextEpisode next = upNext.following(episodeId)
                 .map(t -> new NextEpisode(t.episodeId(), t.seasonNumber(), t.episodeNumber(), t.episodeTitle())).orElse(null);
         Resume resume = resume(userId, episodeId);
-        Request q = new Request(caps, fileId, fileName, size, modified, userId, episode, next, resume);
+        Request q = new Request(caps, fileId, fileName, size, modified, userId, episode, next, resume, startAt(at, resume, episode));
         return switch (prep.request(fileId, size, modified)) {
             case WebPrepService.Ready r -> {
                 WebDecision.Result d = WebDecision.decide(r.manifest(), caps);
@@ -157,7 +161,7 @@ public class WebPlaybackResource {
                 yield Response.ok(source(r.key(), r.manifest(), r.manifest(), r.key(), q, false, null)).build();
             }
             case WebPrepService.Preparing p -> {
-                PreparingInfo info = info(p);
+                PreparingInfo info = info(p, q);
                 if (p.manifest() != null) {
                     // Pistes connues : « non lisible » se dit tout de suite (ou la conversion démarre en parallèle) ;
                     // copie HLS lisible avant la fin : on la donne.
@@ -167,7 +171,7 @@ public class WebPlaybackResource {
                         yield d.convert() ? conversion(q, p.manifest(), p.key(), false)
                                 : Response.ok(unsupported(d.reason(), p.manifest(), q)).build();
                     }
-                    if (p.playableEarly() && d.mode() == WebDecision.Mode.HLS) {
+                    if (p.playableEarly() && covers(p, q) && d.mode() == WebDecision.Mode.HLS) {
                         yield Response.ok(source(p.key(), planned, planned, p.key(), q, true, info)).build();
                     }
                 }
@@ -202,9 +206,33 @@ public class WebPlaybackResource {
         };
     }
 
-    /** Ce que la réponse doit rappeler de la demande. */
+    /** Ce que la réponse doit rappeler de la demande ; {@code startAt} : où la lecture commencera (s). */
     record Request(Set<String> caps, long fileId, String fileName, long size, OffsetDateTime modified, long userId,
-                   EpisodeInfo episode, NextEpisode next, Resume resume) {
+                   EpisodeInfo episode, NextEpisode next, Resume resume, int startAt) {
+    }
+
+    /** Avance demandée au-delà de la position de départ avant de servir une copie en cours d'écriture (s). */
+    static final int RESUME_MARGIN = 12;
+
+    /**
+     * Position où la lecture commencera : {@code at} si le lecteur la donne (« Lire depuis le début » : 0, rechargement :
+     * la position en cours), sinon la reprise enregistrée, avec la même règle que le lecteur (ni épisode fini, ni tout
+     * début, ni les 30 dernières secondes).
+     */
+    static int startAt(Integer at, Resume resume, EpisodeInfo episode) {
+        if (at != null) {
+            return Math.max(0, Math.min(at, 86_400));
+        }
+        if (resume == null || resume.completed() || resume.positionSeconds() < 10) {
+            return 0;
+        }
+        Integer d = episode.durationSeconds() != null ? episode.durationSeconds() : Integer.valueOf(resume.durationSeconds());
+        return d != null && d > 0 && resume.positionSeconds() > d - 30 ? 0 : resume.positionSeconds();
+    }
+
+    /** Copie en cours d'écriture : servie seulement si elle couvre déjà la position de départ (+ 12 s). */
+    static boolean covers(WebPrepService.Preparing p, Request q) {
+        return q.startAt() <= 0 || p.writtenSeconds() >= q.startAt() + RESUME_MARGIN;
     }
 
     /**
@@ -215,10 +243,11 @@ public class WebPlaybackResource {
         return switch (prep.requestConversion(q.fileId(), q.size(), q.modified(), base, WebPrepService.PRIORITY_USER)) {
             case WebPrepService.Ready r -> baseDone
                     ? Response.ok(source(r.key(), r.manifest(), base, baseKey, q, false, null)).build()
-                    : preparing(new PreparingInfo("SUBS", 0, null, 5, 2, "Extraction des sous-titres…", false), q);
+                    : preparing(new PreparingInfo("SUBS", 0, null, 5, 2, "Extraction des sous-titres…", false,
+                            q.startAt() > 0 ? q.startAt() : null), q);
             case WebPrepService.Preparing p -> {
-                PreparingInfo info = info(p);
-                if (p.playableEarly() && baseDone && p.manifest() != null) {
+                PreparingInfo info = info(p, q);
+                if (p.playableEarly() && covers(p, q) && baseDone && p.manifest() != null) {
                     WebManifest planned = p.manifest().withProduced(List.of(), List.of(), true);
                     yield Response.ok(source(p.key(), planned, base, baseKey, q, true, info)).build();
                 }
@@ -237,9 +266,9 @@ public class WebPlaybackResource {
                         false, List.of(), info, null, q.episode(), q.next(), q.resume(), 0)).build();
     }
 
-    private static PreparingInfo info(WebPrepService.Preparing p) {
+    private static PreparingInfo info(WebPrepService.Preparing p, Request q) {
         return new PreparingInfo(p.phase(), p.position(), p.progress(), p.estimatedSeconds(), p.retryAfterSeconds(), message(p),
-                WebPrepService.CONV.equals(p.kind()));
+                WebPrepService.CONV.equals(p.kind()), q.startAt() > 0 ? q.startAt() : null);
     }
 
     private static ApiException cacheFull() {

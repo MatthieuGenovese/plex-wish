@@ -207,6 +207,9 @@ Conversion (W3) : même chose, avec :
   - une réserve fixe (10 Go) reste toujours libre sur le volume.
   - Ordre de grandeur : 200 Go ≈ 150 à 200 épisodes 1080p remuxés, ou 400 à 600 épisodes 720p.
 - **Nettoyage** :
+  - **copies sans conversion** (remux HLS, refaites en une minute environ) : effacées après **48 h sans lecture**
+    (vérifié toutes les 10 min), sauf si une conversion prête du même fichier s'en sert pour ses sous-titres
+    (décision du 2026-10-11) ; les conversions, chères à refaire, ne suivent que le plafond ;
   - **la nuit**, les copies orphelines (source disparue, changée), puis les moins récemment lues jusqu'à repasser
     sous 85 % du plafond ;
   - **à la demande**, quand une nouvelle copie a besoin de place.
@@ -542,7 +545,15 @@ préparer, relancer, annuler, pastilles), web (section admin, pastilles, carte d
 Chrome (`scripts/test/e2e-web.sh`, 7 essais : AVI Xvid et MKV Hi10P convertis par le ffmpeg de l'image puis lus,
 carte « Conversion », pastille « Prêt » sur la fiche, section admin, son seul « non lisible »).
 
-**Non vérifié** : vitesse réelle sur le DS923+ (à lire dans Administration › Médias › Lecteur web après quelques
+**Ajout du 2026-10-11** :
+- copies sans conversion effacées après 48 h sans lecture (§4.3) ;
+- **reprise au milieu d'une copie refaite** : la copie en cours n'est servie que lorsqu'elle couvre la position de
+  reprise + 12 s. Le lecteur annonce « La lecture reprendra à 12:34 dès que cette partie sera prête » et propose
+  « Lire depuis le début » (déjà prêt). Le lecteur peut donner sa position de départ (`web-playback?at=`, 0 = depuis le
+  début) ; sinon le serveur applique la règle de reprise du lecteur.
+
+**Non vérifié** : la reprise au milieu d'une copie en cours dans un vrai navigateur (hls.js et une playlist qui grandit :
+essayé seulement par tests unitaires, la copie d'essai se fait trop vite pour l'observer) ; vitesse réelle sur le DS923+ (à lire dans Administration › Médias › Lecteur web après quelques
 conversions), charge du NAS pendant une conversion avec 2 à 3 lectures, comportement sur un vrai épisode de 24 min
 (ici des extraits de 4 à 40 s), Firefox et Chrome Android.
 

@@ -76,10 +76,12 @@ public class WebPrepService {
     /**
      * En cours ou en file. {@code manifest} : connu dès la fin de l'analyse (null avant) ; {@code playableEarly} : la
      * copie HLS en cours d'écriture est déjà lisible (assez d'avance) ; {@code kind} : BASE ou CONV ; {@code paused} :
-     * conversion suspendue (lectures en cours).
+     * conversion suspendue (lectures en cours) ; {@code writtenSeconds} : durée déjà écrite de la copie en cours (une
+     * reprise au milieu n'est servie que quand la copie l'a dépassée).
      */
     public record Preparing(String phase, int position, Double progress, long estimatedSeconds, int retryAfterSeconds,
-                            String key, WebManifest manifest, boolean playableEarly, String kind, boolean paused) implements Decision {
+                            String key, WebManifest manifest, boolean playableEarly, String kind, boolean paused,
+                            double writtenSeconds) implements Decision {
     }
 
     /** Échec ; {@code manifest} : pistes connues (null si l'analyse elle-même a échoué) ; {@code retryAt} null : l'admin relance. */
@@ -461,8 +463,9 @@ public class WebPrepService {
         }
         int retry = (int) Math.max(1, Math.min(10, seconds / 5));
         boolean paused = run && conv && convLane.paused && Long.valueOf(self.mediaFileId()).equals(convLane.current);
+        double written = early ? steps.writtenSeconds(cache.partDir(self.key())) : 0;
         return new Preparing(run ? self.phase() : "QUEUED", position, run ? own : null, seconds, retry, self.key(), self.manifest(),
-                early, self.kind(), paused);
+                early, self.kind(), paused, written);
     }
 
     /** Vitesse attendue d'une conversion (fois le temps réel) : mesurée, sinon la dernière observée, sinon l'estimation §6. */

@@ -139,6 +139,32 @@ class WebNightTest {
     }
 
     @Test
+    void copiesWithoutConversionExpireAfter48HoursWithoutReading() throws Exception {
+        library("Days/Days - S01E01.mkv", "Days/Days - S01E02.mkv", "Days/Days - S01E03.mkv", "Days/Days - S01E04.mp4");
+        webSettings.save(720, false, false);
+        for (String f : new String[]{"Days - S01E01.mkv", "Days - S01E02.mkv", "Days - S01E03.mkv", "Days - S01E04.mp4"}) {
+            given().auth().oauth2(user).queryParam("caps", "h264,aac").get("/api/episodes/" + episode(f) + "/web-playback")
+                    .then().statusCode(202);
+        }
+        // Préparations prêtes : trois copies HLS (E01 jamais relue depuis 3 jours, E02 lue il y a 1 h, E03 avec une
+        // conversion prête qui s'en sert), un MP4 lu tel quel (sous-titres seulement).
+        sql("UPDATE web_job SET status = 'READY', bytes = 10, finished_at = now() - interval '3 days',"
+                + " manifest = '{\"hls\": true, \"wantsHls\": true, \"direct\": false, \"audio\": [], \"subtitles\": [], \"fonts\": []}'::jsonb");
+        sql("UPDATE web_job SET manifest = jsonb_set(manifest, '{hls}', 'false') FROM media_file f WHERE f.id = web_job.media_file_id"
+                + " AND f.file_name = 'Days - S01E04.mp4'");
+        sql("UPDATE web_job SET last_read_at = now() - interval '1 hour' FROM media_file f WHERE f.id = web_job.media_file_id"
+                + " AND f.file_name = 'Days - S01E02.mkv'");
+        sql("INSERT INTO web_job (media_file_id, kind, status, cache_key, source_size, source_modified, bytes)"
+                + " SELECT f.id, 'CONV', 'READY', repeat('e', 64), f.file_size, f.last_modified, 10 FROM media_file f"
+                + " WHERE f.file_name = 'Days - S01E03.mkv'");
+        assertEquals(1, night.expireCopies());
+        assertEquals(0, jobs("BASE", "Days - S01E01.mkv", null), "copie non lue depuis plus de 48 h : effacée");
+        assertEquals(1, jobs("BASE", "Days - S01E02.mkv", null), "lue récemment : gardée");
+        assertEquals(1, jobs("BASE", "Days - S01E03.mkv", null), "sous-titres d'une conversion : gardée");
+        assertEquals(1, jobs("BASE", "Days - S01E04.mp4", null), "pas de copie (lu tel quel) : gardée");
+    }
+
+    @Test
     void preventiveOffQueuesNothing() throws Exception {
         library("Days/Days - S01E01.mp4", "Days/Days - S01E02.mp4");
         webSettings.save(720, false, false);

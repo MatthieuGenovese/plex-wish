@@ -111,6 +111,13 @@ public interface MediaConfig {
     @WithDefault("3h")
     java.time.Duration webInUse();
 
+    /**
+     * Copies sans conversion (remux HLS) : effacées quand personne ne les a lues depuis ce délai (refaites en une minute
+     * environ à la demande). Les conversions, chères à refaire, suivent seulement le plafond du cache.
+     */
+    @WithDefault("48h")
+    java.time.Duration webCopyKeep();
+
     /** Polices jointes d'un épisode : taille maximale d'une police (Mo) et du total (Mo). */
     @WithDefault("30")
     int webFontMaxMb();

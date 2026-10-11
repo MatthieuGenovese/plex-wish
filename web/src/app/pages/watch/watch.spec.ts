@@ -57,7 +57,7 @@ describe('WatchPage (lecteur web)', () => {
     const first = ask();
     expect(first.request.params.get('caps')).not.toBeNull();
     first.flush(base({ state: 'PREPARING', mode: null, url: null,
-      preparing: { phase: 'HLS', position: 0, progress: 0.4, estimatedSeconds: 150, retryAfterSeconds: 1, message: 'Préparation de la vidéo pour le navigateur…', conversion: false } }),
+      preparing: { phase: 'HLS', position: 0, progress: 0.4, estimatedSeconds: 150, retryAfterSeconds: 1, message: 'Préparation de la vidéo pour le navigateur…', conversion: false, resumeAt: null } }),
       { status: 202, statusText: 'Accepted' });
     await fixture.whenStable();
     const card = el.querySelector('[data-testid=preparing]')!;
@@ -114,12 +114,30 @@ describe('WatchPage (lecteur web)', () => {
     const { fixture, el } = await open();
     ask().flush(base({ state: 'PREPARING', mode: null, url: null,
       preparing: { phase: 'CONVERT', position: 1, progress: null, estimatedSeconds: 4800, retryAfterSeconds: 10,
-        message: 'Conversion pour le navigateur en attente… (1 avant lui)', conversion: true } }), { status: 202, statusText: 'Accepted' });
+        message: 'Conversion pour le navigateur en attente… (1 avant lui)', conversion: true, resumeAt: null } }), { status: 202, statusText: 'Accepted' });
     await fixture.whenStable();
     const card = el.querySelector('[data-testid=preparing]')!;
     expect(card.textContent).toContain('Environ 1 h 20');
     expect(el.querySelector('[data-testid=conversion-note]')?.textContent).toContain('Vous pouvez aussi fermer cette page');
     expect(await a11yViolations(el)).toEqual([]);
+    fixture.destroy();
+  });
+
+  it('reprise au milieu d’une copie refaite : attente annoncée, « Lire depuis le début » sans attendre', async () => {
+    const { fixture, el } = await open();
+    ask().flush(base({ state: 'PREPARING', mode: null, url: null, resume: { positionSeconds: 720, durationSeconds: 1440, completed: false },
+      preparing: { phase: 'HLS', position: 0, progress: 0.2, estimatedSeconds: 20, retryAfterSeconds: 4,
+        message: 'Préparation de la vidéo pour le navigateur…', conversion: false, resumeAt: 720 } }), { status: 202, statusText: 'Accepted' });
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid=resume-wait]')?.textContent).toContain('reprendra à 12:00');
+    expect(await a11yViolations(el)).toEqual([]);
+    el.querySelector<HTMLButtonElement>('[data-testid=from-start]')!.click();
+    const again = ask();
+    expect(again.request.params.get('at')).toBe('0');
+    again.flush(base({ resume: { positionSeconds: 720, durationSeconds: 1440, completed: false } }));
+    await fixture.whenStable();
+    expect(el.querySelector('video')!.getAttribute('src')).toBe('/api/stream/9?u=1&exp=2&sig=x');
+    expect(el.querySelector('[data-testid=notice]')?.textContent ?? '').not.toContain('Reprise');
     fixture.destroy();
   });
 

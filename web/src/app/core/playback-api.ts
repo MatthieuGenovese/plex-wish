@@ -33,6 +33,8 @@ export interface WebPreparing {
   message: string;
   /** Conversion de la vidéo ou du son (minutes) : la page peut être fermée, le travail continue sur le serveur. */
   conversion: boolean;
+  /** La lecture reprendra à cette position (s) dès que la copie en cours l'aura dépassée. */
+  resumeAt: number | null;
 }
 
 export interface WebEpisodeInfo {
@@ -73,9 +75,12 @@ export class PlaybackApi {
   private readonly auth = inject(AuthService);
 
   /** 200 (prêt ou non lisible) ou 202 (préparation en cours) : le corps a le même format. */
-  webPlayback(episodeId: number, caps: string[]): Observable<HttpResponse<WebPlayback>> {
+  /** {@code at} : position de départ voulue (0 = depuis le début) ; absente : la reprise enregistrée. */
+  webPlayback(episodeId: number, caps: string[], at?: number): Observable<HttpResponse<WebPlayback>> {
+    const params: Record<string, string> = { caps: caps.join(',') };
+    if (at !== undefined) params['at'] = String(Math.max(0, Math.floor(at)));
     return this.http.get<WebPlayback>(`/api/episodes/${episodeId}/web-playback`, {
-      params: { caps: caps.join(',') },
+      params,
       observe: 'response',
     });
   }

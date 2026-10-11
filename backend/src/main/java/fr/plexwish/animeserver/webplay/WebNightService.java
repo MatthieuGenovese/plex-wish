@@ -36,7 +36,8 @@ import java.util.Set;
  *     la vidéo seulement si le réglage le permet (D8).</li>
  * </ol>
  * Le travail mis en file la nuit ne démarre que la nuit ; s'il n'est pas fini à la fin de la fenêtre, il est arrêté et
- * reprendra la nuit suivante. Vérifié toutes les 10 minutes.
+ * reprendra la nuit suivante. Vérifié toutes les 10 minutes, jour et nuit : les copies sans conversion non lues depuis
+ * 48 h sont effacées ({@link #expireCopies()}).
  */
 @ApplicationScoped
 public class WebNightService extends BackgroundLoop {
@@ -79,6 +80,13 @@ public class WebNightService extends BackgroundLoop {
 
     @Override
     protected Outcome step() throws Exception {
+        if (prep.usable()) {
+            int expired = expireCopies();
+            if (expired > 0) {
+                LOG.infof("Lecteur web : %d copie(s) sans conversion effacée(s) (non lues depuis %d h)", expired,
+                        config.webCopyKeep().toHours());
+            }
+        }
         if (webSettings.nightOpen() && prep.usable()) {
             String tonight = LocalDate.now().toString();
             if (!tonight.equals(settings.get(DONE).orElse(null))) {
@@ -116,6 +124,38 @@ public class WebNightService extends BackgroundLoop {
             cache.delete(k);
             try (Connection c = dataSource.getConnection();
                  PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE cache_key = ? AND status <> 'RUNNING'")) {
+                st.setString(1, k);
+                st.executeUpdate();
+            }
+        }
+        return keys.size();
+    }
+
+    /**
+     * Copies sans conversion (remux HLS, refaites en une minute environ) que personne n'a lues depuis {@code webCopyKeep}
+     * (48 h) : effacées, sous-titres compris (refaits avec la copie). Gardées si une conversion prête du même fichier
+     * s'en sert pour ses sous-titres.
+     */
+    int expireCopies() throws SQLException {
+        List<String> keys = new ArrayList<>();
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement st = c.prepareStatement("""
+                     SELECT j.cache_key FROM web_job j
+                     WHERE j.kind = 'BASE' AND j.status = 'READY' AND (j.manifest ->> 'hls') = 'true'
+                       AND coalesce(j.last_read_at, j.finished_at) < now() - make_interval(secs => ?)
+                       AND NOT EXISTS (SELECT 1 FROM web_job v WHERE v.media_file_id = j.media_file_id AND v.kind = 'CONV'
+                                       AND v.status = 'READY')""")) {
+            st.setLong(1, config.webCopyKeep().toSeconds());
+            try (ResultSet rs = st.executeQuery()) {
+                while (rs.next()) {
+                    keys.add(rs.getString(1));
+                }
+            }
+        }
+        for (String k : keys) {
+            cache.delete(k);
+            try (Connection c = dataSource.getConnection();
+                 PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE cache_key = ? AND status = 'READY'")) {
                 st.setString(1, k);
                 st.executeUpdate();
             }

@@ -282,6 +282,49 @@ class WebPlaybackTest {
                 .body("message", containsString("manque de place"));
     }
 
+    /** Copie en cours d'écriture (dossier .part) avec {@code segments} segments de 6 s par piste. */
+    private void growingCopy(String fileName, int segments) throws Exception {
+        String k = key(fileName);
+        WebManifest m = new WebManifest(1444.9, "matroska", new WebManifest.Video(0, "h264", 8, 1280, 720, 0.0),
+                List.of(new WebManifest.Audio(0, 1, "aac", 2, "jpn", null, true, 1)), List.of(), List.of(), false, true, false);
+        sql("UPDATE web_job SET status = 'RUNNING', phase = 'HLS', manifest = '" + json.writeValueAsString(m).replace("'", "''")
+                + "'::jsonb WHERE cache_key = '" + k + "'");
+        Path d = cache.partDir(k);
+        Files.createDirectories(d);
+        for (int track = 0; track <= 1; track++) {
+            StringBuilder pl = new StringBuilder("#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-MAP:URI=\"s_" + track + ".m4s\",BYTERANGE=\"10@0\"\n");
+            for (int i = 0; i < segments; i++) {
+                pl.append("#EXTINF:6.0,\n#EXT-X-BYTERANGE:10@").append(10 + i * 10).append("\ns_").append(track).append(".m4s\n");
+            }
+            Files.writeString(d.resolve("s_" + track + ".m3u8"), pl.toString());
+            Files.write(d.resolve("s_" + track + ".m4s"), new byte[10 + segments * 10]);
+        }
+    }
+
+    @Test
+    void resumingInTheMiddleWaitsUntilTheCopyCoversThePosition() throws Exception {
+        library("Days/Days - S01E03.mkv");
+        String file = "Days - S01E03.mkv";
+        playback(file, "h264,aac").then().statusCode(202);
+        given().auth().oauth2(user).contentType("application/json").body(Map.of("positionSeconds", 300, "durationSeconds", 1444))
+                .put("/api/episodes/" + episode(file) + "/progress").then().statusCode(200);
+        growingCopy(file, 10); // 60 s écrites
+        // Reprise à 5:00 : pas encore couverte, on attend (la position est annoncée).
+        playback(file, "h264,aac").then().statusCode(202).body("preparing.resumeAt", equalTo(300));
+        // « Lire depuis le début » : le début est prêt.
+        given().auth().oauth2(user).queryParam("caps", "h264,aac").queryParam("at", 0).get("/api/episodes/" + episode(file) + "/web-playback")
+                .then().statusCode(200).body("growing", equalTo(true)).body("mode", equalTo("HLS"));
+        growingCopy(file, 52); // 312 s : 300 + 12
+        playback(file, "h264,aac").then().statusCode(200).body("growing", equalTo(true));
+        // Épisode presque fini ou à peine commencé : pas d'attente.
+        assertEquals(0, WebPlaybackResource.startAt(null, new WebPlaybackResource.Resume(1430, 1444, false),
+                new WebPlaybackResource.EpisodeInfo(1, 1, "x", 1, 1, null, 1444)));
+        assertEquals(0, WebPlaybackResource.startAt(null, new WebPlaybackResource.Resume(5, 1444, false),
+                new WebPlaybackResource.EpisodeInfo(1, 1, "x", 1, 1, null, 1444)));
+        assertEquals(0, WebPlaybackResource.startAt(null, new WebPlaybackResource.Resume(800, 1444, true),
+                new WebPlaybackResource.EpisodeInfo(1, 1, "x", 1, 1, null, 1444)));
+    }
+
     @Test
     void aConversionThatKeepsFailingStopsAfterThreeAttempts() throws Exception {
         library("Frieren/Frieren - S01E01 hevc10.mkv");

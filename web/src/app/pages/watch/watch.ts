@@ -92,6 +92,9 @@ const REPORT_EVERY_MS = 10_000;
               <div class="player-bar" aria-hidden="true"><i [style.width.%]="(info()!.preparing!.progress ?? 0) * 100"></i></div>
             }
             <p class="player-card-text">{{ prepText() }}</p>
+            @if (info()?.preparing?.resumeAt; as at) {
+              <p class="player-card-text" data-testid="resume-wait">La lecture reprendra à {{ time(at) }} dès que cette partie sera prête.</p>
+            }
             @if (info()?.preparing?.conversion) {
               <p class="player-card-text" data-testid="conversion-note">Cet épisode est converti pour le navigateur sur le serveur. La lecture
                 commencera dès qu’assez de vidéo sera prête. Vous pouvez aussi fermer cette page : la conversion continue, l’épisode sera
@@ -99,7 +102,12 @@ const REPORT_EVERY_MS = 10_000;
             } @else {
               <p class="player-card-text">La lecture commencera toute seule. Vous pouvez aussi revenir plus tard : la préparation continue.</p>
             }
-            <a class="btn" [routerLink]="backLink()">Retour à la fiche</a>
+            <div class="player-card-actions">
+              @if (info()?.preparing?.resumeAt) {
+                <button type="button" class="btn btn-primary" (click)="fromStart()" data-testid="from-start">Lire depuis le début</button>
+              }
+              <a class="btn" [routerLink]="backLink()">Retour à la fiche</a>
+            </div>
           </div>
         }
         @case ('unsupported') {
@@ -336,7 +344,7 @@ export class WatchPage {
 
   /** Demande au serveur quoi lire ; redemande pendant une préparation. */
   private ask(gen: number, keepPosition?: number): void {
-    this.api.webPlayback(this.episodeId, this.caps).subscribe({
+    this.api.webPlayback(this.episodeId, this.caps, keepPosition).subscribe({
       next: (res) => {
         if (gen !== this.generation) return;
         const body = res.body!;
@@ -360,6 +368,17 @@ export class WatchPage {
           err instanceof HttpErrorResponse ? `HTTP ${err.status}` : null);
       },
     });
+  }
+
+  /** Pendant l'attente d'une reprise au milieu : lire depuis le début, déjà prêt. */
+  protected fromStart(): void {
+    clearTimeout(this.pollTimer);
+    this.generation++;
+    this.ask(this.generation, 0);
+  }
+
+  protected time(seconds: number): string {
+    return formatTime(seconds);
   }
 
   private async start(info: WebPlayback, keepPosition?: number): Promise<void> {

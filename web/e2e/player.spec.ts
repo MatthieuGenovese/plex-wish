@@ -4,8 +4,8 @@ import { join } from 'node:path';
 
 /**
  * Lecteur web de bout en bout (phase 10), sur la pile démarrée par scripts/test/e2e-web.sh, dans Google Chrome :
- * fichiers générés (MKV H.264 + deux pistes AAC + ASS + police jointe ; MP4 avec sous-titres mov_text ; AVI Xvid et MKV
- * H.264 10 bits convertis sur le serveur ; MKV son seul).
+ * fichiers générés (MKV H.264 + deux pistes AAC + ASS + police jointe ; MP4 avec sous-titres mov_text ; AVI Xvid (avec un
+ * .ass externe dans un dossier séparé) et MKV H.264 10 bits convertis sur le serveur ; MKV son seul).
  * Aucun écart à la CSP n'est toléré.
  */
 const USER = process.env['E2E_USER'] ?? 'chef';
@@ -137,12 +137,18 @@ test('MP4 : lu tel quel (élément vidéo natif), sous-titres WebVTT', async ({ 
   await noCspViolation(page);
 });
 
-test('AVI Xvid : converti pour le navigateur sur le serveur, puis lu', async ({ page }) => {
+test('AVI Xvid : converti pour le navigateur sur le serveur, puis lu avec son .ass externe', async ({ page }) => {
   await login(page);
   await openEpisode(page, 'Air Gear', 1);
   await waitPlaying(page, 1);
   // Copie convertie (H.264 + AAC) lue par hls.js.
   expect(await page.evaluate(() => document.querySelector('video')!.src)).toMatch(/^blob:/);
+  // .ass du dossier « sous-titres + police » (1.3.0) : choisi par défaut, rendu par JASSUB.
+  await expect(page.locator('canvas.JASSUB')).toHaveCount(1);
+  await page.mouse.move(640, 360);
+  await page.getByTestId('tracks-button').click();
+  await expect(page.getByTestId('tracks')).toContainText('Sous-titres externes');
+  await page.screenshot({ path: join(SHOTS, 'lecteur-ass-externe.png') });
   await noCspViolation(page);
 });
 

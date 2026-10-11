@@ -169,6 +169,12 @@ sécurité (CSP, jetons, URL signées) sans accord ; aucune ressource externe.
 - Remplace l'ancien périmètre « pas de transcodage dans le MVP » et la phase 9.3 (l'extraction des sous-titres est
   faite en 10.2.2). La pré-conversion décidée pour D1b est intégrée ici (10.3) ; D1b garde le reste.
 
+## 1.3.0 — Sous-titres externes
+`.ass` / `.ssa` posés à côté des vidéos ou rangés à part dans le dossier de l'animé : associés au scan (même nom, sinon
+numéro reconnu), forcés repérés, polices du dossier, contrôle de durée au rapport, correction manuelle dans
+Corrections ; lus par le navigateur (copiés dans la préparation de base). Android : après accord sur l'URL signée des
+sous-titres. Détail : ARCHITECTURE §7.8.
+
 ## Phase D1 — Déploiement sur le NAS (plan validé le 2026-10-09)
 
 Ami : 3 gestes (Container Manager, une commande dans le Planificateur de tâches, l'assistant) plus la redirection de

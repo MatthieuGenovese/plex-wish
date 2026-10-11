@@ -65,6 +65,10 @@ ASS
         -movflags +faststart "$MEDIA/Frieren/Saison 1/Frieren - S01E02.mp4"
     ff -f lavfi -i "testsrc2=size=640x360:rate=25:duration=8" -f lavfi -i "sine=f=550:duration=8" -c:v mpeg4 -vtag XVID \
         -c:a libmp3lame "$MEDIA/Air Gear/Air Gear - S01E01.avi"
+    # Sous-titres externes (1.3.0) : .ass dans un dossier séparé, « Épisode 1 », police à côté.
+    mkdir -p "$MEDIA/Air Gear/sous-titres + police"
+    cp "$E2E/subs.ass" "$MEDIA/Air Gear/sous-titres + police/[Team] Air Gear - Épisode 1.ass"
+    cp "$font" "$MEDIA/Air Gear/sous-titres + police/figtree.ttf"
     # H.264 10 bits (Hi10P, illisible dans un navigateur) 1080p avec ASS : converti en H.264 720p (10.3).
     ff -f lavfi -i "testsrc2=size=1920x1080:rate=24:duration=40" -f lavfi -i "sine=f=440:duration=40" -i "$E2E/subs.ass" \
         -map 0 -map 1 -map 2 -c:v libx264 -preset ultrafast -pix_fmt yuv420p10le -c:a aac -c:s ass -metadata:s:a:0 language=jpn \

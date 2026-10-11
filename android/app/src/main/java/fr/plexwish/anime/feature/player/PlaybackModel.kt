@@ -32,6 +32,8 @@ data class PlaybackFailure(
     val cause: String = "",
     val formatMime: String? = null,
     val formatCodecs: String? = null,
+    /** Où le lecteur a échoué (« SsaParser.parse:166 ») : classe, méthode, ligne ; jamais de donnée. */
+    val origin: String = "",
 )
 
 /**

@@ -25,6 +25,9 @@ object Diagnostics {
         f.httpStatus == 401 || f.httpStatus == 403 -> FailureKind.FORBIDDEN
         f.httpStatus == 404 || f.httpStatus == 410 || f.httpStatus == 416 -> FailureKind.NOT_FOUND
         f.httpStatus != null && f.httpStatus >= 500 -> FailureKind.SERVER
+        // Le lecteur a planté en lisant des données bien reçues (bug ou fichier inattendu) : pas une coupure réseau,
+        // inutile de réessayer (« Reconnexion… » pour rien).
+        f.cause.contains("UnexpectedLoaderException") -> FailureKind.UNKNOWN
         f.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
             f.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE -> FailureKind.NOT_FOUND
         f.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
@@ -62,7 +65,11 @@ object Diagnostics {
                 ((f.formatMime ?: tracks.firstOrNull { it.type == TrackType.AUDIO }?.mimeType)
                     ?.let { " (${codecName(it, f.formatCodecs)})" } ?: "") + "."
             FailureKind.STALLED -> stalledMessage(container)
-            FailureKind.UNKNOWN -> "La lecture a échoué (${f.errorCodeName})."
+            FailureKind.UNKNOWN -> if (f.cause.contains("UnexpectedLoaderException")) {
+                "Le lecteur du téléphone n'a pas su lire ce fichier ($c). Les détails ci-dessous aident à corriger."
+            } else {
+                "La lecture a échoué (${f.errorCodeName})."
+            }
         }
         val details = buildList {
             add("Fichier" to c)
@@ -70,6 +77,7 @@ object Diagnostics {
             f.httpStatus?.let { add("Réponse du serveur" to "HTTP $it") }
             f.formatMime?.let { add("Piste en cause" to codecName(it, f.formatCodecs)) }
             if (f.cause.isNotBlank()) add("Cause" to f.cause)
+            if (f.origin.isNotBlank()) add("Origine" to f.origin)
             add("Pistes actives" to activeTracks(tracks))
             addAll(trackDetails(tracks))
         }

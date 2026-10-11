@@ -61,7 +61,9 @@ class ExoPlaybackEngine(
         .setTrackSelector(selector)
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(OkHttpDataSource.Factory(streamClient).setUserAgent("AnimeServer-Android"))
-                .setLoadErrorHandlingPolicy(NoRetryOnClientError()),
+                .setLoadErrorHandlingPolicy(NoRetryOnClientError())
+                // Une réplique de sous-titres illisible est ignorée au lieu de faire échouer l'épisode.
+                .setSubtitleParserFactory(TolerantSubtitleParserFactory()),
         )
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
         .setHandleAudioBecomingNoisy(true)
@@ -189,6 +191,7 @@ class ExoPlaybackEngine(
         return PlaybackFailure(
             errorCode = e.errorCode, errorCodeName = e.errorCodeName, httpStatus = http,
             cause = SafeLog.describe(e.cause), formatMime = format?.sampleMimeType, formatCodecs = format?.codecs,
+            origin = SafeLog.origin(e),
         )
     }
 

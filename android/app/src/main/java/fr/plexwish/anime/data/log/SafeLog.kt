@@ -54,6 +54,18 @@ object SafeLog {
         return parts.joinToString(" ← ")
     }
 
+    /**
+     * Endroit du code où l'erreur la plus profonde est née (« SsaParser.parse:166 », hors classes de la bibliothèque
+     * standard) : noms de classe, méthode et ligne seulement, rien qui vienne des données ou du réseau.
+     */
+    fun origin(t: Throwable?): String {
+        var root = t ?: return ""
+        while (root.cause != null && root.cause !== root) root = root.cause!!
+        val frame = root.stackTrace.firstOrNull { !it.className.startsWith("java.") && !it.className.startsWith("kotlin.") }
+            ?: root.stackTrace.firstOrNull() ?: return ""
+        return frame.className.substringAfterLast('.') + "." + frame.methodName + (if (frame.lineNumber > 0) ":${frame.lineNumber}" else "")
+    }
+
     fun d(tag: String, message: String) = log(DEBUG, tag, message, null)
     fun i(tag: String, message: String) = log(INFO, tag, message, null)
     fun w(tag: String, message: String, t: Throwable? = null) = log(WARN, tag, message, t)

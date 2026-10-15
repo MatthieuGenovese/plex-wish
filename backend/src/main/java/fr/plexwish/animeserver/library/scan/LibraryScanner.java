@@ -5,7 +5,7 @@ import fr.plexwish.animeserver.library.parse.FilenameParser;
 import fr.plexwish.animeserver.library.parse.LibraryFiles;
 import fr.plexwish.animeserver.library.parse.ParseResult;
 import fr.plexwish.animeserver.library.parse.SubtitleNames;
-import io.agroal.api.AgroalDataSource;
+import fr.plexwish.animeserver.common.db.Db;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -19,10 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -137,7 +134,9 @@ public class LibraryScanner {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    Db db;
+    @Inject
+    LibraryScanRepository repository;
     @Inject
     FilenameParser parser;
     @Inject
@@ -168,7 +167,7 @@ public class LibraryScanner {
         // Horodatage commun à tous les fichiers vus : ceux qui ne l'ont pas reçu ont disparu.
         OffsetDateTime scanTime = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
 
-        try (Connection c = dataSource.getConnection()) {
+        try (Connection c = db.connection()) {
             c.setAutoCommit(false);
             try {
                 State state = load(c);
@@ -178,11 +177,11 @@ public class LibraryScanner {
                     processBatch(c, videos.subList(i, Math.min(i + batch, videos.size())), seen, state, stats, runId, scanTime);
                     c.commit();
                 }
-                insertIssues(c, runId, walkIssues);
-                insertIssues(c, runId, markMissing(c, scanTime, stats));
+                repository.insertIssues(c, runId, walkIssues);
+                repository.insertIssues(c, runId, markMissing(c, scanTime, stats));
                 subtitles.sort(Comparator.comparing(Found::path));
-                insertIssues(c, runId, subtitleSync.sync(c, root, subtitles, scanTime, stats));
-                stats.animeCount = countVisibleAnime(c);
+                repository.insertIssues(c, runId, subtitleSync.sync(c, root, subtitles, scanTime, stats));
+                stats.animeCount = repository.countVisibleAnime(c);
                 c.commit();
             } catch (SQLException | RuntimeException e) {
                 c.rollback();
@@ -301,40 +300,17 @@ public class LibraryScanner {
 
     private State load(Connection c) throws SQLException {
         State s = new State();
-        try (Statement st = c.createStatement()) {
-            try (ResultSet rs = st.executeQuery(
-                    "SELECT relative_path, action, anime_title, season_number, episode_number FROM media_file_override")) {
-                while (rs.next()) {
-                    s.overrides.put(rs.getString(1), new ManualOverride(rs.getString(2), rs.getString(3),
-                            (Integer) rs.getObject(4), (Integer) rs.getObject(5)));
-                }
-            }
-            try (ResultSet rs = st.executeQuery("SELECT relative_path FROM media_file WHERE available")) {
-                while (rs.next()) {
-                    s.availablePaths.add(rs.getString(1));
-                }
-            }
-            try (ResultSet rs = st.executeQuery("SELECT id, normalized_title FROM anime")) {
-                while (rs.next()) {
-                    s.animeIds.put(rs.getString(2), rs.getLong(1));
-                }
-            }
-            try (ResultSet rs = st.executeQuery("SELECT id, anime_id, season_number FROM season")) {
-                while (rs.next()) {
-                    s.seasonIds.put(rs.getLong(2) + ":" + rs.getInt(3), rs.getLong(1));
-                }
-            }
-            try (ResultSet rs = st.executeQuery("""
-                    SELECT e.id, e.season_id, e.episode_number, e.media_file_id, m.relative_path
-                    FROM episode e LEFT JOIN media_file m ON m.id = e.media_file_id""")) {
-                while (rs.next()) {
-                    String key = rs.getLong(2) + ":" + rs.getInt(3);
-                    Long fileId = (Long) rs.getObject(4);
-                    s.episodes.put(key, new EpisodeRef(rs.getLong(1), fileId, rs.getString(5)));
-                    if (fileId != null) {
-                        s.fileToEpisode.put(fileId, key);
-                    }
-                }
+        s.overrides.putAll(repository.overrides(c));
+        s.availablePaths.addAll(repository.availablePaths(c));
+        s.animeIds.putAll(repository.animeIds(c));
+        for (LibraryScanRepository.SeasonRow r : repository.seasons(c)) {
+            s.seasonIds.put(r.animeId() + ":" + r.seasonNumber(), r.id());
+        }
+        for (LibraryScanRepository.EpisodeLink e : repository.episodes(c)) {
+            String key = e.seasonId() + ":" + e.episodeNumber();
+            s.episodes.put(key, new EpisodeRef(e.id(), e.fileId(), e.filePath()));
+            if (e.fileId() != null) {
+                s.fileToEpisode.put(e.fileId(), key);
             }
         }
         return s;
@@ -437,22 +413,10 @@ public class LibraryScanner {
         }
 
         if (!unlink.isEmpty()) {
-            try (PreparedStatement st = c.prepareStatement("UPDATE episode SET media_file_id = NULL WHERE id = ANY (?)")) {
-                st.setArray(1, c.createArrayOf("bigint", unlink.toArray()));
-                st.executeUpdate();
-            }
+            repository.unlinkEpisodes(c, unlink);
         }
         if (!relink.isEmpty()) {
-            List<Object> params = new ArrayList<>();
-            relink.forEach((episodeId, fileId) -> {
-                params.add(episodeId);
-                params.add(fileId);
-            });
-            String sql = "UPDATE episode e SET media_file_id = v.file_id FROM (VALUES "
-                    + Sql.values(relink.size(), "?::bigint", "?::bigint") + ") AS v(id, file_id) WHERE e.id = v.id";
-            try (PreparedStatement st = Sql.prepare(c, sql, params)) {
-                st.executeUpdate();
-            }
+            repository.relinkEpisodes(c, relink);
         }
         insertEpisodes(c, inserts);
         // Les problèmes détectés avant l'écriture des fichiers reçoivent maintenant leur id :
@@ -461,7 +425,7 @@ public class LibraryScanner {
         for (Issue issue : issues) {
             withIds.add(issue.fileId() != null ? issue : issue.withFileId(fileIds.get(issue.path())));
         }
-        insertIssues(c, runId, withIds);
+        repository.insertIssues(c, runId, withIds);
     }
 
     /**
@@ -554,32 +518,17 @@ public class LibraryScanner {
     /** Une requête par lot : insertion des nouveaux fichiers, mise à jour des connus (réapparus compris). */
     private Map<String, Long> upsertMediaFiles(Connection c, List<Decision> decisions, OffsetDateTime scanTime,
                                                ScanStats stats) throws SQLException {
-        List<Object> params = new ArrayList<>(decisions.size() * 8);
+        List<LibraryScanRepository.MediaFileRow> rows = new ArrayList<>(decisions.size());
         for (Decision d : decisions) {
             Found f = d.file();
-            params.add(f.path());
-            params.add(f.fileName());
-            params.add(f.size());
-            params.add(f.modified());
-            params.add(LibraryFiles.extension(f.fileName()));
-            params.add(d.kind());
-            params.add(scanTime);
-            params.add(scanTime);
+            rows.add(new LibraryScanRepository.MediaFileRow(f.path(), f.fileName(), f.size(), f.modified(),
+                    LibraryFiles.extension(f.fileName()), d.kind()));
         }
-        String sql = "INSERT INTO media_file (relative_path, file_name, file_size, last_modified, container, kind, "
-                + "first_seen_at, last_seen_at) VALUES "
-                + Sql.values(decisions.size(), "?", "?", "?", "?", "?", "?", "?", "?")
-                + " ON CONFLICT (relative_path) DO UPDATE SET file_name = EXCLUDED.file_name, "
-                + "file_size = EXCLUDED.file_size, last_modified = EXCLUDED.last_modified, container = EXCLUDED.container, "
-                + "kind = EXCLUDED.kind, available = TRUE, missing_since = NULL, last_seen_at = EXCLUDED.last_seen_at "
-                + "RETURNING id, relative_path, (xmax = 0) AS inserted";
         Map<String, Long> ids = new HashMap<>();
-        try (PreparedStatement st = Sql.prepare(c, sql, params); ResultSet rs = st.executeQuery()) {
-            while (rs.next()) {
-                ids.put(rs.getString(2), rs.getLong(1));
-                if (rs.getBoolean(3)) {
-                    stats.newFiles++;
-                }
+        for (LibraryScanRepository.UpsertedFile u : repository.upsertMediaFiles(c, rows, scanTime)) {
+            ids.put(u.path(), u.id());
+            if (u.inserted()) {
+                stats.newFiles++;
             }
         }
         return ids;
@@ -597,19 +546,7 @@ public class LibraryScanner {
             }
         }
         if (!newTitles.isEmpty()) {
-            List<Object> params = new ArrayList<>();
-            newTitles.forEach((norm, title) -> {
-                params.add(title);
-                params.add(norm);
-            });
-            String sql = "INSERT INTO anime (title, normalized_title) VALUES " + Sql.values(newTitles.size(), "?", "?")
-                    + " ON CONFLICT (normalized_title) DO UPDATE SET normalized_title = EXCLUDED.normalized_title"
-                    + " RETURNING id, normalized_title";
-            try (PreparedStatement st = Sql.prepare(c, sql, params); ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    state.animeIds.put(rs.getString(2), rs.getLong(1));
-                }
-            }
+            state.animeIds.putAll(repository.insertAnimes(c, newTitles));
         }
         Set<String> newSeasons = new LinkedHashSet<>();
         for (Decision d : decisions) {
@@ -621,19 +558,13 @@ public class LibraryScanner {
             }
         }
         if (!newSeasons.isEmpty()) {
-            List<Object> params = new ArrayList<>();
+            List<LibraryScanRepository.SeasonRow> rows = new ArrayList<>();
             for (String key : newSeasons) {
                 String[] parts = key.split(":");
-                params.add(Long.parseLong(parts[0]));
-                params.add(Integer.parseInt(parts[1]));
+                rows.add(new LibraryScanRepository.SeasonRow(0, Long.parseLong(parts[0]), Integer.parseInt(parts[1])));
             }
-            String sql = "INSERT INTO season (anime_id, season_number) VALUES " + Sql.values(newSeasons.size(), "?", "?")
-                    + " ON CONFLICT (anime_id, season_number) DO UPDATE SET season_number = EXCLUDED.season_number"
-                    + " RETURNING id, anime_id, season_number";
-            try (PreparedStatement st = Sql.prepare(c, sql, params); ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    state.seasonIds.put(rs.getLong(2) + ":" + rs.getInt(3), rs.getLong(1));
-                }
+            for (LibraryScanRepository.SeasonRow r : repository.insertSeasons(c, rows)) {
+                state.seasonIds.put(r.animeId() + ":" + r.seasonNumber(), r.id());
             }
         }
     }
@@ -642,39 +573,25 @@ public class LibraryScanner {
         if (inserts.isEmpty()) {
             return;
         }
-        List<Object> params = new ArrayList<>();
+        List<LibraryScanRepository.NewEpisode> rows = new ArrayList<>();
         Map<String, EpisodeRef> byKey = new HashMap<>();
         for (Object[] row : inserts) {
             String key = (String) row[0];
             EpisodeRef ref = (EpisodeRef) row[1];
             String[] parts = key.split(":");
-            params.add(Long.parseLong(parts[0]));
-            params.add(Integer.parseInt(parts[1]));
-            params.add(ref.fileId);
+            rows.add(new LibraryScanRepository.NewEpisode(Long.parseLong(parts[0]), Integer.parseInt(parts[1]), ref.fileId));
             byKey.put(key, ref);
         }
-        String sql = "INSERT INTO episode (season_id, episode_number, media_file_id) VALUES "
-                + Sql.values(inserts.size(), "?", "?", "?") + " RETURNING id, season_id, episode_number";
-        try (PreparedStatement st = Sql.prepare(c, sql, params); ResultSet rs = st.executeQuery()) {
-            while (rs.next()) {
-                byKey.get(rs.getLong(2) + ":" + rs.getInt(3)).id = rs.getLong(1);
-            }
+        for (LibraryScanRepository.InsertedEpisode e : repository.insertEpisodes(c, rows)) {
+            byKey.get(e.seasonId() + ":" + e.episodeNumber()).id = e.id();
         }
     }
 
     /** Fichiers connus absents de ce scan : indisponibles, jamais supprimés (§7.9). Une seule requête. */
     private List<Issue> markMissing(Connection c, OffsetDateTime scanTime, ScanStats stats) throws SQLException {
         List<Issue> issues = new ArrayList<>();
-        try (PreparedStatement st = c.prepareStatement("""
-                UPDATE media_file SET available = FALSE, missing_since = now()
-                WHERE available AND last_seen_at < ? RETURNING id, relative_path""")) {
-            st.setObject(1, scanTime);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    String path = rs.getString(2);
-                    issues.add(new Issue(rs.getLong(1), path, "MISSING", topFolder(path), "fichier disparu depuis le scan précédent"));
-                }
-            }
+        for (LibraryScanRepository.MissingFile m : repository.markMissing(c, scanTime)) {
+            issues.add(new Issue(m.id(), m.path(), "MISSING", topFolder(m.path()), "fichier disparu depuis le scan précédent"));
         }
         stats.missing = issues.size();
         if (!issues.isEmpty()) {
@@ -689,41 +606,5 @@ public class LibraryScanner {
             return ParseResult.SeasonSource.OVERRIDE.name();
         }
         return parser.parse(path) instanceof ParseResult.Episode e ? e.seasonSource().name() : null;
-    }
-
-    private void insertIssues(Connection c, long runId, List<Issue> issues) throws SQLException {
-        for (int i = 0; i < issues.size(); i += 1000) {
-            List<Issue> chunk = issues.subList(i, Math.min(i + 1000, issues.size()));
-            List<Object> params = new ArrayList<>(chunk.size() * 11);
-            for (Issue issue : chunk) {
-                params.add(runId);
-                params.add(issue.fileId());
-                params.add(issue.path());
-                params.add(issue.category());
-                params.add(issue.animeTitle());
-                params.add(issue.detail());
-                params.add(issue.season());
-                params.add(issue.episode());
-                params.add(issue.keptPath());
-                params.add(issue.seasonSource());
-                params.add(issue.keptSeasonSource());
-            }
-            String sql = "INSERT INTO scan_issue (scan_run_id, media_file_id, relative_path, category, anime_title, detail, "
-                    + "season_number, episode_number, kept_relative_path, season_source, kept_season_source) VALUES "
-                    + Sql.values(chunk.size(), "?", "?::bigint", "?", "?", "?", "?", "?::integer", "?::integer", "?", "?", "?");
-            try (PreparedStatement st = Sql.prepare(c, sql, params)) {
-                st.executeUpdate();
-            }
-        }
-    }
-
-    private int countVisibleAnime(Connection c) throws SQLException {
-        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("""
-                SELECT count(DISTINCT s.anime_id) FROM episode e
-                JOIN season s ON s.id = e.season_id JOIN media_file m ON m.id = e.media_file_id
-                WHERE m.available""")) {
-            rs.next();
-            return rs.getInt(1);
-        }
     }
 }

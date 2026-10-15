@@ -2,7 +2,6 @@ package fr.plexwish.animeserver.library.subs;
 
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.library.scan.Titles;
-import io.agroal.api.AgroalDataSource;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -23,11 +22,7 @@ import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -67,24 +62,11 @@ public class SubtitleAdminResource {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    ExternalSubtitleRepository repository;
     @Inject
     ExternalSubtitleService subtitles;
     @Inject
     JsonWebToken jwt;
-
-    private static final String SELECT = """
-            SELECT x.id, x.relative_path, x.available, x.match, (o.relative_path IS NOT NULL), x.forced, x.language,
-                   e.id, a.title, s.season_number, e.episode_number, x.last_cue_seconds, p.duration_seconds,
-                   (x.last_cue_seconds IS NOT NULL AND p.duration_seconds IS NOT NULL
-                    AND x.last_cue_seconds > p.duration_seconds + greatest(60, p.duration_seconds * 0.05))
-            FROM external_subtitle x
-            LEFT JOIN external_subtitle_override o ON o.relative_path = x.relative_path
-            LEFT JOIN episode e ON e.id = x.episode_id
-            LEFT JOIN season s ON s.id = e.season_id
-            LEFT JOIN anime a ON a.id = s.anime_id
-            LEFT JOIN media_probe p ON p.media_file_id = e.media_file_id
-            """;
 
     @GET
     public SubtitlePage list(@QueryParam("filter") @DefaultValue("ALL") String filter,
@@ -96,54 +78,13 @@ public class SubtitleAdminResource {
         }
         String like = anime == null || anime.isBlank() ? null
                 : "%" + anime.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
-        String where = " WHERE x.available AND (?::text IS NULL OR x.relative_path ILIKE ?)" + switch (filter) {
-            case "UNMATCHED" -> " AND x.episode_id IS NULL AND o.relative_path IS NULL";
-            case "MANUAL" -> " AND o.relative_path IS NOT NULL";
-            case "DURATION" -> " AND x.last_cue_seconds > p.duration_seconds + greatest(60, p.duration_seconds * 0.05)";
-            default -> "";
-        };
-        try (Connection c = dataSource.getConnection()) {
-            Summary summary;
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT count(*), count(x.episode_id), count(*) FILTER (WHERE x.episode_id IS NULL AND o.relative_path IS NULL),
-                           count(o.relative_path),
-                           count(*) FILTER (WHERE x.last_cue_seconds > p.duration_seconds + greatest(60, p.duration_seconds * 0.05))
-                    FROM external_subtitle x
-                    LEFT JOIN external_subtitle_override o ON o.relative_path = x.relative_path
-                    LEFT JOIN episode e ON e.id = x.episode_id
-                    LEFT JOIN media_probe p ON p.media_file_id = e.media_file_id
-                    WHERE x.available""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                summary = new Summary(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5));
-            }
-            long total;
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT count(*) FROM external_subtitle x
-                    LEFT JOIN external_subtitle_override o ON o.relative_path = x.relative_path
-                    LEFT JOIN episode e ON e.id = x.episode_id
-                    LEFT JOIN media_probe p ON p.media_file_id = e.media_file_id""" + where)) {
-                st.setString(1, like);
-                st.setString(2, like);
-                try (ResultSet rs = st.executeQuery()) {
-                    rs.next();
-                    total = rs.getLong(1);
-                }
-            }
-            List<SubtitleDto> items = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement(SELECT + where + " ORDER BY x.relative_path LIMIT ? OFFSET ?")) {
-                st.setString(1, like);
-                st.setString(2, like);
-                st.setInt(3, size);
-                st.setLong(4, (long) page * size);
-                try (ResultSet rs = st.executeQuery()) {
-                    while (rs.next()) {
-                        items.add(dto(rs));
-                    }
-                }
-            }
-            return new SubtitlePage(summary, total, page, size, items);
-        }
+        ExternalSubtitleRepository.AdminFilter f = ExternalSubtitleRepository.AdminFilter.valueOf(filter);
+        ExternalSubtitleRepository.AdminSummary sum = repository.adminSummary();
+        Summary summary = new Summary(sum.total(), sum.linked(), sum.unmatched(), sum.manual(), sum.tooLong());
+        long total = repository.adminCount(f, like);
+        List<SubtitleDto> items = repository.adminPage(f, like, size, (long) page * size).stream()
+                .map(SubtitleAdminResource::dto).toList();
+        return new SubtitlePage(summary, total, page, size, items);
     }
 
     /** Rattache le sous-titre à un épisode (correction manuelle, effet immédiat). */
@@ -151,103 +92,61 @@ public class SubtitleAdminResource {
     @Path("/{id}/episode")
     @Consumes(MediaType.APPLICATION_JSON)
     public SubtitleDto attach(@PathParam("id") long id, @Valid @NotNull AttachRequest request) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            String path = pathOf(c, id);
-            String title = request.animeTitle() == null || request.animeTitle().isBlank()
-                    ? path.substring(0, Math.max(0, path.indexOf('/'))) : request.animeTitle();
-            Long episodeId = ExternalSubtitleService.episodeId(c, Titles.normalize(title), request.seasonNumber(),
-                    request.episodeNumber());
-            if (episodeId == null) {
-                throw new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable : " + title + ", saison "
-                        + request.seasonNumber() + ", épisode " + request.episodeNumber());
-            }
-            save(c, path, episodeId, "MANUAL");
-            return get(c, id);
+        String path = pathOf(id);
+        String title = request.animeTitle() == null || request.animeTitle().isBlank()
+                ? path.substring(0, Math.max(0, path.indexOf('/'))) : request.animeTitle();
+        Long episodeId = repository.episodeId(Titles.normalize(title), request.seasonNumber(), request.episodeNumber())
+                .orElse(null);
+        if (episodeId == null) {
+            throw new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable : " + title + ", saison "
+                    + request.seasonNumber() + ", épisode " + request.episodeNumber());
         }
+        save(path, episodeId, "MANUAL");
+        return get(id);
     }
 
     /** Détache le sous-titre (il ne sera plus proposé ; correction manuelle gardée par les scans). */
     @DELETE
     @Path("/{id}/episode")
     public SubtitleDto detach(@PathParam("id") long id) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            save(c, pathOf(c, id), null, null);
-            return get(c, id);
-        }
+        save(pathOf(id), null, null);
+        return get(id);
     }
 
     /** Retire la correction : association automatique, recalculée tout de suite. */
     @DELETE
     @Path("/{id}/override")
     public SubtitleDto automatic(@PathParam("id") long id) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            String path = pathOf(c, id);
-            try (PreparedStatement st = c.prepareStatement("DELETE FROM external_subtitle_override WHERE relative_path = ?")) {
-                st.setString(1, path);
-                st.executeUpdate();
-            }
-            ExternalSubtitleService.Link link = subtitles.link(path, subtitles.databaseLookup(c));
-            update(c, path, link.episodeId(), link.match());
-            return get(c, id);
-        }
+        String path = pathOf(id);
+        repository.deleteOverride(path);
+        ExternalSubtitleService.Link link = subtitles.link(path, subtitles.databaseLookup());
+        repository.setEpisode(path, link.episodeId(), link.match());
+        return get(id);
     }
 
-    private void save(Connection c, String path, Long episodeId, String match) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                INSERT INTO external_subtitle_override (relative_path, episode_id, created_by) VALUES (?, ?, ?)
-                ON CONFLICT (relative_path) DO UPDATE SET episode_id = EXCLUDED.episode_id, created_by = EXCLUDED.created_by,
-                    created_at = now()""")) {
-            st.setString(1, path);
-            st.setObject(2, episodeId);
-            st.setString(3, jwt.getName());
-            st.executeUpdate();
-        }
-        update(c, path, episodeId, match);
+    private void save(String path, Long episodeId, String match) throws SQLException {
+        repository.saveOverride(path, episodeId, jwt.getName());
+        repository.setEpisode(path, episodeId, match);
     }
 
-    private static void update(Connection c, String path, Long episodeId, String match) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement(
-                "UPDATE external_subtitle SET episode_id = ?, match = ? WHERE relative_path = ?")) {
-            st.setObject(1, episodeId);
-            st.setString(2, match);
-            st.setString(3, path);
-            st.executeUpdate();
-        }
+    private String pathOf(long id) throws SQLException {
+        return repository.pathOf(id).orElseThrow(() -> new ApiException(404, "SUBTITLE_NOT_FOUND", "Sous-titre introuvable"));
     }
 
-    private static String pathOf(Connection c, long id) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("SELECT relative_path FROM external_subtitle WHERE id = ?")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    throw new ApiException(404, "SUBTITLE_NOT_FOUND", "Sous-titre introuvable");
-                }
-                return rs.getString(1);
-            }
-        }
+    private SubtitleDto get(long id) throws SQLException {
+        return dto(repository.adminRow(id).orElseThrow());
     }
 
-    private static SubtitleDto get(Connection c, long id) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement(SELECT + " WHERE x.id = ?")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                return dto(rs);
-            }
-        }
+    private static SubtitleDto dto(ExternalSubtitleRepository.AdminRow r) {
+        String path = r.relativePath();
+        Long episodeId = r.episodeId();
+        EpisodeRef ep = episodeId == null ? null : new EpisodeRef(episodeId, r.animeTitle(), r.seasonNumber(), r.episodeNumber());
+        return new SubtitleDto(r.id(), path, path.indexOf('/') < 0 ? null : path.substring(0, path.indexOf('/')),
+                r.available(), r.match(), r.manual(), r.forced(), r.language(), ep, number(r.lastCueSeconds()),
+                number(r.videoDurationSeconds()), r.tooLong());
     }
 
-    private static SubtitleDto dto(ResultSet rs) throws SQLException {
-        String path = rs.getString(2);
-        Long episodeId = (Long) rs.getObject(8);
-        EpisodeRef ep = episodeId == null ? null : new EpisodeRef(episodeId, rs.getString(9), rs.getInt(10), rs.getInt(11));
-        return new SubtitleDto(rs.getLong(1), path, path.indexOf('/') < 0 ? null : path.substring(0, path.indexOf('/')),
-                rs.getBoolean(3), rs.getString(4), rs.getBoolean(5), rs.getBoolean(6), rs.getString(7), ep, number(rs, 12),
-                number(rs, 13), rs.getBoolean(14));
-    }
-
-    private static Double number(ResultSet rs, int col) throws SQLException {
-        BigDecimal v = rs.getBigDecimal(col);
+    private static Double number(BigDecimal v) {
         return v == null ? null : v.doubleValue();
     }
 }

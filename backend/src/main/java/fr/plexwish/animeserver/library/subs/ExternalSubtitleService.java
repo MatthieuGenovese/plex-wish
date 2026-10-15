@@ -7,7 +7,6 @@ import fr.plexwish.animeserver.library.parse.ParseResult;
 import fr.plexwish.animeserver.library.parse.SubtitleNames;
 import fr.plexwish.animeserver.library.scan.Titles;
 import fr.plexwish.animeserver.webplay.WebDecision;
-import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -23,9 +22,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -47,7 +43,7 @@ public class ExternalSubtitleService {
     public static final int MAX_FONTS = 60;
 
     @Inject
-    AgroalDataSource dataSource;
+    ExternalSubtitleRepository repository;
     @Inject
     LibraryConfig config;
     @Inject
@@ -107,20 +103,14 @@ public class ExternalSubtitleService {
     }
 
     /** Recherche par requêtes ciblées (une correction de l'admin, pas un scan). */
-    public Lookup databaseLookup(Connection c) {
+    public Lookup databaseLookup() {
         return new Lookup() {
             @Override
             public Long sameName(String dir, String stem) {
-                try (PreparedStatement st = c.prepareStatement("""
-                        SELECT m.file_name, e.id FROM media_file m JOIN episode e ON e.media_file_id = m.id
-                        WHERE m.available AND m.relative_path LIKE ? ESCAPE '\\'""")) {
-                    st.setString(1, like(dir) + "/%");
-                    try (ResultSet rs = st.executeQuery()) {
-                        while (rs.next()) {
-                            String name = rs.getString(1);
-                            if (SubtitleNames.videoStem(name).equals(stem)) {
-                                return rs.getLong(2);
-                            }
+                try {
+                    for (ExternalSubtitleRepository.VideoName v : repository.videosUnder(dir)) {
+                        if (SubtitleNames.videoStem(v.fileName()).equals(stem)) {
+                            return v.episodeId();
                         }
                     }
                 } catch (SQLException e) {
@@ -132,7 +122,7 @@ public class ExternalSubtitleService {
             @Override
             public Long episode(String normalizedTitle, int season, int episode) {
                 try {
-                    return episodeId(c, normalizedTitle, season, episode);
+                    return repository.episodeId(normalizedTitle, season, episode).orElse(null);
                 } catch (SQLException e) {
                     throw new IllegalStateException(e);
                 }
@@ -140,14 +130,8 @@ public class ExternalSubtitleService {
 
             @Override
             public Integer lastEpisode(String normalizedTitle, int season) {
-                try (PreparedStatement st = c.prepareStatement("""
-                        SELECT max(e.episode_number) FROM episode e JOIN season s ON s.id = e.season_id
-                        JOIN anime a ON a.id = s.anime_id WHERE a.normalized_title = ? AND s.season_number = ?""")) {
-                    st.setString(1, normalizedTitle);
-                    st.setInt(2, season);
-                    try (ResultSet rs = st.executeQuery()) {
-                        return rs.next() ? (Integer) rs.getObject(1) : null;
-                    }
+                try {
+                    return repository.lastEpisode(normalizedTitle, season);
                 } catch (SQLException e) {
                     throw new IllegalStateException(e);
                 }
@@ -155,42 +139,13 @@ public class ExternalSubtitleService {
         };
     }
 
-    public static Long episodeId(Connection c, String normalizedTitle, int season, int episode) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                SELECT e.id FROM episode e JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
-                WHERE a.normalized_title = ? AND s.season_number = ? AND e.episode_number = ?""")) {
-            st.setString(1, normalizedTitle);
-            st.setInt(2, season);
-            st.setInt(3, episode);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : null;
-            }
-        }
-    }
-
-    private static String like(String s) {
-        return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-    }
-
     // --- Lecture --------------------------------------------------------------------------------------------------------
 
     /** Sous-titres externes disponibles de l'épisode qui utilise ce fichier : complets d'abord, puis par chemin. */
     public List<External> forFile(long mediaFileId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT x.id, x.relative_path, x.file_size, x.last_modified, x.forced, x.language
-                     FROM external_subtitle x JOIN episode e ON e.id = x.episode_id
-                     WHERE e.media_file_id = ? AND x.available ORDER BY x.forced, x.relative_path""")) {
-            st.setLong(1, mediaFileId);
-            List<External> out = new ArrayList<>();
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    out.add(new External(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getObject(4, OffsetDateTime.class),
-                            rs.getBoolean(5), rs.getString(6)));
-                }
-            }
-            return out;
-        }
+        return repository.forFile(mediaFileId).stream()
+                .map(x -> new External(x.id(), x.relativePath(), x.size(), x.modified(), x.forced(), x.language()))
+                .toList();
     }
 
     /**

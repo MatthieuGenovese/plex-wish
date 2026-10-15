@@ -1,5 +1,6 @@
 package fr.plexwish.animeserver.library.scan;
 
+import fr.plexwish.animeserver.library.subs.ExternalSubtitleRepository;
 import fr.plexwish.animeserver.library.parse.SubtitleNames;
 import fr.plexwish.animeserver.library.subs.ExternalSubtitleService;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -9,10 +10,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +34,8 @@ class SubtitleSync {
 
     @Inject
     ExternalSubtitleService subtitles;
+    @Inject
+    ExternalSubtitleRepository repository;
 
     private record Known(long size, OffsetDateTime modified, Long cueSize, OffsetDateTime cueModified, BigDecimal lastCue) {
     }
@@ -51,37 +51,22 @@ class SubtitleSync {
         Map<String, Long> sameName = new HashMap<>();
         Map<String, Long> episodes = new HashMap<>();
         Map<String, Integer> lastEpisodes = new HashMap<>();
-        try (Statement st = c.createStatement()) {
-            try (ResultSet rs = st.executeQuery("""
-                    SELECT relative_path, file_size, last_modified, cue_size, cue_modified, last_cue_seconds FROM external_subtitle""")) {
-                while (rs.next()) {
-                    known.put(rs.getString(1), new Known(rs.getLong(2), rs.getObject(3, OffsetDateTime.class),
-                            (Long) rs.getObject(4), rs.getObject(5, OffsetDateTime.class), rs.getBigDecimal(6)));
-                }
+        for (ExternalSubtitleRepository.KnownSubtitle k : repository.known(c)) {
+            known.put(k.relativePath(), new Known(k.size(), k.modified(), k.cueSize(), k.cueModified(), k.lastCue()));
+        }
+        for (ExternalSubtitleRepository.SubtitleOverride o : repository.overrides(c)) {
+            overrides.put(o.relativePath(), new Manual(o.episodeId()));
+        }
+        if (!found.isEmpty()) {
+            for (ExternalSubtitleRepository.VideoEpisode v : repository.linkedVideos(c)) {
+                String path = v.relativePath();
+                int slash = path.lastIndexOf('/');
+                String dir = slash < 0 ? "" : path.substring(0, slash);
+                sameName.put(dir + '\0' + SubtitleNames.videoStem(path.substring(slash + 1)), v.episodeId());
             }
-            try (ResultSet rs = st.executeQuery("SELECT relative_path, episode_id FROM external_subtitle_override")) {
-                while (rs.next()) {
-                    overrides.put(rs.getString(1), new Manual((Long) rs.getObject(2)));
-                }
-            }
-            if (!found.isEmpty()) {
-                try (ResultSet rs = st.executeQuery("""
-                        SELECT m.relative_path, e.id FROM media_file m JOIN episode e ON e.media_file_id = m.id WHERE m.available""")) {
-                    while (rs.next()) {
-                        String path = rs.getString(1);
-                        int slash = path.lastIndexOf('/');
-                        String dir = slash < 0 ? "" : path.substring(0, slash);
-                        sameName.put(dir + '\0' + SubtitleNames.videoStem(path.substring(slash + 1)), rs.getLong(2));
-                    }
-                }
-                try (ResultSet rs = st.executeQuery("""
-                        SELECT a.normalized_title, s.season_number, e.episode_number, e.id
-                        FROM episode e JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id""")) {
-                    while (rs.next()) {
-                        episodes.put(rs.getString(1) + '|' + rs.getInt(2) + '|' + rs.getInt(3), rs.getLong(4));
-                        lastEpisodes.merge(rs.getString(1) + '|' + rs.getInt(2), rs.getInt(3), Math::max);
-                    }
-                }
+            for (ExternalSubtitleRepository.EpisodeKey e : repository.episodeKeys(c)) {
+                episodes.put(e.normalizedTitle() + '|' + e.seasonNumber() + '|' + e.episodeNumber(), e.episodeId());
+                lastEpisodes.merge(e.normalizedTitle() + '|' + e.seasonNumber(), e.episodeNumber(), Math::max);
             }
         }
         ExternalSubtitleService.Lookup lookup = new ExternalSubtitleService.Lookup() {
@@ -101,8 +86,7 @@ class SubtitleSync {
             }
         };
 
-        List<Object> params = new ArrayList<>();
-        int rows = 0;
+        List<ExternalSubtitleRepository.ScannedSubtitle> rows = new ArrayList<>();
         for (LibraryScanner.Found f : found) {
             stats.externalSubtitles++;
             Manual o = overrides.get(f.path());
@@ -131,70 +115,30 @@ class SubtitleSync {
                 lastCue = d.isPresent() ? BigDecimal.valueOf(d.getAsDouble()).setScale(3, RoundingMode.HALF_UP) : null;
             }
             String name = f.fileName();
-            params.add(f.path());
-            params.add(name);
-            params.add(f.size());
-            params.add(f.modified());
-            params.add(scanTime);
-            params.add(link.episodeId());
-            params.add(link.match());
-            params.add(SubtitleNames.forced(name));
-            params.add(SubtitleNames.language(name).orElse(null));
-            params.add(lastCue);
-            params.add(f.size());
-            params.add(f.modified());
-            if (++rows == 500) {
-                upsert(c, rows, params);
-                params.clear();
-                rows = 0;
+            rows.add(new ExternalSubtitleRepository.ScannedSubtitle(f.path(), name, f.size(), f.modified(), link.episodeId(),
+                    link.match(), SubtitleNames.forced(name), SubtitleNames.language(name).orElse(null), lastCue));
+            if (rows.size() == 500) {
+                repository.upsertScanned(c, rows, scanTime);
+                rows.clear();
             }
         }
-        if (rows > 0) {
-            upsert(c, rows, params);
+        if (!rows.isEmpty()) {
+            repository.upsertScanned(c, rows, scanTime);
         }
-        try (PreparedStatement st = c.prepareStatement(
-                "UPDATE external_subtitle SET available = FALSE WHERE available AND last_seen_at < ?")) {
-            st.setObject(1, scanTime);
-            st.executeUpdate();
-        }
+        repository.markUnavailable(c, scanTime);
         issues.addAll(durationIssues(c, stats));
         return issues;
     }
 
-    private static void upsert(Connection c, int rows, List<Object> params) throws SQLException {
-        String sql = "INSERT INTO external_subtitle (relative_path, file_name, file_size, last_modified, last_seen_at, episode_id,"
-                + " match, forced, language, last_cue_seconds, cue_size, cue_modified, available) VALUES "
-                + Sql.values(rows, "?", "?", "?", "?", "?", "?::bigint", "?", "?", "?", "?::numeric", "?", "?", "TRUE")
-                + " ON CONFLICT (relative_path) DO UPDATE SET file_name = EXCLUDED.file_name, file_size = EXCLUDED.file_size,"
-                + " last_modified = EXCLUDED.last_modified, last_seen_at = EXCLUDED.last_seen_at, episode_id = EXCLUDED.episode_id,"
-                + " match = EXCLUDED.match, forced = EXCLUDED.forced, language = EXCLUDED.language,"
-                + " last_cue_seconds = EXCLUDED.last_cue_seconds, cue_size = EXCLUDED.cue_size, cue_modified = EXCLUDED.cue_modified,"
-                + " available = TRUE";
-        try (PreparedStatement st = Sql.prepare(c, sql, params)) {
-            st.executeUpdate();
-        }
-    }
-
     /** Sous-titres dont le dernier texte arrive nettement après la fin de la vidéo (durée connue par l'analyse ffprobe). */
-    private static List<LibraryScanner.Issue> durationIssues(Connection c, ScanStats stats) throws SQLException {
+    private List<LibraryScanner.Issue> durationIssues(Connection c, ScanStats stats) throws SQLException {
         List<LibraryScanner.Issue> issues = new ArrayList<>();
-        try (PreparedStatement st = c.prepareStatement("""
-                SELECT x.relative_path, x.last_cue_seconds, p.duration_seconds, a.title, s.season_number, e.episode_number
-                FROM external_subtitle x JOIN episode e ON e.id = x.episode_id JOIN season s ON s.id = e.season_id
-                JOIN anime a ON a.id = s.anime_id JOIN media_probe p ON p.media_file_id = e.media_file_id
-                WHERE x.available AND x.last_cue_seconds IS NOT NULL AND p.duration_seconds IS NOT NULL
-                  AND x.last_cue_seconds > p.duration_seconds + greatest(?, p.duration_seconds * ?)
-                ORDER BY x.relative_path""")) {
-            st.setDouble(1, DURATION_MARGIN_SECONDS);
-            st.setDouble(2, DURATION_MARGIN_RATIO);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    stats.subtitleDurationIssues++;
-                    issues.add(new LibraryScanner.Issue(null, rs.getString(1), "SUBTITLE_DURATION", rs.getString(4),
-                            "dernier sous-titre à " + clock(rs.getDouble(2)) + ", vidéo de " + clock(rs.getDouble(3))
-                                    + " : mauvais épisode ?", rs.getInt(5), rs.getInt(6), null, null, null));
-                }
-            }
+        for (ExternalSubtitleRepository.DurationMismatch m
+                : repository.durationMismatches(c, DURATION_MARGIN_SECONDS, DURATION_MARGIN_RATIO)) {
+            stats.subtitleDurationIssues++;
+            issues.add(new LibraryScanner.Issue(null, m.relativePath(), "SUBTITLE_DURATION", m.animeTitle(),
+                    "dernier sous-titre à " + clock(m.lastCueSeconds()) + ", vidéo de " + clock(m.videoSeconds())
+                            + " : mauvais épisode ?", m.seasonNumber(), m.episodeNumber(), null, null, null));
         }
         return issues;
     }

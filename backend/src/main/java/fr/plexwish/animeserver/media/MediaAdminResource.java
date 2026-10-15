@@ -3,7 +3,6 @@ package fr.plexwish.animeserver.media;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.plexwish.animeserver.common.ApiException;
-import io.agroal.api.AgroalDataSource;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.Max;
@@ -18,9 +17,6 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,7 +61,9 @@ public class MediaAdminResource {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    MediaProbeRepository probes;
+    @Inject
+    RemuxRepository remuxJobs;
     @Inject
     MediaConfig config;
     @Inject
@@ -79,47 +77,19 @@ public class MediaAdminResource {
     @Inject
     RemuxCache remuxCache;
 
-    private static final String FILES = " FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id WHERE f.available AND f.kind = 'EPISODE'";
-    private static final String PENDING = "(p.media_file_id IS NULL OR p.probed_size <> f.file_size OR p.probed_modified IS DISTINCT FROM f.last_modified)";
-
     @GET
     @Path("/summary")
     public Summary summary() throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            long[] counts;
-            try (PreparedStatement st = c.prepareStatement("SELECT count(*), count(*) FILTER (WHERE " + PENDING
-                    + "), count(*) FILTER (WHERE NOT " + PENDING + " AND p.status = 'OK'), count(*) FILTER (WHERE NOT "
-                    + PENDING + " AND p.status = 'FAILED'), count(*) FILTER (WHERE p.browser_playable AND NOT " + PENDING
-                    + "), count(*) FILTER (WHERE NOT p.browser_playable AND NOT " + PENDING
-                    + "), coalesce(sum(f.file_size) FILTER (WHERE p.android_class = 'REMUX'), 0)" + FILES);
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                counts = new long[]{rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7)};
-            }
-            Map<String, Long> android = new LinkedHashMap<>();
-            for (MediaRules.Android a : MediaRules.Android.values()) {
-                android.put(a.name(), 0L);
-            }
-            try (PreparedStatement st = c.prepareStatement("SELECT p.android_class, count(*)" + FILES
-                    + " AND p.android_class IS NOT NULL AND NOT " + PENDING + " GROUP BY 1");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    android.put(rs.getString(1), rs.getLong(2));
-                }
-            }
-            long episodes;
-            long withDuration;
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT count(*), count(*) FILTER (WHERE e.duration_seconds IS NOT NULL)
-                    FROM episode e JOIN media_file f ON f.id = e.media_file_id WHERE f.available""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                episodes = rs.getLong(1);
-                withDuration = rs.getLong(2);
-            }
-            return new Summary(config.probeEnabled(), service.ffprobeVersion(), worker.state(), counts[0], counts[2], counts[3],
-                    counts[1], android, counts[4], counts[5], android.get("REMUX"), counts[6], episodes, withDuration);
+        MediaProbeRepository.ProbeCounts counts = probes.probeCounts();
+        Map<String, Long> android = new LinkedHashMap<>();
+        for (MediaRules.Android a : MediaRules.Android.values()) {
+            android.put(a.name(), 0L);
         }
+        android.putAll(probes.androidClassCounts());
+        MediaProbeRepository.DurationCounts durations = probes.durationCounts();
+        return new Summary(config.probeEnabled(), service.ffprobeVersion(), worker.state(), counts.files(), counts.analyzed(),
+                counts.failed(), counts.pending(), android, counts.browserPlayable(), counts.browserNotPlayable(),
+                android.get("REMUX"), counts.remuxBytes(), durations.episodes(), durations.withDuration());
     }
 
     @GET
@@ -130,80 +100,38 @@ public class MediaAdminResource {
         if (filter != null && !FILTERS.contains(filter)) {
             throw new ApiException(400, "INVALID_FILTER", "Filtre inconnu : " + String.join(", ", FILTERS));
         }
-        String where = FILES + " AND (?::text IS NULL OR lower(unaccent(f.relative_path)) LIKE lower(unaccent(?)) ESCAPE '!')"
-                + switch (filter == null ? "" : filter) {
-                    case "pending" -> " AND " + PENDING;
-                    case "failed" -> " AND NOT " + PENDING + " AND p.status = 'FAILED'";
-                    case "browser-ko" -> " AND NOT " + PENDING + " AND p.browser_playable = FALSE";
-                    case "browser-ok" -> " AND NOT " + PENDING + " AND p.browser_playable";
-                    case "" -> "";
-                    default -> " AND NOT " + PENDING + " AND p.android_class = '" + MediaRules.Android.valueOf(filter).name() + "'";
-                };
         String like = q == null || q.isBlank() ? null : "%" + q.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        try (Connection c = dataSource.getConnection()) {
-            long total;
-            try (PreparedStatement st = c.prepareStatement("SELECT count(*)" + where)) {
-                st.setString(1, like);
-                st.setString(2, like);
-                try (ResultSet rs = st.executeQuery()) {
-                    rs.next();
-                    total = rs.getLong(1);
-                }
-            }
-            List<Entry> items = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT f.id, f.relative_path, a.title, s.season_number, e.episode_number, f.container, f.file_size,
-                           CASE WHEN """ + PENDING + """
-                     THEN 'PENDING' ELSE p.status END, p.error, p.duration_seconds,
-                           p.video_codec, p.video_profile, p.video_bit_depth, p.width, p.height, p.audio::text, p.subtitles::text,
-                           p.android_class, p.android_reasons, p.browser_playable, p.browser_reasons,
-                           (SELECT json_agg(json_build_object('variant', r.variant, 'ok', r.ok, 'exitCode', r.exit_code,
-                                   'timedOut', r.timed_out, 'elapsedMs', r.elapsed_ms, 'message', r.message) ORDER BY r.variant)
-                            FROM remux_test_result r WHERE r.media_file_id = f.id)::text,
-                           a.id, (SELECT j.status FROM remux_job j WHERE j.media_file_id = f.id),
-                           (SELECT j.error FROM remux_job j WHERE j.media_file_id = f.id)
-                    """ + where.replace(" FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id",
-                    " FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id LEFT JOIN episode e ON e.media_file_id = f.id"
-                            + " LEFT JOIN season s ON s.id = e.season_id LEFT JOIN anime a ON a.id = s.anime_id")
-                    + " ORDER BY f.relative_path LIMIT ? OFFSET ?")) {
-                st.setString(1, like);
-                st.setString(2, like);
-                st.setInt(3, size);
-                st.setLong(4, (long) page * size);
-                try (ResultSet rs = st.executeQuery()) {
-                    while (rs.next()) {
-                        items.add(entry(rs));
-                    }
-                }
-            }
-            return new EntryPage(total, page, size, items);
+        long total = probes.countFiles(filter, like);
+        List<Entry> items = new ArrayList<>();
+        for (MediaProbeRepository.FileRow r : probes.files(filter, like, size, (long) page * size)) {
+            items.add(entry(r));
         }
+        return new EntryPage(total, page, size, items);
     }
 
-    private static Entry entry(ResultSet rs) throws SQLException {
-        String codec = rs.getString(11);
+    private static Entry entry(MediaProbeRepository.FileRow r) {
+        String codec = r.videoCodec();
         String video = null;
         if (codec != null) {
-            Integer bits = (Integer) rs.getObject(13);
-            video = MediaRules.label(codec) + (rs.getString(12) != null ? " " + rs.getString(12) : "")
+            Integer bits = r.videoBitDepth();
+            video = MediaRules.label(codec) + (r.videoProfile() != null ? " " + r.videoProfile() : "")
                     + (bits != null && bits > 8 ? " " + bits + " bits" : "")
-                    + (rs.getObject(14) != null ? " " + rs.getInt(14) + "×" + rs.getInt(15) : "");
+                    + (r.width() != null ? " " + r.width() + "×" + r.height() : "");
         }
-        java.math.BigDecimal d = rs.getBigDecimal(10);
+        java.math.BigDecimal d = r.durationSeconds();
         List<TestResult> tests = List.of();
         try {
-            if (rs.getString(22) != null) {
-                tests = JSON.readValue(rs.getString(22), new TypeReference<>() {
+            if (r.remuxTestsJson() != null) {
+                tests = JSON.readValue(r.remuxTestsJson(), new TypeReference<>() {
                 });
             }
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
-        Boolean browser = (Boolean) rs.getObject(20);
-        return new Entry(rs.getLong(1), rs.getString(2), (Long) rs.getObject(23), rs.getString(3), (Integer) rs.getObject(4),
-                (Integer) rs.getObject(5), rs.getString(6), rs.getLong(7), rs.getString(8), rs.getString(9),
-                d == null ? null : d.doubleValue(), video, tracks(rs.getString(16), true), tracks(rs.getString(17), false),
-                rs.getString(18), rs.getString(19), browser, rs.getString(21), tests, rs.getString(24), rs.getString(25));
+        return new Entry(r.mediaFileId(), r.path(), r.animeId(), r.animeTitle(), r.seasonNumber(), r.episodeNumber(),
+                r.extension(), r.fileSize(), r.status(), r.error(), d == null ? null : d.doubleValue(), video,
+                tracks(r.audioJson(), true), tracks(r.subtitlesJson(), false), r.androidClass(), r.androidReasons(),
+                r.browserPlayable(), r.browserReasons(), tests, r.remuxStatus(), r.remuxError());
     }
 
     /** Pistes en une ligne : « AAC 2 ch (jpn) · MP3 » / « ASS (fre, par défaut) · PGS (fre) ». */
@@ -329,32 +257,14 @@ public class MediaAdminResource {
     @GET
     @Path("/remux")
     public RemuxSummary remuxSummary() throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            long[] n = new long[4];
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT coalesce(sum(bytes) FILTER (WHERE status = 'READY'), 0), count(*) FILTER (WHERE status = 'READY'),
-                           count(*) FILTER (WHERE status IN ('QUEUED', 'RUNNING')), count(*) FILTER (WHERE status = 'FAILED')
-                    FROM remux_job""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                for (int i = 0; i < 4; i++) {
-                    n[i] = rs.getLong(i + 1);
-                }
-            }
-            List<RemuxQueueEntry> queue = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT j.media_file_id, f.relative_path, j.status, j.priority, j.blocked, j.requested_at
-                    FROM remux_job j JOIN media_file f ON f.id = j.media_file_id WHERE j.status IN ('QUEUED', 'RUNNING')
-                    ORDER BY j.status = 'RUNNING' DESC, j.priority, j.requested_at, j.media_file_id LIMIT 100""");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    queue.add(new RemuxQueueEntry(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5),
-                            remux.progressOf(rs.getLong(1)), rs.getObject(6, OffsetDateTime.class).toInstant()));
-                }
-            }
-            return new RemuxSummary(remux.usable(), remux.ffmpegVersion(), remuxCache.root().toString(), remux.maxBytes(), n[0],
-                    remuxCache.usableSpace(), n[1], n[2], n[3], queue);
+        RemuxRepository.JobTotals n = remuxJobs.totals();
+        List<RemuxQueueEntry> queue = new ArrayList<>();
+        for (RemuxRepository.QueueRow q : remuxJobs.queue()) {
+            queue.add(new RemuxQueueEntry(q.mediaFileId(), q.path(), q.status(), q.priority(), q.blocked(),
+                    remux.progressOf(q.mediaFileId()), q.requestedAt().toInstant()));
         }
+        return new RemuxSummary(remux.usable(), remux.ffmpegVersion(), remuxCache.root().toString(), remux.maxBytes(),
+                n.readyBytes(), remuxCache.usableSpace(), n.ready(), n.queued(), n.failed(), queue);
     }
 
     @GET
@@ -363,29 +273,10 @@ public class MediaAdminResource {
         if (status != null && !Set.of("READY", "FAILED", "QUEUED", "RUNNING").contains(status)) {
             throw new ApiException(400, "INVALID_FILTER", "Statut inconnu");
         }
-        List<RemuxJobEntry> out = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT j.media_file_id, f.relative_path, j.status, j.variant, j.bytes, j.requested_at, j.finished_at,
-                            j.last_read_at, j.attempts, j.next_attempt_at, j.error
-                     FROM remux_job j JOIN media_file f ON f.id = j.media_file_id
-                     WHERE (?::text IS NULL OR j.status = ?) ORDER BY coalesce(j.finished_at, j.requested_at) DESC LIMIT 500""")) {
-            st.setString(1, status);
-            st.setString(2, status);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    out.add(new RemuxJobEntry(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                            (Long) rs.getObject(5), instant(rs, 6), instant(rs, 7), instant(rs, 8), rs.getInt(9), instant(rs, 10),
-                            rs.getString(11)));
-                }
-            }
-        }
-        return out;
-    }
-
-    private static Instant instant(ResultSet rs, int i) throws SQLException {
-        OffsetDateTime t = rs.getObject(i, OffsetDateTime.class);
-        return t == null ? null : t.toInstant();
+        return remuxJobs.jobs(status).stream()
+                .map(j -> new RemuxJobEntry(j.mediaFileId(), j.path(), j.status(), j.variant(), j.bytes(), j.requestedAt(),
+                        j.finishedAt(), j.lastReadAt(), j.attempts(), j.nextAttemptAt(), j.error()))
+                .toList();
     }
 
     @POST
@@ -404,24 +295,13 @@ public class MediaAdminResource {
         List<long[]> files = new ArrayList<>();
         List<OffsetDateTime> modified = new ArrayList<>();
         long total = 0;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT f.id, f.file_size, f.last_modified, f.container, p.status, p.android_class
-                     FROM episode e JOIN season s ON s.id = e.season_id JOIN media_file f ON f.id = e.media_file_id AND f.available
-                     LEFT JOIN media_probe p ON p.media_file_id = f.id
-                     LEFT JOIN remux_job j ON j.media_file_id = f.id AND j.status IN ('READY', 'QUEUED', 'RUNNING')
-                     WHERE s.anime_id = ? AND j.media_file_id IS NULL ORDER BY s.season_number, e.episode_number""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    boolean needs = "OK".equals(rs.getString(5)) ? "REMUX".equals(rs.getString(6))
-                            : RemuxService.REMUX_EXTENSIONS.contains(rs.getString(4));
-                    if (needs) {
-                        files.add(new long[]{rs.getLong(1), rs.getLong(2)});
-                        modified.add(rs.getObject(3, OffsetDateTime.class));
-                        total += rs.getLong(2);
-                    }
-                }
+        for (RemuxRepository.PrepareCandidate f : remuxJobs.prepareCandidates(animeId)) {
+            boolean needs = "OK".equals(f.probeStatus()) ? "REMUX".equals(f.androidClass())
+                    : RemuxService.REMUX_EXTENSIONS.contains(f.extension());
+            if (needs) {
+                files.add(new long[]{f.mediaFileId(), f.size()});
+                modified.add(f.modified());
+                total += f.size();
             }
         }
         if (files.size() > PREPARE_MAX_FILES || RemuxService.needed(total) > remux.maxBytes() / 2) {

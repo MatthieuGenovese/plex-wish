@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.media;
 
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.ShutdownEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -9,9 +8,6 @@ import org.jboss.logging.Logger;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,7 +55,7 @@ public class RemuxTestService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    RemuxRepository repository;
     @Inject
     MediaConfig config;
     @Inject
@@ -134,9 +130,7 @@ public class RemuxTestService {
         if (running()) {
             return -1;
         }
-        try (Connection c = dataSource.getConnection(); PreparedStatement st = c.prepareStatement("DELETE FROM remux_test_result")) {
-            return st.executeUpdate();
-        }
+        return repository.deleteTestResults();
     }
 
     private void run() {
@@ -172,29 +166,18 @@ public class RemuxTestService {
 
     /** Prochain fichier « remux nécessaire » qui n'a pas de résultat pour toutes les commandes applicables. */
     Optional<Item> next() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT f.id, f.relative_path, f.file_size, p.video_codec,
-                            ARRAY(SELECT r.variant FROM remux_test_result r WHERE r.media_file_id = f.id)
-                     FROM media_probe p JOIN media_file f ON f.id = p.media_file_id
-                     WHERE f.available AND p.android_class = 'REMUX'
-                       AND (SELECT count(*) FROM remux_test_result r WHERE r.media_file_id = f.id)
-                           < CASE WHEN p.video_codec = 'mpeg4' THEN 2 ELSE 1 END
-                     ORDER BY f.id LIMIT 1""");
-             ResultSet rs = st.executeQuery()) {
-            if (!rs.next()) {
-                return Optional.empty();
-            }
-            List<String> done = List.of((String[]) rs.getArray(5).getArray());
-            String codec = rs.getString(4);
-            List<Variant> todo = new ArrayList<>();
-            for (Variant v : Variant.values()) {
-                if (v.appliesTo(codec) && !done.contains(v.name())) {
-                    todo.add(v);
-                }
-            }
-            return Optional.of(new Item(rs.getLong(1), rs.getString(2), rs.getLong(3), codec, todo));
+        Optional<RemuxRepository.TestCandidate> next = repository.nextTestCandidate();
+        if (next.isEmpty()) {
+            return Optional.empty();
         }
+        RemuxRepository.TestCandidate t = next.get();
+        List<Variant> todo = new ArrayList<>();
+        for (Variant v : Variant.values()) {
+            if (v.appliesTo(t.videoCodec()) && !t.variantsDone().contains(v.name())) {
+                todo.add(v);
+            }
+        }
+        return Optional.of(new Item(t.mediaFileId(), t.relativePath(), t.size(), t.videoCodec(), todo));
     }
 
     /** La commande exacte (sans shell) ; sortie MKV vers /dev/null : ffmpeg fabrique le fichier puis le jette. */
@@ -239,23 +222,8 @@ public class RemuxTestService {
     }
 
     private void save(Item item, Variant v, boolean ok, Integer exit, boolean timedOut, long ms, String message) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO remux_test_result (media_file_id, variant, ok, exit_code, timed_out, elapsed_ms, bytes, message)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                     ON CONFLICT (media_file_id, variant) DO UPDATE SET ok = EXCLUDED.ok, exit_code = EXCLUDED.exit_code,
-                         timed_out = EXCLUDED.timed_out, elapsed_ms = EXCLUDED.elapsed_ms, bytes = EXCLUDED.bytes,
-                         message = EXCLUDED.message, tested_at = now()""")) {
-            st.setLong(1, item.mediaFileId());
-            st.setString(2, v.name());
-            st.setBoolean(3, ok);
-            st.setObject(4, exit, java.sql.Types.INTEGER);
-            st.setBoolean(5, timedOut);
-            st.setLong(6, ms);
-            st.setLong(7, item.size());
-            st.setString(8, message == null || message.isBlank() ? null : message);
-            st.executeUpdate();
-        }
+        repository.saveTestResult(item.mediaFileId(), v.name(), ok, exit, timedOut, ms, item.size(),
+                message == null || message.isBlank() ? null : message);
     }
 
     public Status status() throws SQLException {
@@ -267,30 +235,13 @@ public class RemuxTestService {
         for (Variant v : Variant.values()) {
             per.put(v.name(), new long[]{0, 0});
         }
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT count(*), coalesce(sum(f.file_size), 0) FROM media_probe p JOIN media_file f ON f.id = p.media_file_id
-                    WHERE f.available AND p.android_class = 'REMUX'""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                total = rs.getLong(1);
-                bytesTotal = rs.getLong(2);
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT count(*), coalesce(sum(f.file_size), 0) FROM media_file f
-                    WHERE EXISTS (SELECT 1 FROM remux_test_result r WHERE r.media_file_id = f.id AND r.variant = 'GENPTS')""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                done = rs.getLong(1);
-                bytesDone = rs.getLong(2);
-            }
-            try (PreparedStatement st = c.prepareStatement("SELECT variant, count(*) FILTER (WHERE ok), count(*) FILTER (WHERE NOT ok) FROM remux_test_result GROUP BY 1");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    per.put(rs.getString(1), new long[]{rs.getLong(2), rs.getLong(3)});
-                }
-            }
-        }
+        RemuxRepository.CountAndBytes needed = repository.remuxNeeded();
+        total = needed.count();
+        bytesTotal = needed.bytes();
+        RemuxRepository.CountAndBytes tested = repository.tested();
+        done = tested.count();
+        bytesDone = tested.bytes();
+        per.putAll(repository.testResultsByVariant());
         Long left = null;
         if (running() && msThisRun > 0 && bytesThisRun > 0) {
             // Débit mesuré pendant ce passage (toutes commandes confondues), appliqué à ce qui reste.

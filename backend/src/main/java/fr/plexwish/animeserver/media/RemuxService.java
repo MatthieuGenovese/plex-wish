@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.media;
 
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -10,11 +9,7 @@ import org.jboss.logging.Logger;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -75,7 +70,7 @@ public class RemuxService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    RemuxRepository repository;
     @Inject
     MediaConfig config;
     @Inject
@@ -132,27 +127,17 @@ public class RemuxService {
      */
     void recover() throws SQLException {
         Set<String> keep = new HashSet<>();
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("UPDATE remux_job SET status = 'QUEUED', started_at = NULL WHERE status = 'RUNNING'")) {
-                st.executeUpdate();
+        repository.requeueRunning();
+        List<Long> lost = new ArrayList<>();
+        for (RemuxRepository.CachedCopy copy : repository.readyCopies(config.remuxInUse().toSeconds())) {
+            if (cache.existing(copy.key()).isPresent()) {
+                keep.add(copy.key());
+            } else {
+                lost.add(copy.mediaFileId());
             }
-            List<Long> lost = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement("SELECT media_file_id, cache_key FROM remux_job WHERE status = 'READY'");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    if (cache.existing(rs.getString(2)).isPresent()) {
-                        keep.add(rs.getString(2));
-                    } else {
-                        lost.add(rs.getLong(1));
-                    }
-                }
-            }
-            for (long id : lost) {
-                try (PreparedStatement st = c.prepareStatement("DELETE FROM remux_job WHERE media_file_id = ?")) {
-                    st.setLong(1, id);
-                    st.executeUpdate();
-                }
-            }
+        }
+        for (long id : lost) {
+            repository.delete(id);
         }
         int removed = cache.sweep(keep);
         if (removed > 0) {
@@ -169,11 +154,8 @@ public class RemuxService {
         if (current != null) {
             return true;
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT 1 FROM remux_job WHERE status = 'QUEUED' AND blocked IS NULL"
-                     + " AND (next_attempt_at IS NULL OR next_attempt_at <= now()) LIMIT 1");
-             ResultSet rs = st.executeQuery()) {
-            return rs.next();
+        try {
+            return repository.hasRunnableQueued();
         } catch (SQLException e) {
             return false;
         }
@@ -203,14 +185,9 @@ public class RemuxService {
 
     /** Ce fichier doit-il être remuxé pour Android ? (analyse : « remux nécessaire » ; sans analyse : AVI / OGM). */
     public boolean needsRemux(long mediaFileId, String extension) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT status, android_class FROM media_probe WHERE media_file_id = ?")) {
-            st.setLong(1, mediaFileId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (rs.next() && "OK".equals(rs.getString(1))) {
-                    return "REMUX".equals(rs.getString(2));
-                }
-            }
+        Optional<RemuxRepository.ProbeClass> probed = repository.probeClass(mediaFileId);
+        if (probed.isPresent() && "OK".equals(probed.get().status())) {
+            return "REMUX".equals(probed.get().androidClass());
         }
         return extension != null && REMUX_EXTENSIONS.contains(extension.toLowerCase(Locale.ROOT));
     }
@@ -275,28 +252,11 @@ public class RemuxService {
         long aheadBytes = 0;
         int position = 0;
         Double p = progress.get(self.mediaFileId());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT media_file_id, status, source_size FROM remux_job
-                     WHERE status IN ('QUEUED', 'RUNNING') AND blocked IS NULL AND media_file_id <> ?
-                       AND (status = 'RUNNING' OR (next_attempt_at IS NULL OR next_attempt_at <= now()))
-                       AND (status = 'RUNNING' OR priority < ? OR (priority = ? AND requested_at < ?)
-                            OR (priority = ? AND requested_at = ? AND media_file_id < ?))""")) {
-            OffsetDateTime requested = requestedAt(self.mediaFileId());
-            st.setLong(1, self.mediaFileId());
-            st.setInt(2, self.priority());
-            st.setInt(3, self.priority());
-            st.setObject(4, requested);
-            st.setInt(5, self.priority());
-            st.setObject(6, requested);
-            st.setLong(7, self.mediaFileId());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    position++;
-                    double done = "RUNNING".equals(rs.getString(2)) ? progress.getOrDefault(rs.getLong(1), 0.0) : 0;
-                    aheadBytes += (long) (rs.getLong(3) * (1 - done));
-                }
-            }
+        OffsetDateTime requested = requestedAt(self.mediaFileId());
+        for (RemuxRepository.Pending r : repository.ahead(self.mediaFileId(), self.priority(), requested)) {
+            position++;
+            double done = "RUNNING".equals(r.status()) ? progress.getOrDefault(r.mediaFileId(), 0.0) : 0;
+            aheadBytes += (long) (r.sourceSize() * (1 - done));
         }
         if ("RUNNING".equals(self.status())) {
             position = 0;
@@ -310,13 +270,7 @@ public class RemuxService {
     }
 
     private OffsetDateTime requestedAt(long id) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT requested_at FROM remux_job WHERE media_file_id = ?")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? rs.getObject(1, OffsetDateTime.class) : OffsetDateTime.now();
-            }
-        }
+        return repository.requestedAt(id).orElseGet(OffsetDateTime::now);
     }
 
     /** Copie servie pour {@code /api/stream/{id}/remux} : seulement prête, même source, fichier présent. */
@@ -340,11 +294,7 @@ public class RemuxService {
             return;
         }
         lastReadWrite.put(key, Instant.now());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE remux_job SET last_read_at = now() WHERE media_file_id = ?")) {
-            st.setLong(1, mediaFileId);
-            st.executeUpdate();
-        }
+        repository.touchRead(mediaFileId);
     }
 
     private void wakeAndYield() {
@@ -357,55 +307,20 @@ public class RemuxService {
     // --- Base ------------------------------------------------------------------------------------------------------
 
     Optional<Job> job(long mediaFileId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT media_file_id, status, priority, cache_key, source_size, source_modified, variant, last_read_at,
-                            next_attempt_at, blocked, error, attempts FROM remux_job WHERE media_file_id = ?""")) {
-            st.setLong(1, mediaFileId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                OffsetDateTime lr = rs.getObject(8, OffsetDateTime.class);
-                OffsetDateTime na = rs.getObject(9, OffsetDateTime.class);
-                return Optional.of(new Job(rs.getLong(1), rs.getString(2), rs.getInt(3), rs.getString(4), rs.getLong(5),
-                        rs.getObject(6, OffsetDateTime.class), rs.getString(7), lr == null ? null : lr.toInstant(),
-                        na == null ? null : na.toInstant(), rs.getString(10), rs.getString(11), rs.getInt(12)));
-            }
-        }
+        return repository.job(mediaFileId);
     }
 
     private void insert(long id, String key, long size, OffsetDateTime modified, int priority) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO remux_job (media_file_id, status, priority, cache_key, source_size, source_modified)
-                     VALUES (?, 'QUEUED', ?, ?, ?, ?) ON CONFLICT (media_file_id) DO NOTHING""")) {
-            st.setLong(1, id);
-            st.setInt(2, priority);
-            st.setString(3, key);
-            st.setLong(4, size);
-            st.setObject(5, modified);
-            st.executeUpdate();
-        }
+        repository.insert(id, key, size, modified, priority);
     }
 
     /** Remet en file ({@code resetAttempts} : « relancer » de l'admin). */
     void requeue(long id, int priority, boolean resetAttempts) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE remux_job SET status = 'QUEUED', priority = LEAST(priority, ?),"
-                     + " next_attempt_at = NULL, blocked = NULL" + (resetAttempts ? ", attempts = 0, error = NULL" : "")
-                     + " WHERE media_file_id = ? AND status IN ('QUEUED', 'FAILED')")) {
-            st.setInt(1, priority);
-            st.setLong(2, id);
-            st.executeUpdate();
-        }
+        repository.requeue(id, priority, resetAttempts);
     }
 
     private void delete(long id) throws SQLException {
-        try (Connection c = dataSource.getConnection(); PreparedStatement st = c.prepareStatement("DELETE FROM remux_job WHERE media_file_id = ?")) {
-            st.setLong(1, id);
-            st.executeUpdate();
-        }
+        repository.delete(id);
     }
 
     // --- Exécution ------------------------------------------------------------------------------------------------
@@ -438,19 +353,7 @@ public class RemuxService {
 
     /** Prochain remux : demandes des utilisateurs d'abord, puis préparations de l'admin, dans l'ordre d'arrivée. */
     Optional<Job> claim() throws SQLException {
-        Long id = null;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE remux_job SET status = 'RUNNING', started_at = now(), blocked = NULL
-                     WHERE media_file_id = (SELECT media_file_id FROM remux_job WHERE status = 'QUEUED'
-                         AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-                         ORDER BY priority, requested_at, media_file_id LIMIT 1 FOR UPDATE SKIP LOCKED)
-                     RETURNING media_file_id""");
-             ResultSet rs = st.executeQuery()) {
-            if (rs.next()) {
-                id = rs.getLong(1);
-            }
-        }
+        Long id = repository.claimNext().orElse(null);
         return id == null ? Optional.empty() : job(id);
     }
 
@@ -468,8 +371,8 @@ public class RemuxService {
         current = job.mediaFileId();
         progress.put(job.mediaFileId(), 0.0);
         try {
-            Optional<String[]> src = source(job.mediaFileId());
-            Optional<Path> file = src.flatMap(s -> probe.resolve(s[0]));
+            Optional<RemuxRepository.Source> src = repository.source(job.mediaFileId());
+            Optional<Path> file = src.flatMap(s -> probe.resolve(s.relativePath()));
             if (file.isEmpty()) {
                 fail(job, "fichier source introuvable", true);
                 return;
@@ -489,7 +392,7 @@ public class RemuxService {
                 }
             }
             Double sourceDuration = sourceDuration(job.mediaFileId(), file.get());
-            String codec = src.get()[1];
+            String codec = src.get().videoCodec();
             List<RemuxTestService.Variant> order = variants(job.mediaFileId(), codec);
             String lastError = null;
             for (RemuxTestService.Variant v : order) {
@@ -523,37 +426,17 @@ public class RemuxService {
         if (needed > max) {
             return Room.TOO_BIG;
         }
-        List<Object[]> candidates = new ArrayList<>();
-        long used;
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("SELECT coalesce(sum(bytes), 0) FROM remux_job WHERE status = 'READY'");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                used = rs.getLong(1);
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT media_file_id, cache_key, coalesce(bytes, 0) FROM remux_job
-                    WHERE status = 'READY' AND cache_key <> ?
-                      AND (last_read_at IS NULL OR last_read_at < now() - make_interval(secs => ?))
-                    ORDER BY coalesce(last_read_at, finished_at) NULLS FIRST, media_file_id""")) {
-                st.setString(1, exceptKey);
-                st.setLong(2, config.remuxInUse().toSeconds());
-                try (ResultSet rs = st.executeQuery()) {
-                    while (rs.next()) {
-                        candidates.add(new Object[]{rs.getLong(1), rs.getString(2), rs.getLong(3)});
-                    }
-                }
-            }
-        }
+        long used = repository.readyBytes();
+        List<RemuxRepository.CachedCopy> candidates = repository.evictionCandidates(exceptKey, config.remuxInUse().toSeconds());
         long free = cache.usableSpace();
         int i = 0;
         while ((used + needed > max || (free >= 0 && free - reserve < needed)) && i < candidates.size()) {
-            Object[] victim = candidates.get(i++);
-            cache.delete((String) victim[1]);
-            delete((Long) victim[0]);
-            used -= (Long) victim[2];
+            RemuxRepository.CachedCopy victim = candidates.get(i++);
+            cache.delete(victim.key());
+            delete(victim.mediaFileId());
+            used -= victim.bytes();
             free = cache.usableSpace();
-            LOG.infof("Remux : copie %d effacée du cache (la moins récemment lue)", (Long) victim[0]);
+            LOG.infof("Remux : copie %d effacée du cache (la moins récemment lue)", victim.mediaFileId());
         }
         return used + needed <= max && (free < 0 || free - reserve >= needed) ? Room.OK : Room.FULL;
     }
@@ -566,17 +449,11 @@ public class RemuxService {
                 all.add(v);
             }
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "SELECT variant FROM remux_test_result WHERE media_file_id = ? AND ok ORDER BY variant")) {
-            st.setLong(1, mediaFileId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (rs.next()) {
-                    RemuxTestService.Variant best = RemuxTestService.Variant.valueOf(rs.getString(1));
-                    all.remove(best);
-                    all.add(0, best);
-                }
-            }
+        Optional<String> tested = repository.successfulTestVariant(mediaFileId);
+        if (tested.isPresent()) {
+            RemuxTestService.Variant best = RemuxTestService.Variant.valueOf(tested.get());
+            all.remove(best);
+            all.add(0, best);
         }
         return all;
     }
@@ -640,18 +517,9 @@ public class RemuxService {
         if (r.elapsedMs() > 1000) {
             bytesPerMs = 0.7 * bytesPerMs + 0.3 * ((double) job.sourceSize() / r.elapsedMs());
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE remux_job SET status = 'READY', variant = ?, bytes = ?, duration_seconds = ?, finished_at = now(),
-                         error = ?, blocked = NULL, next_attempt_at = NULL WHERE media_file_id = ?""")) {
-            st.setString(1, v.name());
-            st.setLong(2, bytes);
-            st.setObject(3, verifiedDuration, Types.NUMERIC);
-            String warn = probe.clean(r.stderrTail(), input);
-            st.setString(4, warn == null || warn.isBlank() ? null : "avertissement : " + lastLine(warn));
-            st.setLong(5, id);
-            st.executeUpdate();
-        }
+        String warn = probe.clean(r.stderrTail(), input);
+        repository.markReady(id, v.name(), bytes, verifiedDuration,
+                warn == null || warn.isBlank() ? null : "avertissement : " + lastLine(warn));
         LOG.infof("Remux : copie prête pour le fichier %d (%s, %d Mo, %d ms)", id, v.name(), bytes / MB, r.elapsedMs());
         return null;
     }
@@ -691,14 +559,9 @@ public class RemuxService {
 
     /** Durée de l'original : analyse 9.1, sinon ffprobe tout de suite (fichier pas encore analysé). */
     private Double sourceDuration(long id, Path file) throws SQLException, InterruptedException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT duration_seconds FROM media_probe WHERE media_file_id = ? AND status = 'OK'")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                if (rs.next() && rs.getBigDecimal(1) != null) {
-                    return rs.getBigDecimal(1).doubleValue();
-                }
-            }
+        Optional<java.math.BigDecimal> probed = repository.probedDuration(id);
+        if (probed.isPresent()) {
+            return probed.get().doubleValue();
         }
         try {
             ProcessRunner.Result r = ProcessRunner.run(List.of(config.ffprobePath(), "-v", "error", "-hide_banner", "-show_format",
@@ -709,45 +572,17 @@ public class RemuxService {
         }
     }
 
-    /** {chemin relatif, codec vidéo analysé (ou null)} du fichier source, s'il est disponible. */
-    private Optional<String[]> source(long id) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT f.relative_path, p.video_codec FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id
-                     WHERE f.id = ? AND f.available""")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(new String[]{rs.getString(1), rs.getString(2)}) : Optional.empty();
-            }
-        }
-    }
-
     /** Échec : nouvel essai automatique espacé (10 min, 20 min, 40 min… 24 h au plus), jamais en boucle. */
     private void fail(Job job, String reason, boolean permanent) throws SQLException {
         LOG.warnf("Remux impossible pour le fichier %d : %s", job.mediaFileId(), reason);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE remux_job SET status = 'FAILED', attempts = attempts + 1, finished_at = now(), error = ?, blocked = NULL,
-                         next_attempt_at = CASE WHEN ? THEN now() + interval '1 day'
-                             ELSE now() + make_interval(mins => LEAST(1440, 10 * power(2, attempts)::int)) END
-                     WHERE media_file_id = ?""")) {
-            st.setString(1, reason == null ? "échec" : reason.length() > 600 ? reason.substring(0, 600) : reason);
-            st.setBoolean(2, permanent);
-            st.setLong(3, job.mediaFileId());
-            st.executeUpdate();
-        }
+        repository.markFailed(job.mediaFileId(),
+                reason == null ? "échec" : reason.length() > 600 ? reason.substring(0, 600) : reason, permanent);
     }
 
     /** Cache plein (tout est en cours de lecture) : la demande reste en file, retentée dans une minute. */
     private void block(Job job) throws SQLException {
         LOG.infof("Remux : cache plein (copies en cours de lecture), fichier %d en attente", job.mediaFileId());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE remux_job SET status = 'QUEUED', blocked = 'CACHE_FULL', started_at = NULL,
-                         next_attempt_at = now() + interval '1 minute' WHERE media_file_id = ?""")) {
-            st.setLong(1, job.mediaFileId());
-            st.executeUpdate();
-        }
+        repository.markBlocked(job.mediaFileId());
     }
 
     static String label(RemuxTestService.Variant v) {
@@ -817,25 +652,13 @@ public class RemuxService {
     public synchronized int[] clear() throws SQLException {
         int removed = 0;
         int kept = 0;
-        List<Object[]> ready = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT media_file_id, cache_key, last_read_at IS NOT NULL AND last_read_at >= now() - make_interval(secs => ?)
-                     FROM remux_job WHERE status = 'READY'""")) {
-            st.setLong(1, config.remuxInUse().toSeconds());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    ready.add(new Object[]{rs.getLong(1), rs.getString(2), rs.getBoolean(3)});
-                }
-            }
-        }
-        for (Object[] r : ready) {
-            if ((Boolean) r[2]) {
+        for (RemuxRepository.CachedCopy r : repository.readyCopies(config.remuxInUse().toSeconds())) {
+            if (r.inUse()) {
                 kept++;
                 continue;
             }
-            cache.delete((String) r[1]);
-            delete((Long) r[0]);
+            cache.delete(r.key());
+            delete(r.mediaFileId());
             removed++;
         }
         return new int[]{removed, kept};

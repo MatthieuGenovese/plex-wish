@@ -1,15 +1,12 @@
 package fr.plexwish.animeserver.progress;
 
-import io.agroal.api.AgroalDataSource;
+import fr.plexwish.animeserver.progress.ProgressRepository.Activity;
+import fr.plexwish.animeserver.progress.ProgressRepository.VisibleEpisode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -40,106 +37,46 @@ public class UpNextService {
         }
     }
 
-    /** Dernière activité de l'utilisateur sur un animé. */
-    private record Activity(long animeId, long episodeId, boolean completed, Instant updatedAt) {
-    }
-
-    private static final String VISIBLE_EPISODES = """
-            SELECT e.id, e.episode_number, e.title, s.id AS season_id, s.season_number, a.id AS anime_id, a.title AS anime_title,
-                   coalesce(e.duration_seconds, 0) AS duration,
-                   row_number() OVER (ORDER BY (s.season_number = 0), s.season_number, e.episode_number, e.id) AS rn
-            FROM episode e JOIN media_file m ON m.id = e.media_file_id AND m.available
-            JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
-            WHERE a.id = ?""";
-
     @Inject
-    AgroalDataSource dataSource;
+    ProgressRepository progress;
 
     /** Une entrée par animé en cours (dernière activité d'abord), au plus {@code limit}. Les animés finis sont absents. */
     public List<Target> continueWatching(long userId, int limit) throws SQLException {
         List<Target> out = new ArrayList<>();
-        try (Connection c = dataSource.getConnection()) {
-            for (Activity a : activities(c, userId, null)) {
-                if (out.size() >= limit) {
-                    break;
-                }
-                next(c, userId, a).ifPresent(out::add);
+        for (Activity a : progress.activities(userId, null)) {
+            if (out.size() >= limit) {
+                break;
             }
+            next(userId, a).ifPresent(out::add);
         }
         return out;
     }
 
     /** Épisode proposé sur la fiche d'un animé (jamais vide si l'animé a un épisode visible). */
     public Optional<Target> forAnime(long userId, long animeId) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            List<Activity> last = activities(c, userId, animeId);
-            if (!last.isEmpty()) {
-                Optional<Target> t = next(c, userId, last.get(0));
-                if (t.isPresent()) {
-                    return t;
-                }
-                return first(c, animeId, Kind.REWATCH);
+        List<Activity> last = progress.activities(userId, animeId);
+        if (!last.isEmpty()) {
+            Optional<Target> t = next(userId, last.get(0));
+            if (t.isPresent()) {
+                return t;
             }
-            return first(c, animeId, Kind.START);
+            return first(animeId, Kind.REWATCH);
         }
-    }
-
-    /** Dernière activité par animé (épisode commencé ou terminé), la plus récente d'abord. */
-    private List<Activity> activities(Connection c, long userId, Long animeId) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                SELECT anime_id, episode_id, completed, updated_at FROM (
-                    SELECT DISTINCT ON (s.anime_id) s.anime_id, e.id AS episode_id, p.completed, p.updated_at
-                    FROM playback_progress p JOIN episode e ON e.id = p.episode_id
-                    JOIN media_file m ON m.id = e.media_file_id AND m.available
-                    JOIN season s ON s.id = e.season_id
-                    WHERE p.user_id = ? AND (p.completed OR p.position_seconds > 0) AND (?::bigint IS NULL OR s.anime_id = ?)
-                    ORDER BY s.anime_id, p.updated_at DESC, e.id DESC) last
-                ORDER BY updated_at DESC, anime_id""")) {
-            st.setLong(1, userId);
-            st.setObject(2, animeId);
-            st.setObject(3, animeId);
-            List<Activity> list = new ArrayList<>();
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    list.add(new Activity(rs.getLong(1), rs.getLong(2), rs.getBoolean(3), instant(rs, 4)));
-                }
-            }
-            return list;
-        }
+        return first(animeId, Kind.START);
     }
 
     /**
      * Pas fini → cet épisode ; fini → le premier épisode suivant non terminé du même groupe (saisons normales ou
      * Spéciaux). Vide si l'animé est fini.
      */
-    private Optional<Target> next(Connection c, long userId, Activity a) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("WITH o AS (" + VISIBLE_EPISODES + """
-                ), cur AS (SELECT rn, season_number FROM o WHERE id = ?)
-                SELECT o.id, o.episode_number, o.title, o.season_id, o.season_number, o.anime_id, o.anime_title, o.duration,
-                       p.position_seconds, p.duration_seconds, p.completed, p.updated_at
-                FROM o CROSS JOIN cur LEFT JOIN playback_progress p ON p.episode_id = o.id AND p.user_id = ?
-                WHERE (o.id = ? AND ?) OR (NOT ? AND o.rn > cur.rn AND (o.season_number = 0) = (cur.season_number = 0)
-                                           AND NOT coalesce(p.completed, FALSE))
-                ORDER BY o.rn LIMIT 1""")) {
-            boolean current = !a.completed();
-            st.setLong(1, a.animeId());
-            st.setLong(2, a.episodeId());
-            st.setLong(3, userId);
-            st.setLong(4, a.episodeId());
-            st.setBoolean(5, current);
-            st.setBoolean(6, current);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                int position = rs.getInt(9);
-                boolean started = !rs.wasNull() && position > 0 && !rs.getBoolean(11);
-                int duration = started ? rs.getInt(10) : rs.getInt(8);
-                return Optional.of(new Target(started ? Kind.RESUME : Kind.NEXT, rs.getLong(1), rs.getInt(2), rs.getString(3),
-                        rs.getLong(4), rs.getInt(5), rs.getLong(6), rs.getString(7), started ? position : 0, duration,
-                        started ? instant(rs, 12) : a.updatedAt()));
-            }
-        }
+    private Optional<Target> next(long userId, Activity a) throws SQLException {
+        return progress.currentOrNextUnfinished(a.animeId(), a.episodeId(), userId, !a.completed()).map(c -> {
+            Integer position = c.positionSeconds();
+            boolean started = position != null && position > 0 && !c.completed();
+            int duration = started ? c.progressDurationSeconds() : c.episode().durationSeconds();
+            return target(started ? Kind.RESUME : Kind.NEXT, c.episode(), started ? position : 0, duration,
+                    started ? c.updatedAt() : a.updatedAt());
+        });
     }
 
     /**
@@ -147,54 +84,21 @@ public class UpNextService {
      * qu'il soit vu ou non (lecteur web : « Épisode suivant »). Vide pour le dernier.
      */
     public Optional<Target> following(long episodeId) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            Long animeId = null;
-            try (PreparedStatement a = c.prepareStatement("SELECT s.anime_id FROM episode e JOIN season s ON s.id = e.season_id WHERE e.id = ?")) {
-                a.setLong(1, episodeId);
-                try (ResultSet rs = a.executeQuery()) {
-                    if (rs.next()) {
-                        animeId = rs.getLong(1);
-                    }
-                }
-            }
-            if (animeId == null) {
-                return Optional.empty();
-            }
-            try (PreparedStatement st = c.prepareStatement("WITH o AS (" + VISIBLE_EPISODES + """
-                    ), cur AS (SELECT rn, season_number FROM o WHERE id = ?)
-                    SELECT o.id, o.episode_number, o.title, o.season_id, o.season_number, o.anime_id, o.anime_title, o.duration
-                    FROM o CROSS JOIN cur WHERE o.rn > cur.rn AND (o.season_number = 0) = (cur.season_number = 0)
-                    ORDER BY o.rn LIMIT 1""")) {
-                st.setLong(1, animeId);
-                st.setLong(2, episodeId);
-                try (ResultSet rs = st.executeQuery()) {
-                    if (!rs.next()) {
-                        return Optional.empty();
-                    }
-                    return Optional.of(new Target(Kind.NEXT, rs.getLong(1), rs.getInt(2), rs.getString(3), rs.getLong(4), rs.getInt(5),
-                            rs.getLong(6), rs.getString(7), 0, rs.getInt(8), null));
-                }
-            }
+        Optional<Long> animeId = progress.animeIdOfEpisode(episodeId);
+        if (animeId.isEmpty()) {
+            return Optional.empty();
         }
+        return progress.following(animeId.get(), episodeId)
+                .map(e -> target(Kind.NEXT, e, 0, e.durationSeconds(), null));
     }
 
     /** Premier épisode : saisons normales d'abord, sinon Spéciaux. */
-    private Optional<Target> first(Connection c, long animeId, Kind kind) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("SELECT * FROM (" + VISIBLE_EPISODES + ") o ORDER BY rn LIMIT 1")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                return Optional.of(new Target(kind, rs.getLong("id"), rs.getInt("episode_number"), rs.getString("title"),
-                        rs.getLong("season_id"), rs.getInt("season_number"), rs.getLong("anime_id"), rs.getString("anime_title"),
-                        0, rs.getInt("duration"), null));
-            }
-        }
+    private Optional<Target> first(long animeId, Kind kind) throws SQLException {
+        return progress.first(animeId).map(e -> target(kind, e, 0, e.durationSeconds(), null));
     }
 
-    private static Instant instant(ResultSet rs, int column) throws SQLException {
-        OffsetDateTime t = rs.getObject(column, OffsetDateTime.class);
-        return t == null ? null : t.toInstant();
+    private static Target target(Kind kind, VisibleEpisode e, int position, int duration, Instant updatedAt) {
+        return new Target(kind, e.id(), e.episodeNumber(), e.title(), e.seasonId(), e.seasonNumber(), e.animeId(),
+                e.animeTitle(), position, duration, updatedAt);
     }
 }

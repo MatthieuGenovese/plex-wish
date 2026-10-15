@@ -4,7 +4,6 @@ import fr.plexwish.animeserver.common.BackgroundLoop;
 import fr.plexwish.animeserver.media.MediaConfig;
 import fr.plexwish.animeserver.progress.UpNextService;
 import fr.plexwish.animeserver.setup.AppSettings;
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -12,14 +11,10 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -47,7 +42,7 @@ public class WebNightService extends BackgroundLoop {
     static final int MAX_PREVENTIVE = 200;
 
     @Inject
-    AgroalDataSource dataSource;
+    WebJobRepository repository;
     @Inject
     MediaConfig config;
     @Inject
@@ -109,24 +104,10 @@ public class WebNightService extends BackgroundLoop {
 
     /** Préparations dont la source a disparu ou changé (taille, date) : effacées (hors travail en cours). */
     int removeOrphans() throws SQLException {
-        List<String> keys = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT j.cache_key FROM web_job j LEFT JOIN media_file f ON f.id = j.media_file_id
-                     WHERE j.status <> 'RUNNING' AND (f.id IS NULL OR NOT f.available OR f.file_size <> j.source_size
-                         OR f.last_modified IS DISTINCT FROM j.source_modified)""");
-             ResultSet rs = st.executeQuery()) {
-            while (rs.next()) {
-                keys.add(rs.getString(1));
-            }
-        }
+        List<String> keys = repository.orphanKeys();
         for (String k : keys) {
             cache.delete(k);
-            try (Connection c = dataSource.getConnection();
-                 PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE cache_key = ? AND status <> 'RUNNING'")) {
-                st.setString(1, k);
-                st.executeUpdate();
-            }
+            repository.deleteIfNotRunning(k);
         }
         return keys.size();
     }
@@ -137,28 +118,10 @@ public class WebNightService extends BackgroundLoop {
      * s'en sert pour ses sous-titres.
      */
     int expireCopies() throws SQLException {
-        List<String> keys = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT j.cache_key FROM web_job j
-                     WHERE j.kind = 'BASE' AND j.status = 'READY' AND (j.manifest ->> 'hls') = 'true'
-                       AND coalesce(j.last_read_at, j.finished_at) < now() - make_interval(secs => ?)
-                       AND NOT EXISTS (SELECT 1 FROM web_job v WHERE v.media_file_id = j.media_file_id AND v.kind = 'CONV'
-                                       AND v.status = 'READY')""")) {
-            st.setLong(1, config.webCopyKeep().toSeconds());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    keys.add(rs.getString(1));
-                }
-            }
-        }
+        List<String> keys = repository.expiredCopyKeys(config.webCopyKeep().toSeconds());
         for (String k : keys) {
             cache.delete(k);
-            try (Connection c = dataSource.getConnection();
-                 PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE cache_key = ? AND status = 'READY'")) {
-                st.setString(1, k);
-                st.executeUpdate();
-            }
+            repository.deleteIfReady(k);
         }
         return keys.size();
     }
@@ -177,45 +140,20 @@ public class WebNightService extends BackgroundLoop {
     }
 
     private long count() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT count(*) FROM web_job WHERE status = 'READY'");
-             ResultSet rs = st.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
-        }
+        return repository.readyCount();
     }
 
     /** Épisodes à préparer cette nuit : suivants des animés en cours, puis ajouts récents. */
     int preventive() throws SQLException {
         Set<Long> episodes = new LinkedHashSet<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT DISTINCT ON (s.anime_id, p.user_id) p.episode_id
-                     FROM playback_progress p JOIN episode e ON e.id = p.episode_id JOIN season s ON s.id = e.season_id
-                     WHERE p.updated_at > now() - interval '30 days'
-                     ORDER BY s.anime_id, p.user_id, p.updated_at DESC""");
-             ResultSet rs = st.executeQuery()) {
-            while (rs.next()) {
-                long ep = rs.getLong(1);
-                Optional<UpNextService.Target> n1 = upNext.following(ep);
-                if (n1.isPresent()) {
-                    episodes.add(n1.get().episodeId());
-                    upNext.following(n1.get().episodeId()).ifPresent(n2 -> episodes.add(n2.episodeId()));
-                }
+        for (long ep : repository.recentlyWatchedEpisodes()) {
+            Optional<UpNextService.Target> n1 = upNext.following(ep);
+            if (n1.isPresent()) {
+                episodes.add(n1.get().episodeId());
+                upNext.following(n1.get().episodeId()).ifPresent(n2 -> episodes.add(n2.episodeId()));
             }
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT e.id FROM episode e JOIN media_file f ON f.id = e.media_file_id
-                     WHERE f.available AND f.first_seen_at > now() - interval '7 days'
-                     ORDER BY f.first_seen_at DESC, e.id LIMIT ?""")) {
-            st.setInt(1, MAX_PREVENTIVE);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    episodes.add(rs.getLong(1));
-                }
-            }
-        }
+        episodes.addAll(repository.recentlyAddedEpisodes(MAX_PREVENTIVE));
         int queued = 0;
         for (long ep : episodes) {
             if (queued >= MAX_PREVENTIVE) {
@@ -233,23 +171,13 @@ public class WebNightService extends BackgroundLoop {
      * suit d'elle-même la préparation de base ; déjà prête : demandée tout de suite). Vrai si quelque chose est en file.
      */
     public boolean prepareEpisode(long episodeId, int priority) throws SQLException {
-        long fileId;
-        long size;
-        OffsetDateTime modified;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT f.id, f.file_size, f.last_modified FROM episode e JOIN media_file f ON f.id = e.media_file_id
-                     WHERE e.id = ? AND f.available""")) {
-            st.setLong(1, episodeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return false;
-                }
-                fileId = rs.getLong(1);
-                size = rs.getLong(2);
-                modified = rs.getObject(3, OffsetDateTime.class);
-            }
+        Optional<WebJobRepository.EpisodeFile> file = repository.availableFileOf(episodeId);
+        if (file.isEmpty()) {
+            return false;
         }
+        long fileId = file.get().mediaFileId();
+        long size = file.get().size();
+        OffsetDateTime modified = file.get().modified();
         Optional<WebPrepService.Job> base = prep.job(fileId, WebPrepService.BASE);
         String key = prep.baseKey(fileId, size, modified);
         if (base.isEmpty() || !base.get().key().equals(key)) {

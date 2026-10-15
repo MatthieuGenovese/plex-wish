@@ -9,7 +9,6 @@ import fr.plexwish.animeserver.media.ProcessRunner;
 import fr.plexwish.animeserver.media.RemuxTestService;
 import fr.plexwish.animeserver.setup.AppSettings;
 import fr.plexwish.animeserver.stream.PlaybackActivity;
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -20,9 +19,6 @@ import org.jboss.logging.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -127,7 +123,7 @@ public class WebPrepService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    WebJobRepository repository;
     @Inject
     MediaConfig config;
     @Inject
@@ -205,31 +201,17 @@ public class WebPrepService {
      */
     void recover() throws SQLException {
         Set<String> keep = new HashSet<>();
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("""
-                    UPDATE web_job SET status = 'QUEUED', phase = NULL, started_at = NULL,
-                        manifest = CASE WHEN kind = 'BASE' THEN NULL ELSE manifest END
-                    WHERE status = 'RUNNING'""")) {
-                st.executeUpdate();
+        repository.requeueRunning();
+        List<String> lost = new ArrayList<>();
+        for (String k : repository.readyKeys()) {
+            if (cache.exists(k)) {
+                keep.add(k);
+            } else {
+                lost.add(k);
             }
-            List<String> lost = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement("SELECT cache_key, status FROM web_job");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    String k = rs.getString(1);
-                    if (!"READY".equals(rs.getString(2))) {
-                        continue;
-                    }
-                    if (cache.exists(k)) {
-                        keep.add(k);
-                    } else {
-                        lost.add(k);
-                    }
-                }
-            }
-            for (String k : lost) {
-                deleteByKey(c, k);
-            }
+        }
+        for (String k : lost) {
+            repository.deleteByKey(k);
         }
         int removed = cache.sweep(keep);
         if (removed > 0) {
@@ -242,13 +224,8 @@ public class WebPrepService {
         if (baseLane.current != null || convLane.current != null) {
             return true;
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT 1 FROM web_job WHERE status = 'QUEUED' AND blocked IS NULL"
-                     + " AND (next_attempt_at IS NULL OR next_attempt_at <= now()) AND (priority < 2 OR ?) LIMIT 1")) {
-            st.setBoolean(1, webSettings.nightOpen());
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next();
-            }
+        try {
+            return repository.hasRunnableQueued(webSettings.nightOpen());
         } catch (SQLException e) {
             return false;
         }
@@ -430,28 +407,15 @@ public class WebPrepService {
         long aheadBytes = 0;
         Double p = progress.get(self.mediaFileId());
         boolean conv = CONV.equals(self.kind());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT j.media_file_id, j.status, j.source_size, j.manifest FROM web_job j, web_job me
-                     WHERE me.media_file_id = ? AND me.kind = ? AND j.kind = me.kind AND j.media_file_id <> me.media_file_id
-                       AND j.status IN ('QUEUED', 'RUNNING') AND j.blocked IS NULL
-                       AND (j.status = 'RUNNING' OR (j.next_attempt_at IS NULL OR j.next_attempt_at <= now()))
-                       AND (j.status = 'RUNNING' OR j.priority < me.priority OR (j.priority = me.priority AND j.requested_at < me.requested_at)
-                            OR (j.priority = me.priority AND j.requested_at = me.requested_at AND j.media_file_id < me.media_file_id))""")) {
-            st.setLong(1, self.mediaFileId());
-            st.setString(2, self.kind());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    position++;
-                    double done = "RUNNING".equals(rs.getString(2)) ? progress.getOrDefault(rs.getLong(1), 0.0) : 0;
-                    if (conv) {
-                        WebManifest m = manifest(rs.getString(4));
-                        aheadSeconds += m == null || m.durationSeconds() == null ? 1440 / 2.0
-                                : m.durationSeconds() * (1 - done) / expectedSpeed(m, speed.get(rs.getLong(1)));
-                    } else {
-                        aheadBytes += (long) (rs.getLong(3) * (1 - done));
-                    }
-                }
+        for (WebJobRepository.Ahead a : repository.ahead(self.mediaFileId(), self.kind())) {
+            position++;
+            double done = "RUNNING".equals(a.status()) ? progress.getOrDefault(a.mediaFileId(), 0.0) : 0;
+            if (conv) {
+                WebManifest m = manifest(a.manifestJson());
+                aheadSeconds += m == null || m.durationSeconds() == null ? 1440 / 2.0
+                        : m.durationSeconds() * (1 - done) / expectedSpeed(m, speed.get(a.mediaFileId()));
+            } else {
+                aheadBytes += (long) (a.sourceSize() * (1 - done));
             }
         }
         boolean run = "RUNNING".equals(self.status());
@@ -530,49 +494,26 @@ public class WebPrepService {
             return;
         }
         lastReadWrite.put(key, Instant.now());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE web_job SET last_read_at = now() WHERE cache_key = ?")) {
-            st.setString(1, key);
-            st.executeUpdate();
-        }
+        repository.touchRead(key);
     }
 
     // --- Base -----------------------------------------------------------------------------------------------------------
-
-    private static final String COLUMNS = """
-            media_file_id, kind, status, phase, priority, cache_key, source_size, source_modified, manifest,
-            next_attempt_at, blocked, error, attempts""";
 
     Optional<Job> job(long mediaFileId) throws SQLException {
         return job(mediaFileId, BASE);
     }
 
     Optional<Job> job(long mediaFileId, String kind) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT " + COLUMNS + " FROM web_job WHERE media_file_id = ? AND kind = ?")) {
-            st.setLong(1, mediaFileId);
-            st.setString(2, kind);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(row(rs)) : Optional.empty();
-            }
-        }
+        return repository.job(mediaFileId, kind).map(this::toJob);
     }
 
     Optional<Job> jobByKey(String key) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT " + COLUMNS + " FROM web_job WHERE cache_key = ?")) {
-            st.setString(1, key);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(row(rs)) : Optional.empty();
-            }
-        }
+        return repository.jobByKey(key).map(this::toJob);
     }
 
-    private Job row(ResultSet rs) throws SQLException {
-        OffsetDateTime na = rs.getObject(10, OffsetDateTime.class);
-        return new Job(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getInt(5), rs.getString(6),
-                rs.getLong(7), rs.getObject(8, OffsetDateTime.class), manifest(rs.getString(9)),
-                na == null ? null : na.toInstant(), rs.getString(11), rs.getString(12), rs.getInt(13));
+    private Job toJob(WebJobRepository.JobRow r) {
+        return new Job(r.mediaFileId(), r.kind(), r.status(), r.phase(), r.priority(), r.key(), r.sourceSize(),
+                r.sourceModified(), manifest(r.manifestJson()), r.nextAttempt(), r.blocked(), r.error(), r.attempts());
     }
 
     WebManifest manifest(String raw) {
@@ -596,43 +537,16 @@ public class WebPrepService {
 
     private void insert(long id, String kind, String key, long size, OffsetDateTime modified, int priority, WebManifest plan)
             throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO web_job (media_file_id, kind, status, priority, cache_key, source_size, source_modified, manifest)
-                     VALUES (?, ?, 'QUEUED', ?, ?, ?, ?, ?::jsonb) ON CONFLICT DO NOTHING""")) {
-            st.setLong(1, id);
-            st.setString(2, kind);
-            st.setInt(3, priority);
-            st.setString(4, key);
-            st.setLong(5, size);
-            st.setObject(6, modified);
-            st.setString(7, plan == null ? null : manifestJson(plan));
-            st.executeUpdate();
-        }
+        repository.insert(id, kind, key, size, modified, priority, plan == null ? null : manifestJson(plan));
     }
 
     void requeue(long id, String kind, int priority, boolean resetAttempts) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE web_job SET status = 'QUEUED', priority = LEAST(priority, ?),"
-                     + " next_attempt_at = NULL, blocked = NULL" + (resetAttempts ? ", attempts = 0, error = NULL" : "")
-                     + " WHERE media_file_id = ? AND kind = ? AND status IN ('QUEUED', 'FAILED')")) {
-            st.setInt(1, priority);
-            st.setLong(2, id);
-            st.setString(3, kind);
-            st.executeUpdate();
-        }
+        repository.requeue(id, kind, priority, resetAttempts);
     }
 
     /** Demande plus urgente : la priorité monte (en file comme en cours : une conversion en cours n'est plus suspendue). */
     private void raise(long id, String kind, int priority) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE web_job SET priority = LEAST(priority, ?), blocked = CASE"
-                     + " WHEN blocked = 'CACHE_FULL' THEN blocked ELSE NULL END WHERE media_file_id = ? AND kind = ?")) {
-            st.setInt(1, priority);
-            st.setLong(2, id);
-            st.setString(3, kind);
-            st.executeUpdate();
-        }
+        repository.raise(id, kind, priority);
         Lane l = lane(kind);
         if (Long.valueOf(id).equals(l.current)) {
             l.currentPriority = Math.min(l.currentPriority, priority);
@@ -640,31 +554,11 @@ public class WebPrepService {
     }
 
     private void delete(long id, String kind) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE media_file_id = ? AND kind = ?")) {
-            st.setLong(1, id);
-            st.setString(2, kind);
-            st.executeUpdate();
-        }
-    }
-
-    private static void deleteByKey(Connection c, String key) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("DELETE FROM web_job WHERE cache_key = ?")) {
-            st.setString(1, key);
-            st.executeUpdate();
-        }
+        repository.delete(id, kind);
     }
 
     private void phase(Job job, String phase, WebManifest m) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE web_job SET phase = ?, manifest = coalesce(?::jsonb, manifest)"
-                     + " WHERE media_file_id = ? AND kind = ?")) {
-            st.setString(1, phase);
-            st.setString(2, m == null ? null : manifestJson(m));
-            st.setLong(3, job.mediaFileId());
-            st.setString(4, job.kind());
-            st.executeUpdate();
-        }
+        repository.setPhase(job.mediaFileId(), job.kind(), phase, m == null ? null : manifestJson(m));
     }
 
     // --- Exécution ------------------------------------------------------------------------------------------------------
@@ -697,22 +591,7 @@ public class WebPrepService {
 
     /** Prochaine préparation de cette sorte : la plus urgente, puis dans l'ordre d'arrivée ; préventif la nuit seulement. */
     Optional<Job> claim(String kind) throws SQLException {
-        Long id = null;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE web_job SET status = 'RUNNING', phase = 'PROBE', started_at = now(), blocked = NULL
-                     WHERE (media_file_id, kind) = (SELECT media_file_id, kind FROM web_job WHERE kind = ? AND status = 'QUEUED'
-                         AND (next_attempt_at IS NULL OR next_attempt_at <= now()) AND (priority < 2 OR ?)
-                         ORDER BY priority, requested_at, media_file_id LIMIT 1 FOR UPDATE SKIP LOCKED)
-                     RETURNING media_file_id""")) {
-            st.setString(1, kind);
-            st.setBoolean(2, webSettings.nightOpen());
-            try (ResultSet rs = st.executeQuery()) {
-                if (rs.next()) {
-                    id = rs.getLong(1);
-                }
-            }
-        }
+        Long id = repository.claimNext(kind, webSettings.nightOpen()).orElse(null);
         return id == null ? Optional.empty() : job(id, kind);
     }
 
@@ -948,37 +827,16 @@ public class WebPrepService {
     }
 
     private int currentPriority(Job job) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT priority FROM web_job WHERE media_file_id = ? AND kind = ?")) {
-            st.setLong(1, job.mediaFileId());
-            st.setString(2, job.kind());
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : job.priority();
-            }
-        }
+        return repository.priority(job.mediaFileId(), job.kind()).orElse(job.priority());
     }
 
     private boolean urgentWaiting(String kind, int priority) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT 1 FROM web_job WHERE kind = ? AND status = 'QUEUED' AND priority < ?"
-                     + " AND blocked IS NULL AND (next_attempt_at IS NULL OR next_attempt_at <= now()) LIMIT 1")) {
-            st.setString(1, kind);
-            st.setInt(2, priority);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next();
-            }
-        }
+        return repository.urgentWaiting(kind, priority);
     }
 
     /** Arrêt voulu (pas un échec) : la conversion repart en file, son essai n'est pas compté. */
     private void putBack(Job job) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("UPDATE web_job SET status = 'QUEUED', phase = NULL, started_at = NULL"
-                     + " WHERE media_file_id = ? AND kind = ? AND status = 'RUNNING'")) {
-            st.setLong(1, job.mediaFileId());
-            st.setString(2, job.kind());
-            st.executeUpdate();
-        }
+        repository.putBack(job.mediaFileId(), job.kind());
     }
 
     private void progress(Job job, String phase, double value) {
@@ -1020,17 +878,7 @@ public class WebPrepService {
             fail(job, "publication impossible dans le cache web", false);
             return false;
         }
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE web_job SET status = 'READY', phase = NULL, manifest = ?::jsonb, bytes = ?, finished_at = now(),
-                         error = NULL, blocked = NULL, next_attempt_at = NULL, elapsed_ms = ? WHERE media_file_id = ? AND kind = ?""")) {
-            st.setString(1, manifestJson(done));
-            st.setLong(2, bytes);
-            st.setLong(3, elapsed);
-            st.setLong(4, job.mediaFileId());
-            st.setString(5, job.kind());
-            st.executeUpdate();
-        }
+        repository.markReady(job.mediaFileId(), job.kind(), manifestJson(done), bytes, elapsed);
         LOG.infof("Préparation web : fichier %d prêt (%s%d Mo, %d ms)", job.mediaFileId(),
                 CONV.equals(job.kind()) ? "conversion, " : done.hls() ? "copie HLS, " : "", bytes / MB, elapsed);
         return true;
@@ -1083,46 +931,25 @@ public class WebPrepService {
 
     /** Efface les préparations prêtes les moins récemment lues (jamais une lue récemment) jusqu'à la place voulue. */
     long evict(long used, long needed, long max, long reserve, String exceptKey) throws SQLException {
-        List<Object[]> candidates = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT media_file_id, cache_key, coalesce(bytes, 0), kind FROM web_job
-                     WHERE status = 'READY' AND cache_key <> ?
-                       AND (last_read_at IS NULL OR last_read_at < now() - make_interval(secs => ?))
-                     ORDER BY coalesce(last_read_at, finished_at) NULLS FIRST, media_file_id""")) {
-            st.setString(1, exceptKey == null ? "" : exceptKey);
-            st.setLong(2, config.webInUse().toSeconds());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    candidates.add(new Object[]{rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getString(4)});
-                }
-            }
-        }
+        List<WebJobRepository.ReadyCopy> candidates = repository.evictionCandidates(exceptKey == null ? "" : exceptKey,
+                config.webInUse().toSeconds());
         long free = cache.usableSpace();
         int i = 0;
         while ((used + needed > max || (free >= 0 && free - reserve < needed)) && i < candidates.size()) {
-            Object[] victim = candidates.get(i++);
-            cache.delete((String) victim[1]);
-            try (Connection c = dataSource.getConnection()) {
-                deleteByKey(c, (String) victim[1]);
-            }
-            used -= (Long) victim[2];
+            WebJobRepository.ReadyCopy victim = candidates.get(i++);
+            cache.delete(victim.key());
+            repository.deleteByKey(victim.key());
+            used -= victim.bytes();
             free = cache.usableSpace();
             LOG.infof("Préparation web : %s du fichier %d effacée du cache (la moins récemment lue)",
-                    CONV.equals(victim[3]) ? "conversion" : "préparation", (Long) victim[0]);
+                    CONV.equals(victim.kind()) ? "conversion" : "préparation", victim.mediaFileId());
         }
         return used;
     }
 
     /** {chemin relatif, extension} du fichier source, s'il est disponible. */
     private Optional<String[]> source(long id) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT relative_path, container FROM media_file WHERE id = ? AND available")) {
-            st.setLong(1, id);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(new String[]{rs.getString(1), rs.getString(2)}) : Optional.empty();
-            }
-        }
+        return repository.source(id).map(src -> new String[]{src.relativePath(), src.extension()});
     }
 
     /**
@@ -1131,32 +958,13 @@ public class WebPrepService {
      */
     private void fail(Job job, String reason, boolean permanent) throws SQLException {
         LOG.warnf("Préparation web (%s) impossible pour le fichier %d : %s", job.kind(), job.mediaFileId(), reason);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE web_job SET status = 'FAILED', phase = NULL, attempts = attempts + 1, finished_at = now(), error = ?,
-                         blocked = NULL, next_attempt_at = CASE WHEN ? THEN now() + interval '1 day'
-                             WHEN attempts + 1 >= ? THEN NULL
-                             ELSE now() + make_interval(mins => LEAST(1440, 10 * power(2, attempts)::int)) END
-                     WHERE media_file_id = ? AND kind = ?""")) {
-            st.setString(1, reason == null ? "échec" : reason.length() > 600 ? reason.substring(0, 600) : reason);
-            st.setBoolean(2, permanent);
-            st.setInt(3, MAX_ATTEMPTS);
-            st.setLong(4, job.mediaFileId());
-            st.setString(5, job.kind());
-            st.executeUpdate();
-        }
+        repository.markFailed(job.mediaFileId(), job.kind(),
+                reason == null ? "échec" : reason.length() > 600 ? reason.substring(0, 600) : reason, permanent, MAX_ATTEMPTS);
     }
 
     private void block(Job job) throws SQLException {
         LOG.infof("Préparation web : cache plein (préparations en cours de lecture), fichier %d en attente", job.mediaFileId());
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE web_job SET status = 'QUEUED', phase = NULL, blocked = 'CACHE_FULL', started_at = NULL,
-                         next_attempt_at = now() + interval '1 minute' WHERE media_file_id = ? AND kind = ?""")) {
-            st.setLong(1, job.mediaFileId());
-            st.setString(2, job.kind());
-            st.executeUpdate();
-        }
+        repository.markBlocked(job.mediaFileId(), job.kind());
     }
 
     // --- Administration -------------------------------------------------------------------------------------------------
@@ -1178,18 +986,9 @@ public class WebPrepService {
 
     /** Relance par l'admin (échec, ou attente d'un nouvel essai) : essais remis à zéro, priorité « admin » au moins. */
     public boolean retry(long mediaFileId, String kind) throws SQLException {
-        int n;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE web_job SET status = 'QUEUED', attempts = 0, error = NULL, next_attempt_at = NULL, blocked = NULL,
-                         priority = LEAST(priority, 1), requested_at = now()
-                     WHERE media_file_id = ? AND kind = ? AND status IN ('FAILED', 'QUEUED')""")) {
-            st.setLong(1, mediaFileId);
-            st.setString(2, kind);
-            n = st.executeUpdate();
-        }
+        boolean n = repository.retry(mediaFileId, kind);
         wake(kind);
-        return n > 0;
+        return n;
     }
 
     /**
@@ -1222,11 +1021,8 @@ public class WebPrepService {
 
     /** Taille des préparations prêtes (octets). */
     public long usedBytes() {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT coalesce(sum(bytes), 0) FROM web_job WHERE status = 'READY'");
-             ResultSet rs = st.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
+        try {
+            return repository.readyBytes();
         } catch (SQLException e) {
             return 0;
         }

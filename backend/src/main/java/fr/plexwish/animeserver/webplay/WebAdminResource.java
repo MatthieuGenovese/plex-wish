@@ -2,7 +2,6 @@ package fr.plexwish.animeserver.webplay;
 
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.media.MediaConfig;
-import io.agroal.api.AgroalDataSource;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -16,12 +15,8 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -80,7 +75,7 @@ public class WebAdminResource {
     @Inject
     MediaConfig config;
     @Inject
-    AgroalDataSource dataSource;
+    WebJobRepository repository;
     @Inject
     fr.plexwish.animeserver.setup.AppSettings settings;
 
@@ -89,37 +84,20 @@ public class WebAdminResource {
         Map<Long, String> phases = new HashMap<>();
         List<Item> queue = new ArrayList<>();
         List<Item> failures = new ArrayList<>();
-        long queued;
-        long readyBase;
-        long readyConv;
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("""
-                     SELECT count(*) FILTER (WHERE status = 'QUEUED'), count(*) FILTER (WHERE status = 'READY' AND kind = 'BASE'),
-                            count(*) FILTER (WHERE status = 'READY' AND kind = 'CONV') FROM web_job""");
-                 ResultSet rs = st.executeQuery()) {
-                rs.next();
-                queued = rs.getLong(1);
-                readyBase = rs.getLong(2);
-                readyConv = rs.getLong(3);
+        WebJobRepository.Counts counts = repository.counts();
+        long queued = counts.queued();
+        long readyBase = counts.readyBase();
+        long readyConv = counts.readyConv();
+        for (WebJobRepository.ItemRow r : repository.activeItems()) {
+            Item i = item(r);
+            if ("RUNNING".equals(i.status())) {
+                phases.put(i.mediaFileId() * 2 + (WebPrepService.CONV.equals(i.kind()) ? 1 : 0), i.phase());
+            } else {
+                queue.add(i);
             }
-            try (PreparedStatement st = c.prepareStatement(ITEMS + " WHERE j.status IN ('QUEUED', 'RUNNING')"
-                    + " ORDER BY j.status DESC, j.priority, j.requested_at LIMIT 30");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    Item i = item(rs);
-                    if ("RUNNING".equals(i.status())) {
-                        phases.put(i.mediaFileId() * 2 + (WebPrepService.CONV.equals(i.kind()) ? 1 : 0), i.phase());
-                    } else {
-                        queue.add(i);
-                    }
-                }
-            }
-            try (PreparedStatement st = c.prepareStatement(ITEMS + " WHERE j.status = 'FAILED' ORDER BY j.finished_at DESC LIMIT 50");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    failures.add(item(rs));
-                }
-            }
+        }
+        for (WebJobRepository.ItemRow r : repository.failedItems()) {
+            failures.add(item(r));
         }
         List<Running> running = new ArrayList<>();
         for (WebPrepService.Running r : prep.running()) {
@@ -137,35 +115,16 @@ public class WebAdminResource {
                 queue, failures, speeds);
     }
 
-    private static final String ITEMS = """
-            SELECT j.kind, j.media_file_id, j.status, j.priority, j.phase, j.error, j.attempts, j.requested_at, j.next_attempt_at,
-                   j.blocked IS NOT NULL, e.id, a.id, a.title, s.season_number, e.episode_number
-            FROM web_job j
-            LEFT JOIN LATERAL (SELECT id, season_id, episode_number FROM episode WHERE media_file_id = j.media_file_id
-                               ORDER BY id LIMIT 1) e ON true
-            LEFT JOIN season s ON s.id = e.season_id LEFT JOIN anime a ON a.id = s.anime_id""";
-
-    private static Item item(ResultSet rs) throws SQLException {
-        OffsetDateTime req = rs.getObject(8, OffsetDateTime.class);
-        OffsetDateTime next = rs.getObject(9, OffsetDateTime.class);
-        Label l = new Label((Long) rs.getObject(11), (Long) rs.getObject(12), rs.getString(13), (Integer) rs.getObject(14),
-                (Integer) rs.getObject(15));
-        return new Item(rs.getString(1), rs.getLong(2), l, rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6),
-                rs.getInt(7), req == null ? null : req.toInstant(), next == null ? null : next.toInstant(), rs.getBoolean(10));
+    private static Item item(WebJobRepository.ItemRow r) {
+        Label l = new Label(r.episodeId(), r.animeId(), r.animeTitle(), r.seasonNumber(), r.episodeNumber());
+        return new Item(r.kind(), r.mediaFileId(), l, r.status(), r.priority(), r.phase(), r.error(), r.attempts(),
+                r.requestedAt(), r.nextAttemptAt(), r.blocked());
     }
 
     private Label label(long mediaFileId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT e.id, a.id, a.title, s.season_number, e.episode_number FROM episode e
-                     JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
-                     WHERE e.media_file_id = ? ORDER BY e.id LIMIT 1""")) {
-            st.setLong(1, mediaFileId);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? new Label(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getInt(4), rs.getInt(5))
-                        : new Label(null, null, null, null, null);
-            }
-        }
+        return repository.label(mediaFileId)
+                .map(e -> new Label(e.episodeId(), e.animeId(), e.animeTitle(), e.seasonNumber(), e.episodeNumber()))
+                .orElse(new Label(null, null, null, null, null));
     }
 
     @PUT
@@ -197,18 +156,7 @@ public class WebAdminResource {
     @POST
     @Path("/anime/{animeId}/prepare")
     public PrepareResult prepareAnime(@PathParam("animeId") long animeId) throws SQLException {
-        List<Long> episodes = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT e.id FROM episode e JOIN season s ON s.id = e.season_id WHERE s.anime_id = ? AND e.media_file_id IS NOT NULL
-                     ORDER BY s.season_number = 0, s.season_number, e.episode_number""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    episodes.add(rs.getLong(1));
-                }
-            }
-        }
+        List<Long> episodes = repository.episodesOfAnime(animeId);
         if (episodes.isEmpty()) {
             throw new ApiException(404, "ANIME_NOT_FOUND", "Animé introuvable ou sans épisode disponible");
         }

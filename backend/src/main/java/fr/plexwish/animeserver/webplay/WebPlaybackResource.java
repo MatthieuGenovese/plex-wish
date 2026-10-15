@@ -5,7 +5,6 @@ import fr.plexwish.animeserver.progress.UpNextService;
 import fr.plexwish.animeserver.stream.ByteRange;
 import fr.plexwish.animeserver.stream.StreamSigner;
 import fr.plexwish.animeserver.stream.VideoMediaTypes;
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
@@ -25,9 +24,6 @@ import org.jboss.resteasy.reactive.PathPart;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -103,7 +99,7 @@ public class WebPlaybackResource {
     @Inject
     StreamSigner signer;
     @Inject
-    AgroalDataSource dataSource;
+    WebPlaybackRepository repository;
     @Inject
     UpNextService upNext;
     @Inject
@@ -121,33 +117,17 @@ public class WebPlaybackResource {
             throws SQLException {
         long userId = Long.parseLong(jwt.getSubject());
         Set<String> caps = WebDecision.caps(rawCaps);
-        long fileId;
-        String fileName;
-        long size;
-        OffsetDateTime modified;
-        EpisodeInfo episode;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT m.id, m.available, m.file_name, m.file_size, m.last_modified, a.id, a.title, s.season_number,
-                            e.episode_number, e.title, e.duration_seconds
-                     FROM episode e JOIN season s ON s.id = e.season_id JOIN anime a ON a.id = s.anime_id
-                     LEFT JOIN media_file m ON m.id = e.media_file_id WHERE e.id = ?""")) {
-            st.setLong(1, episodeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    throw new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable");
-                }
-                if (rs.getObject(1) == null || !rs.getBoolean(2)) {
-                    throw unavailable();
-                }
-                fileId = rs.getLong(1);
-                fileName = rs.getString(3);
-                size = rs.getLong(4);
-                modified = rs.getObject(5, OffsetDateTime.class);
-                episode = new EpisodeInfo(episodeId, rs.getLong(6), rs.getString(7), rs.getInt(8), rs.getInt(9), rs.getString(10),
-                        (Integer) rs.getObject(11));
-            }
+        WebPlaybackRepository.EpisodeFile file = repository.episodeFile(episodeId)
+                .orElseThrow(() -> new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable"));
+        if (file.fileId() == null || !file.available()) {
+            throw unavailable();
         }
+        long fileId = file.fileId();
+        String fileName = file.fileName();
+        long size = file.size();
+        OffsetDateTime modified = file.modified();
+        EpisodeInfo episode = new EpisodeInfo(episodeId, file.animeId(), file.animeTitle(), file.seasonNumber(), file.episodeNumber(),
+                file.episodeTitle(), file.durationSeconds());
         NextEpisode next = upNext.following(episodeId)
                 .map(t -> new NextEpisode(t.episodeId(), t.seasonNumber(), t.episodeNumber(), t.episodeTitle())).orElse(null);
         Resume resume = resume(userId, episodeId);
@@ -403,15 +383,8 @@ public class WebPlaybackResource {
     }
 
     private Resume resume(long userId, long episodeId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "SELECT position_seconds, duration_seconds, completed FROM playback_progress WHERE user_id = ? AND episode_id = ?")) {
-            st.setLong(1, userId);
-            st.setLong(2, episodeId);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? new Resume(rs.getInt(1), rs.getInt(2), rs.getBoolean(3)) : null;
-            }
-        }
+        return repository.progress(userId, episodeId)
+                .map(p -> new Resume(p.positionSeconds(), p.durationSeconds(), p.completed())).orElse(null);
     }
 
     // --- 3. Pastilles « Prêt pour le navigateur » / « En préparation » (décision D9) ------------------------------------
@@ -432,27 +405,16 @@ public class WebPlaybackResource {
         }
         java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
         Long[] ids = java.util.Arrays.stream(episodes.split(",")).map(Long::valueOf).toArray(Long[]::new);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT e.id, j.kind, j.status, j.priority, j.manifest FROM episode e
-                     JOIN media_file f ON f.id = e.media_file_id AND f.available
-                     JOIN web_job j ON j.media_file_id = f.id AND j.source_size = f.file_size
-                         AND j.source_modified IS NOT DISTINCT FROM f.last_modified
-                     WHERE e.id = ANY (?)""")) {
-            st.setArray(1, c.createArrayOf("bigint", ids));
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    String ep = Long.toString(rs.getLong(1));
-                    String kind = rs.getString(2);
-                    String state = rs.getString(3);
-                    boolean ready = "READY".equals(state) && (WebPrepService.CONV.equals(kind) || playableEverywhere(rs.getString(5)));
-                    boolean preparing = "RUNNING".equals(state) || ("QUEUED".equals(state) && rs.getInt(4) < WebPrepService.PRIORITY_NIGHT);
-                    if (ready) {
-                        out.put(ep, "READY");
-                    } else if (preparing && !"READY".equals(out.get(ep))) {
-                        out.put(ep, "PREPARING");
-                    }
-                }
+        for (WebPlaybackRepository.JobState j : repository.jobStates(ids)) {
+            String ep = Long.toString(j.episodeId());
+            String kind = j.kind();
+            String state = j.status();
+            boolean ready = "READY".equals(state) && (WebPrepService.CONV.equals(kind) || playableEverywhere(j.manifestJson()));
+            boolean preparing = "RUNNING".equals(state) || ("QUEUED".equals(state) && j.priority() < WebPrepService.PRIORITY_NIGHT);
+            if (ready) {
+                out.put(ep, "READY");
+            } else if (preparing && !"READY".equals(out.get(ep))) {
+                out.put(ep, "PREPARING");
             }
         }
         return out;
@@ -642,20 +604,12 @@ public class WebPlaybackResource {
     }
 
     private void checkUserAndFile(long userId, long fileId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT (SELECT enabled FROM app_user WHERE id = ?), (SELECT available FROM media_file WHERE id = ?)""")) {
-            st.setLong(1, userId);
-            st.setLong(2, fileId);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                if (!rs.getBoolean(1)) {
-                    throw new ApiException(403, "USER_DISABLED", "Compte désactivé");
-                }
-                if (!rs.getBoolean(2)) {
-                    throw unavailable();
-                }
-            }
+        WebPlaybackRepository.Access a = repository.access(userId, fileId);
+        if (!a.userEnabled()) {
+            throw new ApiException(403, "USER_DISABLED", "Compte désactivé");
+        }
+        if (!a.fileAvailable()) {
+            throw unavailable();
         }
     }
 

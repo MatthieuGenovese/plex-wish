@@ -57,7 +57,12 @@ Extensions : `quarkus-rest` + `quarkus-rest-jackson`, `quarkus-hibernate-orm-pan
 Exécution en **mode JVM** (pas de natif : build lourd, gain inutile ici). Le DS923+ (Ryzen R1600, 4 Go de RAM par défaut) supporte sans problème une JVM avec `-Xmx512m`.
 
 ### 3.2 Organisation du code
-Découpage **par fonctionnalité**, trois couches au plus (resource → service → entité Panache). Pas d'interface « repository » ni de mapper générique tant qu'il n'y en a pas besoin.
+Découpage **par fonctionnalité**, trois couches au plus : resource → service → **repository**. Pas d'interface ni de mapper générique.
+
+**Accès à la base : uniquement dans les classes `*Repository`** (refacto du 2026-10-15). Resources et services n'écrivent ni SQL, ni JDBC, ni requête JPA ; le test `RepositoryBoundaryTest` échoue sinon.
+- `UserRepository`, `RefreshTokenRepository`, `InvitationRepository` : `PanacheRepository` (les entités sont de simples entités JPA, sans finders statiques).
+- Les autres (un par domaine : `ProgressRepository`, `LibraryRepository`, `ScanRunRepository`, `LibraryScanRepository`, `OverrideRepository`, `ExternalSubtitleRepository`, `StreamRepository`, `MediaProbeRepository`, `RemuxRepository`, `MetadataRepository`, `TmdbRepository`, `PosterRepository`, `CastRepository`, `WebJobRepository`, `WebPlaybackRepository`, `AppSettingRepository`) : **SQL PostgreSQL natif** (`ON CONFLICT`, `RETURNING`, `LATERAL`, `FOR UPDATE SKIP LOCKED`, lots multi-lignes), via le petit outil `common/db` (`Db` : une connexion du pool par appel, `inTransaction` / `runInTransaction` ; `Jdbc` : `list` / `one` / `update` / `values`, `varchar(null)` pour un `null` dont PostgreSQL ne peut pas deviner le type). Pas de HQL ici : ces requêtes ne s'y traduisent pas, et aucune dépendance de plus (Jdbi) n'a été ajoutée.
+- Plusieurs écritures atomiques (scan, corrections, distribution…) : le service ouvre `db.inTransaction(c -> …)` et passe la `Connection` aux méthodes de repository qui la prennent ; les règles (seuils, priorités, choix des champs) restent dans les services.
 
 ```
 fr.plexwish.animeserver
@@ -516,6 +521,7 @@ OpenAPI : `/q/openapi`, Swagger UI sur `/q/swagger-ui`, **actif en dev uniquemen
 - Backend : JUnit 5 + RestAssured + `@QuarkusTest`. PostgreSQL de test via **Quarkus Dev Services** (Testcontainers) → nécessite Docker Desktop lancé sur la machine de dev. Pas de H2 (comportement différent de PostgreSQL).
   Quarkus 3.20.0 embarque Testcontainers 1.20.6, qui ne sait pas parler à Docker Engine 29+ (« client version 1.32 is too old ») : le `pom.xml` force Testcontainers 1.21.4, à retirer quand Quarkus fournira une version plus récente.
 - Tests obligatoires : Range Requests, path traversal, auth / permissions / brute force (dont : l'admin reste connectable depuis une autre IP), tolérance de rotation, chaîne d'IP, parsing sur `library-sample.txt` (seuil ≥ 97 % + un test par piège, §7.11), idempotence du rescan (dont : /media vide, scan orphelin, rebranchement d'épisode, correction manuelle conservée).
+- Accès à la base : `RepositoryBoundaryTest` (aucun SQL/JDBC/JPA hors `*Repository`), `DbTest` (outil JDBC : paramètres nuls, commit, rollback), `RepositoryQueriesTest` et `QueueRepositoriesTest` (filtres facultatifs, transactions, contrôles d'accès, prise d'un travail en file).
 - Front : quelques tests unitaires ciblés (AuthService, interceptor, guards). Pas d'e2e à cette étape.
 
 ## 13. Décisions validées (2026-09-29)

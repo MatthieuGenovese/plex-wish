@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.library;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -13,7 +12,7 @@ import java.time.Instant;
 /** Fichier vidéo vu par le scan. Le chemin n'est jamais renvoyé aux utilisateurs (§4.2). */
 @Entity
 @Table(name = "media_file")
-public class MediaFile extends PanacheEntityBase {
+public class MediaFile {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

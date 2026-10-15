@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.library;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,7 +15,7 @@ import java.time.Instant;
 /** Épisode ; visible seulement si son fichier est disponible. */
 @Entity
 @Table(name = "episode")
-public class Episode extends PanacheEntityBase {
+public class Episode {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

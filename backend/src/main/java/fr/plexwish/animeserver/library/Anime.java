@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.library;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -13,7 +12,7 @@ import java.time.Instant;
 /** Animé = dossier de premier niveau de /media. Créé par le scan uniquement. */
 @Entity
 @Table(name = "anime")
-public class Anime extends PanacheEntityBase {
+public class Anime {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

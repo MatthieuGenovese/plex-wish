@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.library;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -14,7 +13,7 @@ import jakarta.persistence.Table;
 /** Saison ; 0 = Spéciaux. */
 @Entity
 @Table(name = "season")
-public class Season extends PanacheEntityBase {
+public class Season {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

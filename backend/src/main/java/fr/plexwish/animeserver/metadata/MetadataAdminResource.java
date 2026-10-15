@@ -1,11 +1,12 @@
 package fr.plexwish.animeserver.metadata;
 
+import java.io.UncheckedIOException;
+import java.util.Optional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.metadata.MetadataProvider.Candidate;
 import fr.plexwish.animeserver.metadata.MetadataProvider.ProviderUnavailableException;
-import io.agroal.api.AgroalDataSource;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.Max;
@@ -27,11 +28,8 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.io.IOException;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,7 +83,9 @@ public class MetadataAdminResource {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    MetadataRepository repository;
+    @Inject
+    fr.plexwish.animeserver.common.db.Db db;
     @Inject
     MetadataProvider provider;
     @Inject
@@ -110,17 +110,10 @@ public class MetadataAdminResource {
         for (String s : List.of("MATCHED", "DOUBTFUL", "UNMATCHED", "MANUAL", "PENDING")) {
             counts.put(s, 0L);
         }
-        long total;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT coalesce(m.status, 'PENDING'), count(*) FROM anime a
-                     LEFT JOIN anime_metadata_match m ON m.anime_id = a.id GROUP BY 1""");
-             ResultSet rs = st.executeQuery()) {
-            total = 0;
-            while (rs.next()) {
-                counts.put(rs.getString(1), rs.getLong(2));
-                total += rs.getLong(2);
-            }
+        long total = 0;
+        for (var e : repository.statusCounts().entrySet()) {
+            counts.put(e.getKey(), e.getValue());
+            total += e.getValue();
         }
         long pending = counts.get("PENDING");
         long minutes = (long) Math.ceil(pending * config.minInterval().toMillis() / 60_000.0);
@@ -136,44 +129,14 @@ public class MetadataAdminResource {
         if (status != null && !STATUSES.contains(status)) {
             throw new ApiException(400, "INVALID_STATUS", "Statut inconnu : " + String.join(", ", STATUSES));
         }
-        String where = " WHERE (?::text IS NULL OR coalesce(m.status, 'PENDING') = ?)"
-                + " AND (?::text IS NULL OR lower(unaccent(a.title)) LIKE lower(unaccent(?)) ESCAPE '!')";
         String like = q == null || q.isBlank() ? null
                 : "%" + q.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        try (Connection c = dataSource.getConnection()) {
-            long total;
-            try (PreparedStatement st = c.prepareStatement(
-                    "SELECT count(*) FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id" + where)) {
-                bind(st, status, like);
-                try (ResultSet rs = st.executeQuery()) {
-                    rs.next();
-                    total = rs.getLong(1);
-                }
-            }
-            List<Entry> items = new ArrayList<>();
-            try (PreparedStatement st = c.prepareStatement("""
-                    SELECT a.id, a.title, coalesce(m.status, 'PENDING'), m.reason, m.score, coalesce(m.locked, FALSE),
-                           m.provider_id, a.year, a.poster_url, a.metadata_url, m.candidates::text, m.last_error,
-                           m.updated_at, m.updated_by, a.alternative_title
-                    FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id""" + where
-                    + " ORDER BY lower(a.title), a.id LIMIT ? OFFSET ?")) {
-                bind(st, status, like);
-                st.setInt(5, size);
-                st.setLong(6, (long) page * size);
-                try (ResultSet rs = st.executeQuery()) {
-                    while (rs.next()) {
-                        List<Map<String, Object>> candidates = candidates(rs.getString(11));
-                        String providerId = rs.getString(7);
-                        items.add(new Entry(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                                rs.getObject(5) == null ? null : rs.getBigDecimal(5).doubleValue(), rs.getBoolean(6),
-                                providerId, matchedTitle(providerId, candidates, rs.getString(15), rs.getString(2)),
-                                (Integer) rs.getObject(8), rs.getString(9), rs.getString(10), candidates,
-                                rs.getString(12), instant(rs, 13), rs.getString(14)));
-                    }
-                }
-            }
-            return new EntryPage(total, page, size, items);
+        long total = repository.countEntries(status, like);
+        List<Entry> items = new ArrayList<>();
+        for (MetadataRepository.EntryRow r : repository.entries(status, like, size, (long) page * size)) {
+            items.add(entry(r));
         }
+        return new EntryPage(total, page, size, items);
     }
 
     /** Fiche AniList à partir de son identifiant, avant de l'appliquer. */
@@ -200,57 +163,46 @@ public class MetadataAdminResource {
         String title = animeTitle(animeId);
         String providerId = request == null ? null : request.providerId();
         Candidate proposed = providerId == null ? null : fetch(providerId);
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                Sheet current = currentSheet(c, animeId);
-                List<AnimeRef> others = providerId == null ? List.of() : othersUsing(c, animeId, providerId);
-                boolean replacing = current != null && !current.providerId().equals(providerId);
-                if ((replacing || !others.isEmpty()) && !replace) {
-                    c.rollback();
-                    return Response.status(409).type(MediaType.APPLICATION_JSON).entity(new MetadataConflict(409,
-                            "METADATA_CONFLICT", replacing
-                            ? "Cet animé a déjà une fiche : confirmer le remplacement avec replace=true."
-                            : "Cette fiche est déjà utilisée par un autre animé : confirmer avec replace=true.",
-                            new AnimeRef(animeId, title), current, proposed == null ? null : Sheet.of(proposed), others)).build();
-                }
-                try (PreparedStatement st = c.prepareStatement("""
-                        INSERT INTO anime_metadata_match (anime_id, status, provider, provider_id, score, reason, candidates,
-                                                          locked, attempts, next_attempt_at, last_error, updated_at, updated_by)
-                        VALUES (?, 'MANUAL', ?, ?, NULL, NULL, ?::jsonb, TRUE, 0, NULL, NULL, now(), ?)
-                        ON CONFLICT (anime_id) DO UPDATE SET status = 'MANUAL', provider = EXCLUDED.provider,
-                            provider_id = EXCLUDED.provider_id, score = NULL, reason = NULL,
-                            candidates = coalesce(EXCLUDED.candidates, anime_metadata_match.candidates), locked = TRUE,
-                            attempts = 0, next_attempt_at = NULL, last_error = NULL, updated_at = now(),
-                            updated_by = EXCLUDED.updated_by""")) {
-                    st.setLong(1, animeId);
-                    st.setString(2, provider.id());
-                    st.setString(3, providerId);
-                    st.setString(4, proposed == null ? null : withChosen(c, animeId, proposed));
-                    st.setString(5, jwt.getName());
-                    st.executeUpdate();
-                }
-                service.applyToAnime(c, animeId, title, proposed);
-                boolean changed = current == null || !current.providerId().equals(providerId);
-                if (changed) {
-                    // Une fiche TMDB trouvée automatiquement l'a été avec les titres de l'ancienne fiche : on la
-                    // refait (synopsis français, affiche). Une fiche TMDB choisie à la main (verrouillée) est gardée.
-                    try (PreparedStatement st = c.prepareStatement("DELETE FROM anime_tmdb WHERE anime_id = ? AND NOT locked")) {
-                        st.setLong(1, animeId);
-                        st.executeUpdate();
-                    }
-                }
-                c.commit();
-                if (changed) {
-                    tmdbWorker.wake();
-                }
-                // Nouvelle affiche à télécharger : sans attendre le prochain passage de la tâche.
-                posterWorker.wake();
-            } catch (SQLException | RuntimeException | IOException e) {
-                c.rollback();
-                throw e;
-            }
+        record Outcome(MetadataConflict conflict, boolean changed) {
         }
+        Outcome outcome;
+        try {
+            outcome = db.inTransaction(c -> {
+                try {
+                    Sheet current = currentSheet(c, animeId);
+                    List<AnimeRef> others = providerId == null ? List.of() : othersUsing(c, animeId, providerId);
+                    boolean replacing = current != null && !current.providerId().equals(providerId);
+                    if ((replacing || !others.isEmpty()) && !replace) {
+                        return new Outcome(new MetadataConflict(409, "METADATA_CONFLICT", replacing
+                                ? "Cet animé a déjà une fiche : confirmer le remplacement avec replace=true."
+                                : "Cette fiche est déjà utilisée par un autre animé : confirmer avec replace=true.",
+                                new AnimeRef(animeId, title), current, proposed == null ? null : Sheet.of(proposed), others), false);
+                    }
+                    repository.saveManual(c, animeId, provider.id(), providerId,
+                            proposed == null ? null : withChosen(c, animeId, proposed), jwt.getName());
+                    service.applyToAnime(c, animeId, title, proposed);
+                    boolean changed = current == null || !current.providerId().equals(providerId);
+                    if (changed) {
+                        // Une fiche TMDB trouvée automatiquement l'a été avec les titres de l'ancienne fiche : on la
+                        // refait (synopsis français, affiche). Une fiche TMDB choisie à la main (verrouillée) est gardée.
+                        repository.deleteAutomaticTmdb(c, animeId);
+                    }
+                    return new Outcome(null, changed);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+        if (outcome.conflict() != null) {
+            return Response.status(409).type(MediaType.APPLICATION_JSON).entity(outcome.conflict()).build();
+        }
+        if (outcome.changed()) {
+            tmdbWorker.wake();
+        }
+        // Nouvelle affiche à télécharger : sans attendre le prochain passage de la tâche.
+        posterWorker.wake();
         return Response.ok(entry(animeId)).build();
     }
 
@@ -259,15 +211,8 @@ public class MetadataAdminResource {
     @Path("/anime/{id}/metadata")
     public Response unlock(@PathParam("id") long animeId) throws SQLException {
         animeTitle(animeId);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE anime_metadata_match SET locked = FALSE, status = 'PENDING', attempts = 0, next_attempt_at = NULL,
-                         updated_at = now(), updated_by = ? WHERE anime_id = ? AND locked""")) {
-            st.setString(1, jwt.getName());
-            st.setLong(2, animeId);
-            if (st.executeUpdate() == 0) {
-                throw new ApiException(404, "NOT_LOCKED", "Pas de correction manuelle pour cet animé");
-            }
+        if (repository.unlock(animeId, jwt.getName()) == 0) {
+            throw new ApiException(404, "NOT_LOCKED", "Pas de correction manuelle pour cet animé");
         }
         worker.wake();
         return Response.noContent().build();
@@ -280,15 +225,7 @@ public class MetadataAdminResource {
         if (!Set.of("UNMATCHED", "DOUBTFUL", "MATCHED").contains(status)) {
             throw new ApiException(400, "INVALID_STATUS", "status doit valoir UNMATCHED, DOUBTFUL ou MATCHED");
         }
-        int n;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE anime_metadata_match SET status = 'PENDING', attempts = 0, next_attempt_at = NULL,
-                         updated_at = now(), updated_by = ? WHERE status = ? AND NOT locked""")) {
-            st.setString(1, jwt.getName());
-            st.setString(2, status);
-            n = st.executeUpdate();
-        }
+        int n = repository.requeue(status, jwt.getName());
         worker.wake();
         return Map.of("requeued", n);
     }
@@ -306,67 +243,37 @@ public class MetadataAdminResource {
     }
 
     private String animeTitle(long animeId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT title FROM anime WHERE id = ?")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    throw new ApiException(404, "ANIME_NOT_FOUND", "Animé introuvable");
-                }
-                return rs.getString(1);
-            }
-        }
+        return repository.titleOf(animeId).orElseThrow(() -> new ApiException(404, "ANIME_NOT_FOUND", "Animé introuvable"));
     }
 
     /** Fiche actuellement appliquée (null si aucune). */
     private Sheet currentSheet(Connection c, long animeId) throws SQLException, IOException {
-        try (PreparedStatement st = c.prepareStatement("""
-                SELECT a.metadata_provider_id, a.year, a.poster_url, a.metadata_url, a.synopsis, m.candidates::text,
-                       a.alternative_title, a.title
-                FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id WHERE a.id = ? FOR UPDATE OF a""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next() || rs.getString(1) == null) {
-                    return null;
-                }
-                String id = rs.getString(1);
-                List<Map<String, Object>> candidates = candidates(rs.getString(6));
-                Map<String, Object> known = candidates.stream().filter(m -> id.equals(m.get("providerId"))).findFirst().orElse(Map.of());
-                return new Sheet(id, matchedTitle(id, candidates, rs.getString(7), rs.getString(8)), (String) known.get("romaji"),
-                        (Integer) rs.getObject(2), (String) known.get("format"), (Integer) known.get("episodes"), rs.getString(5),
-                        rs.getString(3), rs.getString(4));
-            }
+        Optional<MetadataRepository.CurrentSheet> row = repository.currentSheetForUpdate(c, animeId);
+        if (row.isEmpty()) {
+            return null;
         }
+        MetadataRepository.CurrentSheet r = row.get();
+        String id = r.providerId();
+        List<Map<String, Object>> candidates = candidates(r.candidatesJson());
+        Map<String, Object> known = candidates.stream().filter(m -> id.equals(m.get("providerId"))).findFirst().orElse(Map.of());
+        return new Sheet(id, matchedTitle(id, candidates, r.alternativeTitle(), r.title()), (String) known.get("romaji"),
+                r.year(), (String) known.get("format"), (Integer) known.get("episodes"), r.synopsis(),
+                r.posterUrl(), r.metadataUrl());
     }
 
-    private static List<AnimeRef> othersUsing(Connection c, long animeId, String providerId) throws SQLException {
-        List<AnimeRef> list = new ArrayList<>();
-        try (PreparedStatement st = c.prepareStatement(
-                "SELECT id, title FROM anime WHERE metadata_provider_id = ? AND id <> ? ORDER BY lower(title)")) {
-            st.setString(1, providerId);
-            st.setLong(2, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    list.add(new AnimeRef(rs.getLong(1), rs.getString(2)));
-                }
-            }
-        }
-        return list;
+    private List<AnimeRef> othersUsing(Connection c, long animeId, String providerId) throws SQLException {
+        return repository.othersUsing(c, animeId, providerId).stream().map(a -> new AnimeRef(a.id(), a.title())).toList();
     }
 
     /** Candidats gardés, avec la fiche choisie en tête (pour retrouver son titre plus tard). */
     private String withChosen(Connection c, long animeId, Candidate chosen) throws SQLException, IOException {
         List<Map<String, Object>> list = new ArrayList<>();
         list.add(MetadataService.candidateMap(chosen));
-        try (PreparedStatement st = c.prepareStatement("SELECT candidates::text FROM anime_metadata_match WHERE anime_id = ?")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (rs.next()) {
-                    for (Map<String, Object> m : candidates(rs.getString(1))) {
-                        if (!chosen.providerId().equals(m.get("providerId"))) {
-                            list.add(m);
-                        }
-                    }
+        Optional<String> kept = repository.candidatesJson(c, animeId);
+        if (kept.isPresent()) {
+            for (Map<String, Object> m : candidates(kept.get())) {
+                if (!chosen.providerId().equals(m.get("providerId"))) {
+                    list.add(m);
                 }
             }
         }
@@ -374,22 +281,14 @@ public class MetadataAdminResource {
     }
 
     private Entry entry(long animeId) throws SQLException, IOException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT a.id, a.title, coalesce(m.status, 'PENDING'), m.reason, m.score, coalesce(m.locked, FALSE),
-                            m.provider_id, a.year, a.poster_url, a.metadata_url, m.candidates::text, m.last_error,
-                            m.updated_at, m.updated_by, a.alternative_title
-                     FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id WHERE a.id = ?""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                List<Map<String, Object>> candidates = candidates(rs.getString(11));
-                return new Entry(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                        rs.getObject(5) == null ? null : rs.getBigDecimal(5).doubleValue(), rs.getBoolean(6), rs.getString(7),
-                        matchedTitle(rs.getString(7), candidates, rs.getString(15), rs.getString(2)), (Integer) rs.getObject(8),
-                        rs.getString(9), rs.getString(10), candidates, rs.getString(12), instant(rs, 13), rs.getString(14));
-            }
-        }
+        return entry(repository.entry(animeId).orElseThrow());
+    }
+
+    private Entry entry(MetadataRepository.EntryRow r) throws IOException {
+        List<Map<String, Object>> candidates = candidates(r.candidatesJson());
+        return new Entry(r.animeId(), r.title(), r.status(), r.reason(), r.score() == null ? null : r.score().doubleValue(),
+                r.locked(), r.providerId(), matchedTitle(r.providerId(), candidates, r.alternativeTitle(), r.title()), r.year(),
+                r.posterUrl(), r.metadataUrl(), candidates, r.lastError(), r.updatedAt(), r.updatedBy());
     }
 
     /** Titre de la fiche appliquée : celui du candidat retenu, sinon le titre alternatif, sinon le nom du dossier. */
@@ -404,17 +303,5 @@ public class MetadataAdminResource {
     private List<Map<String, Object>> candidates(String raw) throws IOException {
         return raw == null ? List.of() : json.readValue(raw, new TypeReference<>() {
         });
-    }
-
-    private static void bind(PreparedStatement st, String status, String like) throws SQLException {
-        st.setString(1, status);
-        st.setString(2, status);
-        st.setString(3, like);
-        st.setString(4, like);
-    }
-
-    private static Instant instant(ResultSet rs, int column) throws SQLException {
-        OffsetDateTime t = rs.getObject(column, OffsetDateTime.class);
-        return t == null ? null : t.toInstant();
     }
 }

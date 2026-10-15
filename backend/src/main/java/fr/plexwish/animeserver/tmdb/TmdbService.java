@@ -6,15 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.plexwish.animeserver.metadata.MetadataProvider.ProviderUnavailableException;
 import fr.plexwish.animeserver.metadata.TitleMatcher;
 import fr.plexwish.animeserver.tmdb.TmdbClient.Result;
-import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
@@ -49,7 +45,7 @@ public class TmdbService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    TmdbRepository repository;
     @Inject
     TmdbClient client;
     @Inject
@@ -75,16 +71,8 @@ public class TmdbService {
     public Step processNext() throws SQLException {
         purgeExpired();
         // Un animé encore en attente chez AniList attend : ses titres AniList rendent l'appariement plus sûr.
-        Optional<Long> pending = next("""
-                SELECT a.id FROM anime a LEFT JOIN anime_tmdb t ON t.anime_id = a.id
-                WHERE (t.anime_id IS NULL OR (t.status = 'PENDING' AND NOT t.locked AND (t.next_attempt_at IS NULL OR t.next_attempt_at <= now())))
-                  AND (%s OR EXISTS (SELECT 1 FROM anime_metadata_match m WHERE m.anime_id = a.id AND m.status <> 'PENDING'))
-                ORDER BY t.next_attempt_at NULLS FIRST, a.id LIMIT 1""".formatted(!metadataConfig.enabled()));
-        Optional<Long> stale = pending.isPresent() ? Optional.empty() : next("""
-                SELECT anime_id FROM anime_tmdb WHERE tmdb_id IS NOT NULL
-                  AND (fetched_at IS NULL OR fetched_at < now() - make_interval(secs => %d))
-                  AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-                ORDER BY fetched_at NULLS FIRST, anime_id LIMIT 1""".formatted(config.refreshAfter().toSeconds()));
+        Optional<Long> pending = repository.nextToMatch(!metadataConfig.enabled());
+        Optional<Long> stale = pending.isPresent() ? Optional.empty() : repository.nextToRefresh(config.refreshAfter().toSeconds());
         if (pending.isEmpty() && stale.isEmpty()) {
             return new Idle();
         }
@@ -111,22 +99,11 @@ public class TmdbService {
      * gardés pour l'admin). Seuls l'identifiant TMDB et le statut restent.
      */
     int purgeExpired() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE anime_tmdb SET title = NULL, synopsis = NULL, poster_path = NULL, language = NULL, fetched_at = NULL
-                     WHERE fetched_at < now() - make_interval(secs => ?)""");
-             PreparedStatement cand = c.prepareStatement("""
-                     UPDATE anime_tmdb SET candidates = NULL
-                     WHERE candidates IS NOT NULL AND updated_at < now() - make_interval(secs => ?)""")) {
-            st.setLong(1, config.maxAge().toSeconds());
-            cand.setLong(1, config.maxAge().toSeconds());
-            cand.executeUpdate();
-            int n = st.executeUpdate();
-            if (n > 0) {
-                LOG.infof("TMDB : %d fiche(s) de plus de 6 mois effacée(s) (conditions de l'API TMDB)", n);
-            }
-            return n;
+        int n = repository.purgeExpired(config.maxAge().toSeconds());
+        if (n > 0) {
+            LOG.infof("TMDB : %d fiche(s) de plus de 6 mois effacée(s) (conditions de l'API TMDB)", n);
         }
+        return n;
     }
 
     // --- Appariement -------------------------------------------------------------------------------
@@ -136,46 +113,39 @@ public class TmdbService {
     }
 
     Known known(long animeId) throws SQLException, IOException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT a.title, a.year, m.provider_id, m.candidates::text, a.alternative_title,
-                            (SELECT count(*) FROM episode e JOIN season s ON s.id = e.season_id WHERE s.anime_id = a.id)
-                     FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id WHERE a.id = ?""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
-                }
-                String folder = rs.getString(1);
-                Integer year = (Integer) rs.getObject(2);
-                String providerId = rs.getString(3);
-                List<String> titles = new ArrayList<>();
-                String format = null;
-                if (providerId != null && rs.getString(4) != null) {
-                    List<Map<String, Object>> candidates = json.readValue(rs.getString(4), new TypeReference<>() {
-                    });
-                    for (Map<String, Object> m : candidates) {
-                        if (providerId.equals(m.get("providerId"))) {
-                            for (String k : new String[]{"nativeTitle", "romaji", "english", "title"}) {
-                                if (m.get(k) instanceof String t) {
-                                    titles.add(t);
-                                }
-                            }
-                            format = (String) m.get("format");
+        Optional<TmdbRepository.KnownRow> row = repository.known(animeId);
+        if (row.isEmpty()) {
+            return null;
+        }
+        TmdbRepository.KnownRow r = row.get();
+        String folder = r.folderTitle();
+        Integer year = r.year();
+        String providerId = r.providerId();
+        List<String> titles = new ArrayList<>();
+        String format = null;
+        if (providerId != null && r.candidatesJson() != null) {
+            List<Map<String, Object>> candidates = json.readValue(r.candidatesJson(), new TypeReference<>() {
+            });
+            for (Map<String, Object> m : candidates) {
+                if (providerId.equals(m.get("providerId"))) {
+                    for (String k : new String[]{"nativeTitle", "romaji", "english", "title"}) {
+                        if (m.get(k) instanceof String t) {
+                            titles.add(t);
                         }
                     }
+                    format = (String) m.get("format");
                 }
-                if (rs.getString(5) != null) {
-                    titles.add(rs.getString(5));
-                }
-                TitleMatcher.Query folderQuery = TitleMatcher.clean(folder);
-                titles.addAll(folderQuery.variants());
-                if (year == null) {
-                    year = folderQuery.year();
-                }
-                return new Known(folder, titles, year, format, rs.getInt(6));
             }
         }
+        if (r.alternativeTitle() != null) {
+            titles.add(r.alternativeTitle());
+        }
+        TitleMatcher.Query folderQuery = TitleMatcher.clean(folder);
+        titles.addAll(folderQuery.variants());
+        if (year == null) {
+            year = folderQuery.year();
+        }
+        return new Known(folder, titles, year, format, r.localEpisodes());
     }
 
     String match(long animeId) throws SQLException, ProviderUnavailableException {
@@ -235,92 +205,32 @@ public class TmdbService {
 
     private void saveAutomatic(long animeId, TmdbMatcher.Decision d, Result chosen) throws SQLException {
         TmdbMatcher.Scored top = d.best() != null ? d.best() : d.ranked().isEmpty() ? null : d.ranked().get(0);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO anime_tmdb (anime_id, status, tmdb_type, tmdb_id, score, reason, candidates, locked, attempts,
-                                             next_attempt_at, last_error, language, title, synopsis, poster_path, fetched_at,
-                                             updated_at, updated_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, FALSE, 0, NULL, NULL, ?, ?, ?, ?, ?, now(), 'auto')
-                     ON CONFLICT (anime_id) DO UPDATE SET status = EXCLUDED.status, tmdb_type = EXCLUDED.tmdb_type,
-                         tmdb_id = EXCLUDED.tmdb_id, score = EXCLUDED.score, reason = EXCLUDED.reason,
-                         candidates = EXCLUDED.candidates, attempts = 0, next_attempt_at = NULL, last_error = NULL,
-                         language = EXCLUDED.language, title = EXCLUDED.title, synopsis = EXCLUDED.synopsis,
-                         poster_path = EXCLUDED.poster_path, fetched_at = EXCLUDED.fetched_at, updated_at = now(),
-                         updated_by = 'auto'
-                     WHERE NOT anime_tmdb.locked""")) {
-            st.setLong(1, animeId);
-            st.setString(2, d.status().name());
-            st.setString(3, chosen == null ? null : chosen.type());
-            st.setObject(4, chosen == null ? null : chosen.id());
-            st.setObject(5, top == null ? null : Math.round(Math.min(1, top.titleScore()) * 1000) / 1000.0);
-            st.setString(6, d.reason() == null ? null : d.reason().name());
-            st.setString(7, candidatesJson(d.ranked()));
-            bindFields(st, 8, chosen);
-            st.executeUpdate();
-        }
+        repository.saveAutomatic(animeId, d.status().name(), chosen == null ? null : chosen.type(),
+                chosen == null ? null : chosen.id(),
+                top == null ? null : Math.round(Math.min(1, top.titleScore()) * 1000) / 1000.0,
+                d.reason() == null ? null : d.reason().name(), candidatesJson(d.ranked()), fields(chosen));
     }
 
     /** Champs récupérés : langue, titre (seulement s'il est traduit), synopsis, affiche, date. */
-    void bindFields(PreparedStatement st, int from, Result r) throws SQLException {
-        boolean any = r != null;
-        String title = any && r.name() != null && !r.name().equals(r.originalName()) ? r.name() : null;
-        st.setString(from, any ? client.languageCode() : null);
-        st.setString(from + 1, title);
-        st.setString(from + 2, any ? r.overview() : null);
-        st.setString(from + 3, any ? r.posterPath() : null);
-        st.setObject(from + 4, any ? OffsetDateTime.now(clock) : null);
+    TmdbRepository.Fields fields(Result r) {
+        if (r == null) {
+            return TmdbRepository.Fields.NONE;
+        }
+        String title = r.name() != null && !r.name().equals(r.originalName()) ? r.name() : null;
+        return new TmdbRepository.Fields(client.languageCode(), title, r.overview(), r.posterPath(), OffsetDateTime.now(clock));
     }
 
     /** Fiche de plus de 5 mois : on la redemande (sans refaire l'appariement), même verrouillée. */
     String refresh(long animeId) throws SQLException, ProviderUnavailableException {
-        String type;
-        long id;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT tmdb_type, tmdb_id FROM anime_tmdb WHERE anime_id = ?")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                type = rs.getString(1);
-                id = rs.getLong(2);
-            }
-        }
-        Optional<Result> r = client.details(type, id);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE anime_tmdb SET language = ?, title = ?, synopsis = ?, poster_path = ?, fetched_at = ?,
-                         next_attempt_at = ? WHERE anime_id = ? AND tmdb_type = ? AND tmdb_id = ?""")) {
-            bindFields(st, 1, r.orElse(null));
-            // Fiche supprimée chez TMDB : plus rien de conservé ; on ne la redemande que dans un mois.
-            st.setObject(6, r.isPresent() ? null : OffsetDateTime.now(clock).plusDays(30));
-            st.setLong(7, animeId);
-            st.setString(8, type);
-            st.setLong(9, id);
-            st.executeUpdate();
-        }
+        TmdbRepository.Reference ref = repository.reference(animeId);
+        Optional<Result> r = client.details(ref.type(), ref.id());
+        // Fiche supprimée chez TMDB : plus rien de conservé ; on ne la redemande que dans un mois.
+        repository.refreshFields(animeId, ref, fields(r.orElse(null)), r.isPresent() ? null : OffsetDateTime.now(clock).plusDays(30));
         return "REFRESHED";
     }
 
     private void postpone(long animeId, String error) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO anime_tmdb (anime_id, status, attempts, next_attempt_at, last_error, updated_by)
-                     VALUES (?, 'PENDING', 1, now() + interval '10 minutes', ?, 'auto')
-                     ON CONFLICT (anime_id) DO UPDATE SET attempts = anime_tmdb.attempts + 1,
-                         status = CASE WHEN anime_tmdb.attempts + 1 >= 5 AND anime_tmdb.tmdb_id IS NULL THEN 'UNMATCHED' ELSE anime_tmdb.status END,
-                         reason = CASE WHEN anime_tmdb.attempts + 1 >= 5 AND anime_tmdb.tmdb_id IS NULL THEN 'ERROR' ELSE anime_tmdb.reason END,
-                         next_attempt_at = now() + make_interval(mins => LEAST(1440, power(2, anime_tmdb.attempts + 1)::int)),
-                         last_error = EXCLUDED.last_error, updated_at = now()""")) {
-            st.setLong(1, animeId);
-            st.setString(2, error.length() > 500 ? error.substring(0, 500) : error);
-            st.executeUpdate();
-        }
-    }
-
-    private Optional<Long> next(String sql) throws SQLException {
-        try (Connection c = dataSource.getConnection(); PreparedStatement st = c.prepareStatement(sql);
-             ResultSet rs = st.executeQuery()) {
-            return rs.next() ? Optional.of(rs.getLong(1)) : Optional.empty();
-        }
+        repository.postpone(animeId, error.length() > 500 ? error.substring(0, 500) : error);
     }
 
     String candidatesJson(List<TmdbMatcher.Scored> ranked) {

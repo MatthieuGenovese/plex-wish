@@ -8,17 +8,13 @@ import fr.plexwish.animeserver.metadata.MetadataService;
 import fr.plexwish.animeserver.poster.PosterConfig;
 import fr.plexwish.animeserver.poster.PosterDownloader;
 import fr.plexwish.animeserver.poster.PosterStore;
-import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.nio.file.Path;
 import java.security.SecureRandom;
-import java.sql.Array;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,7 +61,9 @@ public class CastService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    CastRepository repository;
+    @Inject
+    fr.plexwish.animeserver.common.db.Db db;
     @Inject
     AniListProvider anilist;
     @Inject
@@ -151,28 +149,8 @@ public class CastService {
     record Work(long animeId, String mediaId, int seasons, String title) {
     }
 
-    private static final String WANTED = """
-            LEAST(?, GREATEST(1, (SELECT count(*) FROM season s WHERE s.anime_id = a.id AND s.season_number > 0)))""";
-
     Optional<Work> nextAnime() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT a.id, a.metadata_provider_id, " + WANTED + ", a.title" + """
-                      FROM anime a LEFT JOIN anime_cast_state st ON st.anime_id = a.id
-                     WHERE a.metadata_provider = 'ANILIST' AND a.metadata_provider_id IS NOT NULL
-                       AND (st.next_attempt_at IS NULL OR st.next_attempt_at <= now())
-                       AND (st.anime_id IS NULL OR st.status = 'PENDING'
-                            OR st.source_id IS DISTINCT FROM a.metadata_provider_id
-                            OR (st.status IN ('OK', 'NONE') AND st.fetched_at < now() - make_interval(secs => ?))
-                            OR (st.status = 'OK' AND st.last_error IS NOT NULL AND st.seasons < """ + WANTED + """
-                     ))
-                     ORDER BY st.anime_id NULLS FIRST, a.id LIMIT 1""")) {
-            st.setInt(1, config.maxSeasons());
-            st.setLong(2, config.refreshAfter().toSeconds());
-            st.setInt(3, config.maxSeasons());
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(new Work(rs.getLong(1), rs.getString(2), rs.getInt(3), rs.getString(4))) : Optional.empty();
-            }
-        }
+        return repository.nextAnime(config.maxSeasons(), config.refreshAfter().toSeconds());
     }
 
     /** Un rôle retenu (personnage + doubleur japonais), avec sa place d'origine. */
@@ -318,55 +296,21 @@ public class CastService {
 
     /** Remplace la distribution d'un animé (une transaction) ; personnes et personnages partagés entre animés. */
     void replaceCast(long animeId, List<Role> roles) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                try (PreparedStatement del = c.prepareStatement("DELETE FROM anime_cast WHERE anime_id = ?")) {
-                    del.setLong(1, animeId);
-                    del.executeUpdate();
-                }
-                int position = 0;
-                for (Role r : roles) {
-                    long characterId = upsertCharacter(c, r.character());
-                    Long personId = r.person() == null ? null : upsertPerson(c, r.person());
-                    try (PreparedStatement ins = c.prepareStatement("""
-                            INSERT INTO anime_cast (anime_id, character_id, language, person_id, role, position, source_id)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)""")) {
-                        ins.setLong(1, animeId);
-                        ins.setLong(2, characterId);
-                        ins.setString(3, LANGUAGE);
-                        ins.setObject(4, personId, java.sql.Types.BIGINT);
-                        ins.setString(5, r.role());
-                        ins.setInt(6, position++);
-                        ins.setString(7, r.sourceId());
-                        ins.executeUpdate();
-                    }
-                }
-                c.commit();
-            } catch (SQLException | RuntimeException e) {
-                c.rollback();
-                throw e;
+        db.runInTransaction(c -> {
+            repository.deleteCastOf(c, animeId);
+            int position = 0;
+            for (Role r : roles) {
+                long characterId = upsertCharacter(c, r.character());
+                Long personId = r.person() == null ? null : upsertPerson(c, r.person());
+                repository.insertRole(c, animeId, characterId, LANGUAGE, personId, r.role(), position++, r.sourceId());
             }
-        }
+        });
         cleanup();
     }
 
     /** Personnage : nom seulement (pas d'image : seuls les comédiens ont une photo, décision du 2026-10-05). */
     private long upsertCharacter(Connection c, JsonNode node) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                INSERT INTO cast_character (provider, provider_id, name, native_name, fetched_at) VALUES (?, ?, ?, ?, now())
-                ON CONFLICT (provider, provider_id) DO UPDATE SET name = EXCLUDED.name, native_name = EXCLUDED.native_name,
-                    fetched_at = now()
-                RETURNING id""")) {
-            st.setString(1, PROVIDER);
-            st.setString(2, node.path("id").asText());
-            st.setString(3, name(node));
-            st.setString(4, text(node.path("name").path("native")));
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                return rs.getLong(1);
-            }
-        }
+        return repository.upsertCharacter(c, PROVIDER, node.path("id").asText(), name(node), text(node.path("name").path("native")));
     }
 
     /** Comédien ; sa photo est mise en file de téléchargement. */
@@ -378,148 +322,43 @@ public class CastService {
         if (image != null && image.contains("/default.")) {
             image = null; // image générique d'AniList : visuel de remplacement de l'application à la place
         }
-        long id;
-        try (PreparedStatement st = c.prepareStatement("""
-                INSERT INTO person (provider, provider_id, name, native_name, image_url, fetched_at) VALUES (?, ?, ?, ?, ?, now())
-                ON CONFLICT (provider, provider_id) DO UPDATE SET name = EXCLUDED.name, native_name = EXCLUDED.native_name,
-                    image_url = EXCLUDED.image_url, fetched_at = now()
-                RETURNING id""")) {
-            st.setString(1, PROVIDER);
-            st.setString(2, node.path("id").asText());
-            st.setString(3, name(node));
-            st.setString(4, text(node.path("name").path("native")));
-            st.setString(5, image);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                id = rs.getLong(1);
-            }
-        }
+        long id = repository.upsertPerson(c, PROVIDER, node.path("id").asText(), name(node),
+                text(node.path("name").path("native")), image);
         if (image != null) {
-            try (PreparedStatement st = c.prepareStatement(
-                    "INSERT INTO cast_image (source_url, status) VALUES (?, 'PENDING') ON CONFLICT DO NOTHING")) {
-                st.setString(1, image);
-                st.executeUpdate();
-            }
+            repository.queueImage(c, image);
         }
         return id;
     }
 
     /** Ménage : personnes, personnages et photos que plus aucune distribution n'utilise (fichiers compris). */
     void cleanup() throws SQLException {
-        List<String> paths = new ArrayList<>();
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement(
-                    "DELETE FROM person p WHERE NOT EXISTS (SELECT 1 FROM anime_cast ac WHERE ac.person_id = p.id)")) {
-                st.executeUpdate();
-            }
-            try (PreparedStatement st = c.prepareStatement(
-                    "DELETE FROM cast_character ch WHERE NOT EXISTS (SELECT 1 FROM anime_cast ac WHERE ac.character_id = ch.id)")) {
-                st.executeUpdate();
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    DELETE FROM cast_image i WHERE NOT EXISTS (SELECT 1 FROM person p WHERE p.image_url = i.source_url)
-                    RETURNING relative_path""");
-                 ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    if (rs.getString(1) != null) {
-                        paths.add(rs.getString(1));
-                    }
-                }
-            }
-        }
-        deleteIfUnreferenced(paths);
+        deleteIfUnreferenced(repository.deleteUnused());
     }
 
     private void saveState(Work w, String status, int seasons, int roles, String error, Duration retryIn) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO anime_cast_state (anime_id, status, provider, source_id, seasons, roles, fetched_at, attempts,
-                                                   next_attempt_at, last_error, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, now(), 0, now() + make_interval(secs => ?), ?, now())
-                     ON CONFLICT (anime_id) DO UPDATE SET status = EXCLUDED.status, provider = EXCLUDED.provider,
-                         source_id = EXCLUDED.source_id, seasons = EXCLUDED.seasons, roles = EXCLUDED.roles,
-                         fetched_at = now(), attempts = 0, next_attempt_at = EXCLUDED.next_attempt_at,
-                         last_error = EXCLUDED.last_error, updated_at = now()""")) {
-            st.setLong(1, w.animeId());
-            st.setString(2, status);
-            st.setString(3, PROVIDER);
-            st.setString(4, w.mediaId());
-            st.setInt(5, seasons);
-            st.setInt(6, roles);
-            st.setObject(7, retryIn == null ? null : retryIn.toSeconds(), java.sql.Types.BIGINT);
-            st.setString(8, error == null ? null : error.length() > 300 ? error.substring(0, 300) : error);
-            st.executeUpdate();
-        }
+        repository.saveState(w.animeId(), status, PROVIDER, w.mediaId(), seasons, roles,
+                retryIn == null ? null : retryIn.toSeconds(),
+                error == null ? null : error.length() > 300 ? error.substring(0, 300) : error);
     }
 
     /** Erreur imprévue : nouvel essai espacé, abandon (FAILED) après {@code maxAttempts}. */
     private void failed(Work w, String error) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO anime_cast_state (anime_id, status, provider, source_id, attempts, next_attempt_at, last_error)
-                     VALUES (?, 'PENDING', ?, ?, 1, now() + interval '2 minutes', ?)
-                     ON CONFLICT (anime_id) DO UPDATE SET attempts = anime_cast_state.attempts + 1,
-                         status = CASE WHEN anime_cast_state.attempts + 1 >= ? THEN 'FAILED' ELSE 'PENDING' END,
-                         source_id = EXCLUDED.source_id,
-                         next_attempt_at = now() + make_interval(mins => power(2, anime_cast_state.attempts + 1)::int),
-                         last_error = EXCLUDED.last_error, updated_at = now()""")) {
-            st.setLong(1, w.animeId());
-            st.setString(2, PROVIDER);
-            st.setString(3, w.mediaId());
-            st.setString(4, error.length() > 300 ? error.substring(0, 300) : error);
-            st.setInt(5, config.maxAttempts());
-            st.executeUpdate();
-        }
+        repository.saveFailure(w.animeId(), PROVIDER, w.mediaId(), error.length() > 300 ? error.substring(0, 300) : error,
+                config.maxAttempts());
     }
 
     /** Admin : redemander la distribution d'un animé (au prochain passage de la tâche). */
     public boolean requeue(long animeId) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement(
-                    "SELECT 1 FROM anime WHERE id = ? AND metadata_provider = 'ANILIST' AND metadata_provider_id IS NOT NULL")) {
-                st.setLong(1, animeId);
-                try (ResultSet rs = st.executeQuery()) {
-                    if (!rs.next()) {
-                        return false;
-                    }
-                }
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    INSERT INTO anime_cast_state (anime_id, status, provider) VALUES (?, 'PENDING', ?)
-                    ON CONFLICT (anime_id) DO UPDATE SET status = 'PENDING', attempts = 0, next_attempt_at = NULL,
-                        last_error = NULL, updated_at = now()""")) {
-                st.setLong(1, animeId);
-                st.setString(2, PROVIDER);
-                st.executeUpdate();
-            }
-            // Les photos en échec de ses comédiens sont retentées aussi.
-            try (PreparedStatement st = c.prepareStatement("""
-                    UPDATE cast_image SET status = 'PENDING', attempts = 0, next_attempt_at = NULL, last_error = NULL
-                    WHERE status = 'FAILED' AND source_url IN (
-                        SELECT p.image_url FROM anime_cast ac JOIN person p ON p.id = ac.person_id WHERE ac.anime_id = ?)""")) {
-                st.setLong(1, animeId);
-                st.executeUpdate();
-            }
+        if (!repository.hasAniListMatch(animeId)) {
+            return false;
         }
+        repository.requeue(animeId, PROVIDER);
         return true;
     }
 
     /** « Effacer toute la distribution » : données et images. */
     public int purge() throws SQLException {
-        int n;
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try (PreparedStatement count = c.prepareStatement("SELECT count(*) FROM anime_cast");
-                 ResultSet rs = count.executeQuery()) {
-                rs.next();
-                n = rs.getInt(1);
-            }
-            try (PreparedStatement st = c.prepareStatement(
-                    "TRUNCATE anime_cast, anime_cast_state, person, cast_character, cast_image")) {
-                st.execute();
-            }
-            c.commit();
-        }
+        int n = repository.truncateAll();
         store().sweep(Set.of(), Duration.ZERO);
         return n;
     }
@@ -527,14 +366,7 @@ public class CastService {
     // --- Images -------------------------------------------------------------------------------------------
 
     Optional<String> nextImage() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT source_url FROM cast_image WHERE status = 'PENDING'
-                       AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-                     ORDER BY attempts, source_url LIMIT 1""");
-             ResultSet rs = st.executeQuery()) {
-            return rs.next() ? Optional.of(rs.getString(1)) : Optional.empty();
-        }
+        return repository.nextImage();
     }
 
     String downloadImage(String url) throws SQLException, ProviderUnavailableException {
@@ -550,32 +382,14 @@ public class CastService {
         }
         String relative = PosterStore.relativePath(image.sha256(), image.extension());
         store().write(relative, image.bytes());
-        String oldPath = null;
-        String publicId = null;
-        try (Connection c = dataSource.getConnection()) {
-            try (PreparedStatement st = c.prepareStatement("SELECT relative_path, sha256, public_id FROM cast_image WHERE source_url = ?")) {
-                st.setString(1, url);
-                try (ResultSet rs = st.executeQuery()) {
-                    if (!rs.next()) {
-                        return "GONE"; // effacée entre-temps
-                    }
-                    oldPath = rs.getString(1);
-                    publicId = image.sha256().equals(rs.getString(2)) ? rs.getString(3) : null;
-                }
-            }
-            try (PreparedStatement st = c.prepareStatement("""
-                    UPDATE cast_image SET status = 'OK', public_id = ?, relative_path = ?, sha256 = ?, content_type = ?,
-                        bytes = ?, fetched_at = now(), attempts = 0, next_attempt_at = NULL, last_error = NULL
-                    WHERE source_url = ?""")) {
-                st.setString(1, publicId != null ? publicId : newPublicId());
-                st.setString(2, relative);
-                st.setString(3, image.sha256());
-                st.setString(4, image.contentType());
-                st.setLong(5, image.bytes().length);
-                st.setString(6, url);
-                st.executeUpdate();
-            }
+        Optional<CastRepository.ImageRow> known = repository.image(url);
+        if (known.isEmpty()) {
+            return "GONE"; // effacée entre-temps
         }
+        String oldPath = known.get().relativePath();
+        String publicId = image.sha256().equals(known.get().sha256()) ? known.get().publicId() : null;
+        repository.imageDownloaded(url, publicId != null ? publicId : newPublicId(), relative, image.sha256(), image.contentType(),
+                image.bytes().length);
         if (oldPath != null && !oldPath.equals(relative)) {
             deleteIfUnreferenced(List.of(oldPath));
         }
@@ -583,23 +397,7 @@ public class CastService {
     }
 
     private void imageFailed(String url, String error, boolean permanent) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     UPDATE cast_image SET attempts = attempts + 1,
-                         status = CASE WHEN relative_path IS NOT NULL THEN 'OK'
-                                       WHEN ? OR attempts + 1 >= ? THEN 'FAILED' ELSE 'PENDING' END,
-                         next_attempt_at = CASE WHEN ? OR attempts + 1 >= ? THEN NULL
-                                                ELSE now() + make_interval(mins => power(2, attempts + 1)::int) END,
-                         last_error = ?
-                     WHERE source_url = ?""")) {
-            st.setBoolean(1, permanent);
-            st.setInt(2, config.maxAttempts());
-            st.setBoolean(3, permanent);
-            st.setInt(4, config.maxAttempts());
-            st.setString(5, error.length() > 300 ? error.substring(0, 300) : error);
-            st.setString(6, url);
-            st.executeUpdate();
-        }
+        repository.imageFailed(url, error.length() > 300 ? error.substring(0, 300) : error, permanent, config.maxAttempts());
     }
 
     private void deleteIfUnreferenced(Collection<String> paths) throws SQLException {
@@ -615,15 +413,7 @@ public class CastService {
     }
 
     public Set<String> referenced() throws SQLException {
-        Set<String> out = new HashSet<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT DISTINCT relative_path FROM cast_image WHERE relative_path IS NOT NULL");
-             ResultSet rs = st.executeQuery()) {
-            while (rs.next()) {
-                out.add(rs.getString(1));
-            }
-        }
-        return out;
+        return repository.referencedImages();
     }
 
     public int sweep() throws SQLException {
@@ -638,29 +428,23 @@ public class CastService {
             return out;
         }
         List<String> missing = new ArrayList<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "SELECT source_url, public_id, relative_path FROM cast_image WHERE source_url = ANY(?)")) {
-            Array arr = c.createArrayOf("text", wanted.toArray());
-            st.setArray(1, arr);
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    String src = rs.getString(1);
-                    String rel = rs.getString(3);
-                    if (rs.getString(2) != null && rel != null) {
-                        if (store().existing(rel).isPresent()) {
-                            out.put(src, "/api/cast-images/" + rs.getString(2));
-                            continue;
-                        }
-                        missing.add(src);
+        try {
+            for (CastRepository.ImageRow r : repository.images(wanted)) {
+                String src = r.sourceUrl();
+                String rel = r.relativePath();
+                if (r.publicId() != null && rel != null) {
+                    if (store().existing(rel).isPresent()) {
+                        out.put(src, "/api/cast-images/" + r.publicId());
+                        continue;
                     }
+                    missing.add(src);
                 }
             }
             for (String src : wanted) {
                 out.putIfAbsent(src, src);
             }
             for (String src : missing) {
-                markMissing(c, src);
+                repository.markImageMissing(src);
             }
         } catch (SQLException e) {
             throw new IllegalStateException(e);
@@ -668,36 +452,21 @@ public class CastService {
         return out;
     }
 
-    private static void markMissing(Connection c, String source) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                UPDATE cast_image SET status = 'PENDING', public_id = NULL, relative_path = NULL, sha256 = NULL,
-                    attempts = 0, next_attempt_at = NULL, last_error = 'fichier local disparu' WHERE source_url = ?""")) {
-            st.setString(1, source);
-            st.executeUpdate();
-        }
-    }
-
     /** Fichier servi pour /api/cast-images/{publicId} : jamais un chemin venu du client. */
     public record Served(Path file, String contentType, String sha256) {
     }
 
     public Optional<Served> served(String publicId) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "SELECT source_url, relative_path, content_type, sha256 FROM cast_image WHERE public_id = ? AND relative_path IS NOT NULL")) {
-            st.setString(1, publicId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next() || !List.of("image/jpeg", "image/png", "image/webp").contains(rs.getString(3))) {
-                    return Optional.empty();
-                }
-                Optional<Path> file = store().existing(rs.getString(2));
-                if (file.isEmpty()) {
-                    markMissing(c, rs.getString(1));
-                    return Optional.empty();
-                }
-                return Optional.of(new Served(file.get(), rs.getString(3), rs.getString(4)));
-            }
+        Optional<CastRepository.ImageRow> row = repository.servedImage(publicId);
+        if (row.isEmpty() || !List.of("image/jpeg", "image/png", "image/webp").contains(row.get().contentType())) {
+            return Optional.empty();
         }
+        Optional<Path> file = store().existing(row.get().relativePath());
+        if (file.isEmpty()) {
+            repository.markImageMissing(row.get().sourceUrl());
+            return Optional.empty();
+        }
+        return Optional.of(new Served(file.get(), row.get().contentType(), row.get().sha256()));
     }
 
     static String newPublicId() {

@@ -7,20 +7,16 @@ import fr.plexwish.animeserver.metadata.MetadataProvider.ProviderUnavailableExce
 import fr.plexwish.animeserver.metadata.TitleMatcher.Decision;
 import fr.plexwish.animeserver.metadata.TitleMatcher.Scored;
 import fr.plexwish.animeserver.metadata.TitleMatcher.Status;
-import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,7 +48,9 @@ public class MetadataService {
     }
 
     @Inject
-    AgroalDataSource dataSource;
+    MetadataRepository repository;
+    @Inject
+    fr.plexwish.animeserver.common.db.Db db;
     @Inject
     MetadataProvider provider;
     @Inject
@@ -103,12 +101,8 @@ public class MetadataService {
     }
 
     private String titleOf(long animeId) {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT title FROM anime WHERE id = ?")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? rs.getString(1) : "animé " + animeId;
-            }
+        try {
+            return repository.titleOf(animeId).orElse("animé " + animeId);
         } catch (SQLException e) {
             return "animé " + animeId;
         }
@@ -116,37 +110,17 @@ public class MetadataService {
 
     /** Animés sans état, ou à refaire et dont l'heure est venue ; les plus anciens d'abord. */
     public Optional<Long> nextPending() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT a.id FROM anime a LEFT JOIN anime_metadata_match m ON m.anime_id = a.id
-                     WHERE m.anime_id IS NULL
-                        OR (m.status = 'PENDING' AND NOT m.locked AND (m.next_attempt_at IS NULL OR m.next_attempt_at <= ?))
-                     ORDER BY m.next_attempt_at NULLS FIRST, a.id LIMIT 1""")) {
-            st.setObject(1, OffsetDateTime.now(clock));
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(rs.getLong(1)) : Optional.empty();
-            }
-        }
+        return repository.nextPending(OffsetDateTime.now(clock));
     }
 
     /** Recherche, décision, enregistrement. Renvoie le statut enregistré. */
     String process(long animeId) throws SQLException, ProviderUnavailableException {
-        String folderTitle;
-        Integer localEpisodes;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT a.title, (SELECT count(*) FROM episode e JOIN season s ON s.id = e.season_id
-                                      WHERE s.anime_id = a.id AND s.season_number > 0)
-                     FROM anime a WHERE a.id = ?""")) {
-            st.setLong(1, animeId);
-            try (ResultSet rs = st.executeQuery()) {
-                if (!rs.next()) {
-                    return "GONE";
-                }
-                folderTitle = rs.getString(1);
-                localEpisodes = rs.getInt(2);
-            }
+        Optional<MetadataRepository.AnimeToMatch> anime = repository.animeToMatch(animeId);
+        if (anime.isEmpty()) {
+            return "GONE";
         }
+        String folderTitle = anime.get().folderTitle();
+        Integer localEpisodes = anime.get().localEpisodes();
         TitleMatcher.Query query = TitleMatcher.clean(folderTitle);
         Map<String, Candidate> found = new LinkedHashMap<>();
         provider.search(query.main()).forEach(cand -> found.putIfAbsent(cand.providerId(), cand));
@@ -168,87 +142,28 @@ public class MetadataService {
     private void saveAutomatic(long animeId, String folderTitle, Decision d) throws SQLException {
         Scored best = d.best();
         Scored top = best != null ? best : d.ranked().isEmpty() ? null : d.ranked().get(0);
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                boolean written;
-                try (PreparedStatement st = c.prepareStatement("""
-                        INSERT INTO anime_metadata_match (anime_id, status, provider, provider_id, score, reason, candidates,
-                                                          locked, attempts, next_attempt_at, last_error, updated_at, updated_by)
-                        VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, FALSE, 0, NULL, NULL, now(), 'auto')
-                        ON CONFLICT (anime_id) DO UPDATE SET status = EXCLUDED.status, provider = EXCLUDED.provider,
-                            provider_id = EXCLUDED.provider_id, score = EXCLUDED.score, reason = EXCLUDED.reason,
-                            candidates = EXCLUDED.candidates, attempts = 0, next_attempt_at = NULL, last_error = NULL,
-                            updated_at = now(), updated_by = 'auto'
-                        WHERE NOT anime_metadata_match.locked
-                        RETURNING anime_id""")) {
-                    st.setLong(1, animeId);
-                    st.setString(2, d.status().name());
-                    st.setString(3, provider.id());
-                    st.setString(4, best == null ? null : best.candidate().providerId());
-                    st.setObject(5, top == null ? null : round(top.titleScore()));
-                    st.setString(6, d.reason() == null ? null : d.reason().name());
-                    st.setString(7, candidatesJson(d.ranked()));
-                    try (ResultSet rs = st.executeQuery()) {
-                        written = rs.next();
-                    }
-                }
-                if (written) {
-                    applyToAnime(c, animeId, folderTitle, best == null ? null : best.candidate());
-                }
-                c.commit();
-            } catch (SQLException | RuntimeException e) {
-                c.rollback();
-                throw e;
+        db.runInTransaction(c -> {
+            boolean written = repository.saveAutomatic(c, animeId, d.status().name(), provider.id(),
+                    best == null ? null : best.candidate().providerId(), top == null ? null : round(top.titleScore()),
+                    d.reason() == null ? null : d.reason().name(), candidatesJson(d.ranked()));
+            if (written) {
+                applyToAnime(c, animeId, folderTitle, best == null ? null : best.candidate());
             }
-        }
+        });
     }
 
     /** Recopie la fiche dans l'animé (ou l'efface si {@code candidate} est null). Le titre du dossier ne change jamais. */
     void applyToAnime(Connection c, long animeId, String folderTitle, Candidate candidate) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("""
-                UPDATE anime SET alternative_title = ?, synopsis = ?, synopsis_language = ?, poster_url = ?,
-                    poster_large_url = ?, year = ?, metadata_provider = ?, metadata_provider_id = ?, metadata_url = ?,
-                    metadata_fetched_at = CASE WHEN ?::text IS NULL THEN NULL ELSE now() END
-                WHERE id = ?""")) {
-            st.setString(1, candidate == null ? null : alternativeTitle(folderTitle, candidate));
-            st.setString(2, candidate == null ? null : candidate.synopsis());
-            st.setString(3, candidate == null || candidate.synopsis() == null ? null : provider.synopsisLanguage());
-            st.setString(4, candidate == null ? null : candidate.posterUrl());
-            st.setString(5, candidate == null ? null : candidate.posterLargeUrl());
-            st.setObject(6, candidate == null ? null : candidate.year());
-            st.setString(7, candidate == null ? null : provider.id());
-            st.setString(8, candidate == null ? null : candidate.providerId());
-            st.setString(9, candidate == null ? null : candidate.siteUrl());
-            st.setString(10, candidate == null ? null : candidate.providerId());
-            st.setLong(11, animeId);
-            st.executeUpdate();
-        }
+        repository.applyToAnime(c, animeId, candidate == null ? MetadataRepository.AnimeSheet.NONE
+                : new MetadataRepository.AnimeSheet(alternativeTitle(folderTitle, candidate), candidate.synopsis(),
+                candidate.synopsis() == null ? null : provider.synopsisLanguage(), candidate.posterUrl(),
+                candidate.posterLargeUrl(), candidate.year(), provider.id(), candidate.providerId(), candidate.siteUrl()));
         saveGenres(c, animeId, candidate == null ? null : candidate.genres());
     }
 
     /** Remplace les genres d'un animé ; {@code genres} null = fiche retirée (genres effacés, à récupérer plus tard). */
     void saveGenres(Connection c, long animeId, List<String> genres) throws SQLException {
-        try (PreparedStatement del = c.prepareStatement("DELETE FROM anime_genre WHERE anime_id = ?")) {
-            del.setLong(1, animeId);
-            del.executeUpdate();
-        }
-        if (genres != null && !genres.isEmpty()) {
-            try (PreparedStatement ins = c.prepareStatement(
-                    "INSERT INTO anime_genre (anime_id, genre) VALUES (?, ?) ON CONFLICT DO NOTHING")) {
-                for (String g : genres) {
-                    ins.setLong(1, animeId);
-                    ins.setString(2, g);
-                    ins.addBatch();
-                }
-                ins.executeBatch();
-            }
-        }
-        try (PreparedStatement st = c.prepareStatement("UPDATE anime SET genres_fetched_at = ? WHERE id = ?")) {
-            st.setObject(1, genres == null ? null : OffsetDateTime.now(clock));
-            st.setLong(2, animeId);
-            st.executeUpdate();
-        }
+        repository.replaceGenres(c, animeId, genres, genres == null ? null : OffsetDateTime.now(clock));
     }
 
     /**
@@ -257,19 +172,7 @@ public class MetadataService {
      * s'il n'y a plus rien à faire.
      */
     public Step backfillGenres() throws SQLException {
-        Map<String, Long> batch = new LinkedHashMap<>();
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT id, metadata_provider_id FROM anime
-                     WHERE metadata_provider = ? AND metadata_provider_id IS NOT NULL AND genres_fetched_at IS NULL
-                     ORDER BY id LIMIT 50""")) {
-            st.setString(1, provider.id());
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    batch.put(rs.getString(2), rs.getLong(1));
-                }
-            }
-        }
+        Map<String, Long> batch = repository.genresToBackfill(provider.id());
         if (batch.isEmpty()) {
             return new Idle();
         }
@@ -283,45 +186,20 @@ public class MetadataService {
             LOG.infof("Genres : %s, nouvel essai dans %d s", e.getMessage(), wait.toSeconds());
             return new Unavailable(e.getMessage(), wait);
         }
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                for (var e : batch.entrySet()) {
-                    // Fiche absente de la réponse (supprimée chez AniList) : aucun genre, mais plus redemandée.
-                    saveGenres(c, e.getValue(), found.getOrDefault(e.getKey(), List.of()));
-                }
-                c.commit();
-            } catch (SQLException | RuntimeException ex) {
-                c.rollback();
-                throw ex;
+        db.runInTransaction(c -> {
+            for (var e : batch.entrySet()) {
+                // Fiche absente de la réponse (supprimée chez AniList) : aucun genre, mais plus redemandée.
+                saveGenres(c, e.getValue(), found.getOrDefault(e.getKey(), List.of()));
             }
-        }
+        });
         LOG.infof("Genres : %d fiche(s) complétée(s)", batch.size());
         return new Done(batch.values().iterator().next(), "GENRES");
     }
 
     /** Erreur propre à cet animé (réponse inattendue…) : nouvel essai plus tard, puis abandon en « non apparié ». */
     void recordError(long animeId, String error) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     INSERT INTO anime_metadata_match (anime_id, status, provider, attempts, next_attempt_at, last_error, updated_by)
-                     VALUES (?, 'PENDING', ?, 1, ?, ?, 'auto')
-                     ON CONFLICT (anime_id) DO UPDATE SET attempts = anime_metadata_match.attempts + 1,
-                         status = CASE WHEN anime_metadata_match.attempts + 1 >= ? THEN 'UNMATCHED' ELSE 'PENDING' END,
-                         reason = CASE WHEN anime_metadata_match.attempts + 1 >= ? THEN 'ERROR' ELSE NULL END,
-                         next_attempt_at = ? + make_interval(mins => LEAST(1440, power(2, anime_metadata_match.attempts + 1)::int)),
-                         last_error = EXCLUDED.last_error, updated_at = now(), updated_by = 'auto'
-                     WHERE NOT anime_metadata_match.locked""")) {
-            OffsetDateTime now = OffsetDateTime.now(clock);
-            st.setLong(1, animeId);
-            st.setString(2, provider.id());
-            st.setObject(3, now.plusMinutes(2));
-            st.setString(4, error.length() > 500 ? error.substring(0, 500) : error);
-            st.setInt(5, config.maxAttempts());
-            st.setInt(6, config.maxAttempts());
-            st.setObject(7, now);
-            st.executeUpdate();
-        }
+        repository.recordError(animeId, provider.id(), error.length() > 500 ? error.substring(0, 500) : error,
+                config.maxAttempts(), OffsetDateTime.now(clock));
     }
 
     /** Titre affiché en second : l'anglais (ou le romaji) s'il diffère vraiment du nom du dossier. */

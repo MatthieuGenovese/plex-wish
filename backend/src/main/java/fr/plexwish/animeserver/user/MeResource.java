@@ -18,12 +18,14 @@ public class MeResource {
 
     @Inject
     JsonWebToken jwt;
+    @Inject
+    UserRepository users;
 
     @GET
     @Path("/me")
     @Produces(MediaType.APPLICATION_JSON)
     public UserDto me() {
-        User user = User.findById(Long.valueOf(jwt.getSubject()));
+        User user = users.findById(Long.valueOf(jwt.getSubject()));
         if (user == null || !user.enabled) {
             throw new ApiException(401, "UNAUTHORIZED", "Authentification requise");
         }

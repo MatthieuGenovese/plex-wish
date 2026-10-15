@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.user;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,12 +10,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
-import java.util.Optional;
 
 /** Lien d'invitation ou de réinitialisation (D1.4). Seul le SHA-256 du jeton est stocké. */
 @Entity
 @Table(name = "invitation")
-public class Invitation extends PanacheEntityBase {
+public class Invitation {
 
     public enum Purpose {
         /** Premier mot de passe d'un compte créé par l'admin. */
@@ -57,11 +55,5 @@ public class Invitation extends PanacheEntityBase {
 
     public boolean usable(Instant now) {
         return usedAt == null && revokedAt == null && expiresAt.isAfter(now);
-    }
-
-    /** Lien encore valable d'un utilisateur (au plus un : en créer un nouveau révoque l'ancien). */
-    public static Optional<Invitation> pendingFor(Long userId) {
-        return find("userId = ?1 and usedAt is null and revokedAt is null and expiresAt > ?2 order by createdAt desc",
-                userId, Instant.now()).firstResultOptional();
     }
 }

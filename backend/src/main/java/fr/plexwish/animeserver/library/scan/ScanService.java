@@ -3,7 +3,6 @@ package fr.plexwish.animeserver.library.scan;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.plexwish.animeserver.common.ApiException;
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -11,9 +10,6 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.context.ManagedExecutor;
 import org.jboss.logging.Logger;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
@@ -27,7 +23,7 @@ public class ScanService {
     static final String INTERRUPTED = "interrompu par un redémarrage";
 
     @Inject
-    AgroalDataSource dataSource;
+    ScanRunRepository runs;
     @Inject
     LibraryScanner scanner;
     @Inject
@@ -51,25 +47,14 @@ public class ScanService {
     }
 
     int failOrphans() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "UPDATE scan_run SET status = 'FAILED', finished_at = now(), failure_reason = ?, failure_code = 'INTERRUPTED' WHERE status = 'RUNNING'")) {
-            st.setString(1, INTERRUPTED);
-            return st.executeUpdate();
-        }
+        return runs.failRunning(INTERRUPTED);
     }
 
     /** Crée le scan_run et lance le scan en tâche de fond ; 409 si un scan tourne déjà. */
     public long start(String triggeredBy, boolean confirmMassRemoval) {
         long runId;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "INSERT INTO scan_run (status, triggered_by) VALUES ('RUNNING', ?) RETURNING id")) {
-            st.setString(1, triggeredBy);
-            try (ResultSet rs = st.executeQuery()) {
-                rs.next();
-                runId = rs.getLong(1);
-            }
+        try {
+            runId = runs.insertRunning(triggeredBy);
         } catch (SQLException e) {
             if ("23505".equals(e.getSQLState())) {
                 throw new ApiException(409, "SCAN_ALREADY_RUNNING", "Un scan est déjà en cours");
@@ -100,15 +85,8 @@ public class ScanService {
     }
 
     private void finish(long runId, String status, ScanStats stats, String code, String reason) {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement(
-                     "UPDATE scan_run SET status = ?, finished_at = now(), stats = ?::jsonb, failure_code = ?, failure_reason = ? WHERE id = ?")) {
-            st.setString(1, status);
-            st.setString(2, stats == null ? null : json.writeValueAsString(stats));
-            st.setString(3, code);
-            st.setString(4, reason);
-            st.setLong(5, runId);
-            st.executeUpdate();
+        try {
+            runs.finish(runId, status, stats == null ? null : json.writeValueAsString(stats), code, reason);
         } catch (SQLException | JsonProcessingException e) {
             LOG.errorf(e, "Impossible d'enregistrer la fin du scan %d", runId);
         }

@@ -55,11 +55,15 @@ public class InvitationService {
     LoginAttemptLimiter limiter;
     @Inject
     RefreshTokenService refreshTokens;
+    @Inject
+    UserRepository users;
+    @Inject
+    InvitationRepository invitations;
 
     /** Nouveau lien pour ce compte (l'ancien, s'il existe, est révoqué). */
     @Transactional
     public Link create(Long userId, String createdBy) {
-        User user = User.findById(userId);
+        User user = users.findById(userId);
         if (user == null) {
             throw new ApiException(404, "USER_NOT_FOUND", "Utilisateur introuvable");
         }
@@ -77,7 +81,7 @@ public class InvitationService {
         inv.createdBy = createdBy;
         inv.createdAt = Instant.now();
         inv.expiresAt = inv.createdAt.plus(LIFETIME);
-        inv.persist();
+        invitations.persist(inv);
         LOG.infof("Lien %s créé pour '%s' par '%s' (valable jusqu'au %s)",
                 inv.purpose == Invitation.Purpose.INVITE ? "d'invitation" : "de réinitialisation", user.username, createdBy, inv.expiresAt);
         String base = auth.publicUrl().orElse("").replaceAll("/+$", "");
@@ -86,14 +90,14 @@ public class InvitationService {
 
     @Transactional
     public int revokeAll(Long userId) {
-        return Invitation.update("revokedAt = ?1 where userId = ?2 and usedAt is null and revokedAt is null", Instant.now(), userId);
+        return invitations.revokePending(userId, Instant.now());
     }
 
     /** Ce que la page affiche avant la saisie : à qui est le lien. Un lien invalide compte comme un essai raté. */
     @Transactional
     public Preview preview(String token, String ip) {
         Invitation inv = usable(token, ip);
-        User user = User.findById(inv.userId);
+        User user = users.findById(inv.userId);
         return new Preview(user.username, inv.purpose, inv.expiresAt);
     }
 
@@ -103,11 +107,11 @@ public class InvitationService {
         Invitation inv = usable(token, ip);
         PasswordService.validate(password); // 400 avant de consommer le lien : la personne peut corriger
         // Consommation atomique : une seconde requête simultanée avec le même lien ne passe pas.
-        int claimed = Invitation.update("usedAt = ?1 where id = ?2 and usedAt is null and revokedAt is null", Instant.now(), inv.id);
+        int claimed = invitations.claim(inv.id, Instant.now());
         if (claimed != 1) {
             throw invalid();
         }
-        User user = User.findById(inv.userId);
+        User user = users.findById(inv.userId);
         user.passwordHash = passwords.hash(password);
         refreshTokens.revokeAll(user.id, RevokedReason.PASSWORD_RESET);
         limiter.recordSuccess(ip, LIMITER_KEY);
@@ -122,8 +126,8 @@ public class InvitationService {
             throw new ApiException(429, "TOO_MANY_ATTEMPTS", "Trop d'essais. Réessayez dans " + minutes + (minutes > 1 ? " minutes." : " minute."));
         }
         Invitation inv = token == null || !TOKEN.matcher(token).matches() ? null
-                : Invitation.<Invitation>find("tokenHash", RefreshTokenService.hash(token)).firstResult();
-        User user = inv == null ? null : User.findById(inv.userId);
+                : invitations.findByTokenHash(RefreshTokenService.hash(token));
+        User user = inv == null ? null : users.findById(inv.userId);
         if (inv == null || !inv.usable(Instant.now()) || user == null || !user.enabled) {
             limiter.recordFailure(ip, LIMITER_KEY);
             LOG.infof("Lien d'invitation invalide, utilisé ou expiré, depuis %s", ip); // jamais le jeton

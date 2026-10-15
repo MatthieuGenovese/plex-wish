@@ -1,8 +1,8 @@
 package fr.plexwish.animeserver.auth;
 
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.user.Role;
-import fr.plexwish.animeserver.user.User;
 import fr.plexwish.animeserver.user.UserService;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.runtime.StartupEvent;
@@ -29,6 +29,8 @@ public class SecurityStartup {
     AuthConfig config;
     @Inject
     UserService users;
+    @Inject
+    UserRepository userRepository;
     @Inject
     fr.plexwish.animeserver.setup.SetupState setup;
 
@@ -84,7 +86,7 @@ public class SecurityStartup {
     }
 
     void createInitialAdmin() {
-        if (User.countAdmins() > 0) {
+        if (userRepository.countAdmins() > 0) {
             return; // les variables INITIAL_ADMIN_* sont ignorées une fois un admin créé
         }
         Optional<String> username = config.initialAdmin().username();

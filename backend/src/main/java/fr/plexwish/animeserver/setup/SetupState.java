@@ -1,6 +1,6 @@
 package fr.plexwish.animeserver.setup;
 
-import fr.plexwish.animeserver.user.User;
+import fr.plexwish.animeserver.user.UserRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -22,6 +22,8 @@ public class SetupState {
 
     @Inject
     AppSettings settings;
+    @Inject
+    UserRepository users;
 
     private volatile Boolean completed;
 
@@ -53,7 +55,7 @@ public class SetupState {
      * comme terminée.
      */
     void onStart(@Observes StartupEvent event) {
-        if (!completed() && QuarkusTransaction.requiringNew().call(User::countAdmins) > 0) {
+        if (!completed() && QuarkusTransaction.requiringNew().call(users::countAdmins) > 0) {
             markCompleted("un administrateur existe déjà");
         }
         if (!completed()) {

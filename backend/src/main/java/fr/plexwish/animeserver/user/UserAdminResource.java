@@ -60,11 +60,17 @@ public class UserAdminResource {
 
     @Inject
     InvitationService invitations;
+    @Inject
+    UserRepository userRepository;
+    @Inject
+    InvitationRepository invitationRepository;
 
     @GET
     @jakarta.transaction.Transactional
     public List<UserDto> list() {
-        return User.listByUsername().stream().map(UserDto::withInvitation).toList();
+        return userRepository.listByUsername().stream()
+                .map(u -> UserDto.withInvitation(u, invitationRepository.pendingFor(u.id).map(i -> i.expiresAt).orElse(null)))
+                .toList();
     }
 
     @POST

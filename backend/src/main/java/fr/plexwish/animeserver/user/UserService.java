@@ -21,15 +21,17 @@ public class UserService {
     RefreshTokenService refreshTokens;
     @Inject
     InvitationService invitations;
+    @Inject
+    UserRepository userRepository;
 
     @Transactional
     public User create(String username, String email, String password, Role role) {
         String name = username.trim();
         String mail = email == null || email.isBlank() ? null : email.trim();
-        if (User.usernameTaken(name)) {
+        if (userRepository.usernameTaken(name)) {
             throw new ApiException(409, "USERNAME_TAKEN", "Ce nom d'utilisateur existe déjà");
         }
-        if (mail != null && User.emailTaken(mail)) {
+        if (mail != null && userRepository.emailTaken(mail)) {
             throw new ApiException(409, "EMAIL_TAKEN", "Cet email est déjà utilisé");
         }
         User user = new User();
@@ -39,7 +41,7 @@ public class UserService {
         user.passwordHash = password == null ? null : passwords.hash(password);
         user.role = role;
         user.enabled = true;
-        user.persist();
+        userRepository.persist(user);
         LOG.infof("Utilisateur créé : '%s' (%s)", user.username, role);
         return user;
     }
@@ -50,7 +52,7 @@ public class UserService {
      */
     @Transactional
     public User update(Long id, Boolean enabled, Role role, String newPassword, Long actingUserId) {
-        User user = User.findById(id);
+        User user = userRepository.findById(id);
         if (user == null) {
             throw new ApiException(404, "USER_NOT_FOUND", "Utilisateur introuvable");
         }

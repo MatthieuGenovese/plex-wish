@@ -1,5 +1,6 @@
 package fr.plexwish.animeserver.auth;
 
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.user.User;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -19,6 +20,8 @@ public class LoginService {
     PasswordService passwords;
     @Inject
     LoginAttemptLimiter limiter;
+    @Inject
+    UserRepository users;
 
     /** L'utilisateur si les identifiants sont bons ; sinon {@link ApiException} 429 ou 401. */
     public User authenticate(String rawLogin, String password, String ip) {
@@ -42,7 +45,7 @@ public class LoginService {
 
     /** Renvoie l'utilisateur si identifiants valides ET compte actif ; sinon null (réponse neutre). */
     User checkCredentials(String login, String password) {
-        User user = User.findByLogin(login).orElse(null);
+        User user = users.findByLogin(login).orElse(null);
         if (user == null || user.passwordHash == null) {
             passwords.burnTime(password); // même durée que si le compte existait (ou avait un mot de passe)
             return null;

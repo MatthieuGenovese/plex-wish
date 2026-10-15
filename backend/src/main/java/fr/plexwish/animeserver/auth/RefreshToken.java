@@ -1,6 +1,5 @@
 package fr.plexwish.animeserver.auth;
 
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,7 +16,7 @@ import java.time.Instant;
 /** Refresh token : seul son SHA-256 est stocké, jamais la valeur envoyée au client. */
 @Entity
 @Table(name = "refresh_token")
-public class RefreshToken extends PanacheEntityBase {
+public class RefreshToken {
 
     public enum RevokedReason {
         ROTATED, LOGOUT, USER_DISABLED, REUSE_DETECTED, PASSWORD_RESET

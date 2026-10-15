@@ -1,5 +1,6 @@
 package fr.plexwish.animeserver.auth;
 
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.auth.RefreshToken.RevokedReason;
 import fr.plexwish.animeserver.user.User;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -40,6 +41,10 @@ public class RefreshTokenService {
 
     @Inject
     AuthConfig config;
+    @Inject
+    RefreshTokenRepository tokens;
+    @Inject
+    UserRepository users;
 
     /** Crée un refresh token pour l'utilisateur et renvoie sa valeur en clair (jamais stockée). */
     @Transactional
@@ -58,7 +63,7 @@ public class RefreshTokenService {
         rt.tokenHash = hash(token);
         rt.createdAt = Instant.now();
         rt.expiresAt = rt.createdAt.plus(Duration.ofDays(config.refreshTokenDays()));
-        rt.persist();
+        tokens.persist(rt);
         return token;
     }
 
@@ -78,12 +83,12 @@ public class RefreshTokenService {
         if (token == null || token.isBlank()) {
             return new Rejected();
         }
-        RefreshToken rt = RefreshToken.find("tokenHash", hash(token)).firstResult();
+        RefreshToken rt = tokens.findByHash(hash(token));
         Instant now = Instant.now();
         if (rt == null || rt.expiresAt.isBefore(now)) {
             return new Rejected();
         }
-        User user = User.findById(rt.userId);
+        User user = users.findById(rt.userId);
         if (user == null || !user.enabled) {
             return new Rejected();
         }
@@ -92,9 +97,7 @@ public class RefreshTokenService {
             return o instanceof Grace && rotateOnGrace ? new Rotated(user, create(user, rt.client, rt.device)) : o;
         }
         // Révocation atomique : si deux requêtes arrivent en même temps, une seule gagne.
-        int updated = RefreshToken.update(
-                "revokedAt = ?1, revokedReason = ?2, lastUsedAt = ?1 where id = ?3 and revokedAt is null",
-                now, RevokedReason.ROTATED, rt.id);
+        int updated = tokens.markRotated(rt.id, now);
         if (updated == 0) {
             // L'autre requête vient de le faire tourner.
             return rotateOnGrace ? new Rotated(user, create(user, rt.client, rt.device)) : new Grace(user);
@@ -119,14 +122,12 @@ public class RefreshTokenService {
         if (token == null || token.isBlank()) {
             return;
         }
-        RefreshToken.update("revokedAt = ?1, revokedReason = ?2 where tokenHash = ?3 and revokedAt is null",
-                Instant.now(), reason, hash(token));
+        tokens.revokeByHash(hash(token), reason, Instant.now());
     }
 
     @Transactional
     public int revokeAll(Long userId, RevokedReason reason) {
-        return RefreshToken.update("revokedAt = ?1, revokedReason = ?2 where userId = ?3 and revokedAt is null",
-                Instant.now(), reason, userId);
+        return tokens.revokeAllOf(userId, reason, Instant.now());
     }
 
     static String newToken() {

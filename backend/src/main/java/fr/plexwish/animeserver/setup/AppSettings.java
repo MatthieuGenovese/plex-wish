@@ -1,12 +1,8 @@
 package fr.plexwish.animeserver.setup;
 
-import io.agroal.api.AgroalDataSource;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.Optional;
@@ -17,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AppSettings {
 
     @Inject
-    AgroalDataSource dataSource;
+    AppSettingRepository repository;
 
     private final Map<String, Optional<String>> cache = new ConcurrentHashMap<>();
 
@@ -36,24 +32,34 @@ public class AppSettings {
     }
 
     public void put(String key, String value) {
-        run("INSERT INTO app_setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
-                key, value);
+        try {
+            repository.upsert(key, value);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
         cache.put(key, Optional.of(value));
     }
 
-    /** Écrit la valeur seulement si la clé n'existe pas ; vrai si c'est cet appel qui l'a écrite (un seul gagnant). */
-    public boolean putIfAbsent(Connection c, String key, String value) throws SQLException {
-        try (PreparedStatement st = c.prepareStatement("INSERT INTO app_setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING")) {
-            st.setString(1, key);
-            st.setString(2, value);
-            boolean inserted = st.executeUpdate() == 1;
+    /**
+     * Écrit la valeur seulement si la clé n'existe pas ; vrai si c'est cet appel qui l'a écrite (un seul gagnant).
+     * Appelée dans une transaction JTA, l'écriture en fait partie.
+     */
+    public boolean putIfAbsent(String key, String value) {
+        try {
+            boolean inserted = repository.insertIfAbsent(key, value);
             cache.remove(key);
             return inserted;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
         }
     }
 
     public void delete(String key) {
-        run("DELETE FROM app_setting WHERE key = ?", key);
+        try {
+            repository.delete(key);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
         cache.remove(key);
     }
 
@@ -63,23 +69,8 @@ public class AppSettings {
     }
 
     private Optional<String> load(String key) {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("SELECT value FROM app_setting WHERE key = ?")) {
-            st.setString(1, key);
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? Optional.of(rs.getString(1)) : Optional.empty();
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private void run(String sql, String... params) {
-        try (Connection c = dataSource.getConnection(); PreparedStatement st = c.prepareStatement(sql)) {
-            for (int i = 0; i < params.length; i++) {
-                st.setString(i + 1, params[i]);
-            }
-            st.executeUpdate();
+        try {
+            return repository.find(key);
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

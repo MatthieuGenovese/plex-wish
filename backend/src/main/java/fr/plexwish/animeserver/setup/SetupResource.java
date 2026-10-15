@@ -1,5 +1,7 @@
 package fr.plexwish.animeserver.setup;
 
+import fr.plexwish.animeserver.library.scan.ScanRunRepository;
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.auth.AccessTokenService;
 import fr.plexwish.animeserver.auth.AuthConfig;
 import fr.plexwish.animeserver.auth.AuthResource.LoginRequest;
@@ -13,7 +15,6 @@ import fr.plexwish.animeserver.user.Role;
 import fr.plexwish.animeserver.user.User;
 import fr.plexwish.animeserver.user.UserDto;
 import fr.plexwish.animeserver.user.UserService;
-import io.agroal.api.AgroalDataSource;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.annotation.security.PermitAll;
@@ -36,9 +37,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.jboss.logging.Logger;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
@@ -94,13 +92,15 @@ public class SetupResource {
     @Inject
     AppSettings settings;
     @Inject
-    AgroalDataSource dataSource;
-    @Inject
     InstallationSettings installation;
     @Inject
     DdnsService ddns;
     @Inject
     ScanService scans;
+    @Inject
+    ScanRunRepository scanRuns;
+    @Inject
+    UserRepository userRepository;
     @Inject
     JsonWebToken jwt;
     @ConfigProperty(name = "anime.app-version", defaultValue = "dev")
@@ -111,7 +111,7 @@ public class SetupResource {
     @PermitAll
     public Status status(@HeaderParam(Entry.HEADER) String entryHeader) {
         return new Status(setup.completed(), Entry.of(entryHeader, config.missingEntry()).id(),
-                QuarkusTransaction.requiringNew().call(User::countAdmins) > 0, auth.publicUrl().orElse(null), version);
+                QuarkusTransaction.requiringNew().call(userRepository::countAdmins) > 0, auth.publicUrl().orElse(null), version);
     }
 
     @GET
@@ -131,7 +131,7 @@ public class SetupResource {
     public TokenResponse createAdmin(@Valid @NotNull AdminRequest request, @Context HttpServerRequest http) {
         PasswordService.validate(request.password());
         User user = QuarkusTransaction.requiringNew().call(() -> {
-            if (User.countAdmins() > 0 || !claimAdminCreation()) {
+            if (userRepository.countAdmins() > 0 || !claimAdminCreation()) {
                 throw new ApiException(409, "ADMIN_EXISTS", "Le compte administrateur existe déjà : se connecter avec lui.");
             }
             return users.create(request.username(), null, request.password(), Role.ADMIN);
@@ -141,11 +141,7 @@ public class SetupResource {
     }
 
     private boolean claimAdminCreation() {
-        try (Connection c = dataSource.getConnection()) {
-            return settings.putIfAbsent(c, ADMIN_CREATED, Instant.now().toString());
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
+        return settings.putIfAbsent(ADMIN_CREATED, Instant.now().toString());
     }
 
     /** Reprise de l'assistant après fermeture du navigateur : connexion de l'administrateur (anti brute force). */
@@ -214,16 +210,9 @@ public class SetupResource {
     @Path("/scan")
     @RolesAllowed("ADMIN")
     public ScanState scan() throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement st = c.prepareStatement("""
-                     SELECT id, status, (stats->>'videos')::bigint, (stats->>'episodes')::bigint
-                     FROM scan_run ORDER BY id DESC LIMIT 1""");
-             ResultSet rs = st.executeQuery()) {
-            if (!rs.next()) {
-                return new ScanState(null, null, null, null);
-            }
-            return new ScanState(rs.getLong(1), rs.getString(2), (Long) rs.getObject(3), (Long) rs.getObject(4));
-        }
+        return scanRuns.latest()
+                .map(r -> new ScanState(r.id(), r.status(), r.videos(), r.episodes()))
+                .orElse(new ScanState(null, null, null, null));
     }
 
     /** Fin de l'assistant : le site s'ouvre à son adresse publique, l'assistant se ferme définitivement. */

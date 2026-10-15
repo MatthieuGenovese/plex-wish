@@ -1,5 +1,6 @@
 package fr.plexwish.animeserver.auth;
 
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.auth.RefreshToken.RevokedReason;
 import fr.plexwish.animeserver.common.ApiException;
 import fr.plexwish.animeserver.user.User;
@@ -25,6 +26,10 @@ public class PasswordChangeService {
     PasswordService passwords;
     @Inject
     LoginAttemptLimiter limiter;
+    @Inject
+    UserRepository users;
+    @Inject
+    RefreshTokenRepository tokens;
 
     /**
      * @param keepRefreshToken refresh token de la session courante (cookie du navigateur, ou corps pour l'app) :
@@ -33,7 +38,7 @@ public class PasswordChangeService {
      */
     @Transactional
     public int change(long userId, String currentPassword, String newPassword, String keepRefreshToken, String ip) {
-        User user = User.findById(userId);
+        User user = users.findById(userId);
         if (user == null || !user.enabled) {
             throw new ApiException(401, "UNAUTHORIZED", "Authentification requise");
         }
@@ -55,13 +60,10 @@ public class PasswordChangeService {
         user.passwordHash = passwords.hash(newPassword); // valide aussi la longueur (400 WEAK_PASSWORD / PASSWORD_TOO_LONG)
         limiter.recordSuccess(ip, user.username);
         String keep = keepRefreshToken == null || keepRefreshToken.isBlank() ? null : RefreshTokenService.hash(keepRefreshToken);
-        boolean kept = keep != null && RefreshToken.count("tokenHash = ?1 and userId = ?2 and revokedAt is null and expiresAt > ?3",
-                keep, user.id, Instant.now()) > 0;
+        boolean kept = keep != null && tokens.isActive(keep, user.id, Instant.now());
         int closed = kept
-                ? RefreshToken.update("revokedAt = ?1, revokedReason = ?2 where userId = ?3 and revokedAt is null and tokenHash <> ?4",
-                        Instant.now(), RevokedReason.PASSWORD_RESET, user.id, keep)
-                : RefreshToken.update("revokedAt = ?1, revokedReason = ?2 where userId = ?3 and revokedAt is null",
-                        Instant.now(), RevokedReason.PASSWORD_RESET, user.id);
+                ? tokens.revokeAllOfExcept(user.id, keep, RevokedReason.PASSWORD_RESET, Instant.now())
+                : tokens.revokeAllOf(user.id, RevokedReason.PASSWORD_RESET, Instant.now());
         LOG.infof("Mot de passe de '%s' changé par l'utilisateur : %d autre(s) session(s) fermée(s)%s", user.username, closed,
                 kept ? "" : " (session courante non reconnue : fermée aussi)");
         return closed;

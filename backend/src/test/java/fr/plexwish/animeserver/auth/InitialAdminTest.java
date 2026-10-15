@@ -1,5 +1,6 @@
 package fr.plexwish.animeserver.auth;
 
+import fr.plexwish.animeserver.user.UserRepository;
 import fr.plexwish.animeserver.user.Role;
 import fr.plexwish.animeserver.user.User;
 import io.quarkus.test.TestTransaction;
@@ -34,10 +35,14 @@ class InitialAdminTest {
     SecurityStartup startup;
     @Inject
     PasswordService passwords;
+    @Inject
+    UserRepository users;
+    @Inject
+    RefreshTokenRepository tokens;
 
-    private static void emptyUserTables() {
-        RefreshToken.deleteAll();
-        User.deleteAll();
+    private void emptyUserTables() {
+        tokens.deleteAll();
+        users.deleteAll();
     }
 
     @Test
@@ -46,7 +51,7 @@ class InitialAdminTest {
         emptyUserTables();
         startup.createInitialAdmin();
 
-        User admin = User.findByLogin("first-admin").orElseThrow();
+        User admin = users.findByLogin("first-admin").orElseThrow();
         assertEquals(Role.ADMIN, admin.role);
         assertTrue(admin.enabled);
         assertTrue(admin.passwordHash.matches("\\$2[aby]\\$12\\$.{53}"), "hash bcrypt coût 12");
@@ -59,15 +64,15 @@ class InitialAdminTest {
         emptyUserTables();
         startup.createInitialAdmin();
         startup.createInitialAdmin(); // redémarrage : rien de plus
-        assertEquals(1, User.countAdmins());
+        assertEquals(1, users.countAdmins());
 
-        User.delete("username", "first-admin");
+        users.delete("username", "first-admin");
         User other = new User();
         other.username = "someone-else";
         other.passwordHash = "x";
         other.role = Role.ADMIN;
-        other.persist();
+        users.persist(other);
         startup.createInitialAdmin();
-        assertTrue(User.findByLogin("first-admin").isEmpty());
+        assertTrue(users.findByLogin("first-admin").isEmpty());
     }
 }

@@ -395,7 +395,7 @@ dégradé, commandes rondes, texte blanc, accent turquoise, icônes Material Sym
   - contrastes vérifiés par axe ;
   - texte agrandi à 200 % sans perte ;
   - `prefers-reduced-motion` respecté ;
-  - sous-titres WebVTT stylés par `::cue` lisible ; JASSUB garde les styles du fichier.
+  - sous-titres WebVTT stylés par `::cue` : texte blanc à contour noir, sans fond (1.3.4 ; avant : bandeau noir) ; JASSUB garde les styles du fichier.
 
 ## 8. Découpage
 

@@ -1,5 +1,6 @@
 package fr.plexwish.anime.ui.phone
 
+import fr.plexwish.anime.playback.SubtitleStyle
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -244,8 +245,9 @@ fun PlayerScreen(vm: PlayerViewModel, onBack: () -> Unit) {
                         player = exo
                         useController = false // surcouche en Compose
                         keepScreenOn = true
-                        // Taille et style des sous-titres : réglages d'accessibilité d'Android, styles du fichier conservés.
-                        subtitleView?.setUserDefaultStyle()
+                        // Sous-titres : contour noir sans fond (sauf style réglé dans l'accessibilité d'Android), taille
+                        // des réglages d'accessibilité, styles du fichier conservés.
+                        subtitleView?.setStyle(SubtitleStyle.forDevice(ctx))
                         subtitleView?.setUserDefaultTextSize()
                     }
                 },

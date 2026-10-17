@@ -58,13 +58,19 @@
   object-fit: contain;
   background: #000;
 
-  // Sous-titres WebVTT natifs : lisibles sur n'importe quelle image, taille suivant la fenêtre.
+  // Sous-titres WebVTT natifs : texte blanc à contour noir, sans fond (comme à la télévision et sur Android),
+  // lisible sur une image claire comme sombre ; taille suivant la fenêtre.
   &::cue {
     font-family: var(--font);
     font-size: clamp(1rem, 3.2vmin, 2.2rem);
+    font-weight: 600;
     color: #fff;
-    background: rgb(0 0 0 / 0.72);
+    background: transparent;
     line-height: 1.35;
+    text-shadow:
+      -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+      -2px 0 0 #000, 2px 0 0 #000, 0 -2px 0 #000, 0 2px 0 #000,
+      0 0 4px rgb(0 0 0 / 0.9);
   }
 }
 

@@ -1,6 +1,6 @@
 # Remux à la volée (Android et navigateur) — conception
 
-Statut : **à valider** (2026-10-18). Rien n'est codé. Essai préalable fait le 2026-10-18 sur le PC (§2).
+Statut : **validée le 2026-10-18** (sous-titres en image : perte acceptée, à recompter). **L1 (serveur) réalisée** (§13). Essai préalable fait le 2026-10-18 sur le PC (§2).
 
 ## 0. Résumé et décisions à valider
 
@@ -150,7 +150,7 @@ premier. Sinon, erreur journalisée et session terminée ; l'essai ne l'a jamais
   - `probed_size`, `probed_modified` (le fichier modifié invalide l'index) ;
   - `times` : `bytea`, liste de millisecondes compressée ;
   - `computed_at`.
-  
+
   Taille : quelques Ko par fichier.
 - **Calcul** : `ffprobe` en lecture seule, arguments fixes, délai maximal, aux mêmes conditions que l'analyse 9.1.
   Il lit tout le fichier : environ 1 s sur le PC, **à mesurer sur le NAS** (estimé 3 à 8 s pour un épisode de 200 à
@@ -159,7 +159,7 @@ premier. Sinon, erreur journalisée et session terminée ; l'essai ne l'a jamais
   1. À la première lecture : l'API répond « préparation » (202, comme aujourd'hui) pendant ces quelques secondes.
   2. **En tâche de fond, à l'avance** : les 2 épisodes suivants de chaque animé en cours, comme le préventif web (D8 de
      WEB-PLAYER), dans la même file que l'analyse 9.1, en pause pendant les lectures.
-  
+
   Pas de relevé de toute la bibliothèque : ce serait des téraoctets à relire pour rien.
 - **Plus tard (FUTURE)** : lire les `Cues` des MKV (positions des images clés déjà indexées dans le fichier), sans
   relire tout le fichier.
@@ -255,3 +255,44 @@ Tests : seulement ceux touchés par chaque étape (règle du 2026-10-18).
 | Relevé de l'index lent sur le NAS (disque dur) | Mesuré en L1 ; préventif sur les épisodes suivants ; Cues MKV plus tard. |
 | Plusieurs lectures + scan + analyse sur le NAS | Plafond de sessions, tâches de fond en pause pendant les lectures (déjà en place). |
 | Fichiers à horodatages cassés (AVI sans index, VFR exotique) | Relance contrôlée ; sinon erreur claire « lecture à la volée impossible » et repli sur le remux en cache tant qu'il existe. |
+
+## 13. Réalisé
+
+### L1 — serveur (2026-10-18)
+
+- **ffmpeg 7.1.5** (mêmes sources et options que l'image, compilé sur le PC) : même comportement que le 4.4 de l'essai
+  (en-tête identique d'un lancement à l'autre, remise à zéro commune à toutes les pistes, `separate_moof`) ; Media3 lit
+  les 155 segments de « Le chant des rêves » (DivX en mode Windows + Vorbis converti en AAC).
+- Paquet `live` :
+  - `LiveStreamResource` : préfixe de classe `/api`, comme les autres ressources. Un préfixe de classe
+    `/api/stream/{fileId}/live` captait aussi `/api/stream/{fileId}` et cassait la lecture des originaux (vu par
+    `StreamTest`).
+  - `LiveService`, `LiveSessionService`, `KeyframeIndexService`, `LiveRepository`, `Fmp4`, `LivePlan`.
+  - Migration **V22** `media_keyframes`.
+- `GET /api/episodes/{id}/stream-url?hls=1` :
+  - fichier « remux nécessaire » : `kind: "HLS"`, ou 202 pendant le relevé de l'index ;
+  - lecture à la volée impossible (fichier non analysé, pas d'image clé) : repli sur le remux en cache, comme avant ;
+  - sans `hls=1` : réponse inchangée (`kind: "FILE"` ajouté, ignoré par les anciens APK).
+- Réglages (`anime.media.live-*`) :
+  - `max-sessions` : 4 ;
+  - `idle` : 60 s ;
+  - `ahead` : 4 segments ;
+  - `segment-wait` : 25 s ;
+  - `index-timeout` : 5 min.
+
+  Le dossier temporaire est `<remux-cache>/live/`, vidé au démarrage.
+- **Différences avec la conception** :
+  - pas d'attribut `CODECS` dans la playlist maîtresse (Media3 n'en a pas besoin ; à ajouter pour hls.js en L3,
+    d'après l'en-tête) ;
+  - pas de recalage fin par `trun` (inutile d'après l'essai : seul le raccord d'un saut garde un écart ≤ 20 ms) ;
+  - relevé préventif de l'index pour les épisodes suivants : **pas encore fait** (à faire avec L2) ;
+  - réglage du plafond dans Administration > Réglages : pas encore (variable `anime.media.live-max-sessions`).
+- Tests (ciblés) :
+  - `LivePlanTest` (découpage, visée, lecture de la sortie de ffprobe) ;
+  - `Fmp4Test` (vrai ffmpeg : pistes, fragments, correction `tfdt`, en-tête d'une piste relu par ffprobe) ;
+  - `LiveStreamTest` (vrais outils, AVI MPEG-4 à deux pistes MP3 + MP2→AAC : 202 puis HLS, playlists, segments à leur
+    borne, saut en avant et en arrière, vidéo complète relue par ffprobe ; signature par fichier, utilisateur et
+    expiration, ni l'original ni le remux en cache ouverts par une signature `v1-live`, compte désactivé ; plafond et
+    une session par utilisateur ; réponse inchangée sans `hls=1`) ;
+  - et les tests touchés : `StreamTest`, `SubtitleStreamTest`, `RemuxTest`, `WebSignatureTest`, `LogLeakTest`,
+    `ClientDisconnectLogFilterTest`, `SocleTest`, `RepositoryBoundaryTest`.

@@ -49,11 +49,19 @@ public class StreamResource {
      * {@code subtitles} : sous-titres externes (.ass) associés à l'épisode, chacun avec son URL signée (1.3.1), complets
      * d'abord, le premier complet par défaut.
      */
-    public record StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize, List<SubtitleLink> subtitles) {
+    public record StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize, List<SubtitleLink> subtitles, String kind) {
+        StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize, List<SubtitleLink> subtitles) {
+            this(url, expiresAt, mimeType, fileSize, subtitles, FILE);
+        }
+
         StreamUrl(String url, Instant expiresAt, String mimeType, long fileSize) {
-            this(url, expiresAt, mimeType, fileSize, List.of());
+            this(url, expiresAt, mimeType, fileSize, List.of(), FILE);
         }
     }
+
+    /** {@code kind} : fichier lu par Range ({@code FILE}) ou lecture à la volée HLS ({@code HLS}, docs/LIVE-REMUX.md). */
+    static final String FILE = "FILE";
+    static final String HLS = "HLS";
 
     /** Sous-titre externe pour le lecteur Android ; {@code mimeType} : {@code text/x-ssa}. */
     public record SubtitleLink(long id, String url, String label, String language, boolean forced, boolean isDefault,
@@ -76,6 +84,8 @@ public class StreamResource {
     RemuxCache remuxCache;
     @Inject
     ExternalSubtitleService externalSubtitles;
+    @Inject
+    fr.plexwish.animeserver.live.LiveService live;
 
     /** Préparation en cours (copie remuxée pour Android, §23) : réponse 202, distincte d'une erreur. */
     public record Preparing(String state, int position, Double progress, long estimatedSeconds, int retryAfterSeconds, String message) {
@@ -85,7 +95,7 @@ public class StreamResource {
     @Path("/episodes/{id}/stream-url")
     @Authenticated
     @Produces(MediaType.APPLICATION_JSON)
-    public Response streamUrl(@PathParam("id") long episodeId) throws SQLException {
+    public Response streamUrl(@PathParam("id") long episodeId, @QueryParam("hls") boolean hls) throws SQLException {
         StreamRepository.EpisodeFile file = streams.episodeFile(episodeId)
                 .orElseThrow(() -> new ApiException(404, "EPISODE_NOT_FOUND", "Épisode introuvable"));
         if (file.fileId() == null || !file.available()) {
@@ -101,6 +111,21 @@ public class StreamResource {
         if (!remux.needsRemux(fileId, container)) {
             StreamSigner.SignedUrl signed = signer.sign(fileId, userId);
             return Response.ok(new StreamUrl(signed.url(), signed.expiresAt(), mimeType(fileName), size, subs)).build();
+        }
+        // Lecteur qui sait lire le HLS (app ≥ 1.4.0) : remux à la volée, sans préparation ni cache (docs/LIVE-REMUX.md).
+        if (hls) {
+            switch (live.start(fileId, userId)) {
+                case fr.plexwish.animeserver.live.LiveService.Ready r -> {
+                    return Response.ok(new StreamUrl(r.masterUrl(), r.expiresAt(), "application/x-mpegURL", 0, subs, HLS)).build();
+                }
+                case fr.plexwish.animeserver.live.LiveService.Preparing p -> {
+                    return Response.status(Response.Status.ACCEPTED).header("Retry-After", 2)
+                            .entity(new Preparing("PREPARING", 0, null, 5, 2, "Préparation de l'épisode…")).build();
+                }
+                case fr.plexwish.animeserver.live.LiveService.Unavailable u -> {
+                    // Repli : copie remuxée en cache (comme avant), tant qu'elle existe.
+                }
+            }
         }
         // Fichier illisible tel quel sur Android (AVI, OGM) : jamais l'URL de l'original, toujours la copie remuxée.
         return switch (remux.request(fileId, size, modified)) {

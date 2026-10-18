@@ -124,4 +124,26 @@ public interface MediaConfig {
 
     @WithDefault("80")
     int webFontsTotalMaxMb();
+
+    // --- Remux à la volée (docs/LIVE-REMUX.md) ---------------------------------------------------------------------
+
+    /** Lectures à la volée simultanées au plus (au-delà : 503 LIVE_BUSY). */
+    @WithDefault("4")
+    int liveMaxSessions();
+
+    /** Lecture à la volée arrêtée (ffmpeg arrêté, dossier temporaire supprimé) après ce délai sans requête. */
+    @WithDefault("60s")
+    Duration liveIdle();
+
+    /** Segments prêts d'avance au plus : au-delà, la sortie de ffmpeg n'est plus lue (il se met en attente). */
+    @WithDefault("4")
+    int liveAhead();
+
+    /** Attente maximale d'un segment en cours de fabrication. */
+    @WithDefault("25s")
+    Duration liveSegmentWait();
+
+    /** Délai maximal du relevé des images clés (lecture de tout le fichier). */
+    @WithDefault("5m")
+    Duration liveIndexTimeout();
 }

@@ -43,9 +43,12 @@ public class StreamSigner {
     /** Résultat de la vérification, du plus grave au plus bénin. */
     public enum Check { INVALID, EXPIRED, VALID }
 
-    /** Ce que l'URL désigne : le fichier d'origine, ou sa copie remuxée (§23) ; une signature ne vaut pas pour l'autre. */
+    /**
+     * Ce que l'URL désigne : le fichier d'origine, sa copie remuxée (§23), ou sa lecture à la volée (docs/LIVE-REMUX.md,
+     * toutes les ressources de la lecture) ; une signature ne vaut pas pour une autre cible.
+     */
     public enum Target {
-        ORIGINAL("v1", ""), REMUX("v1-remux", "/remux");
+        ORIGINAL("v1", ""), REMUX("v1-remux", "/remux"), LIVE("v1-live", "/live");
 
         final String prefix;
         final String suffix;
@@ -64,6 +67,11 @@ public class StreamSigner {
         long exp = clock.instant().plus(lifetime).getEpochSecond();
         return new SignedUrl("/api/stream/" + mediaFileId + target.suffix + "?u=" + userId + "&exp=" + exp + "&sig="
                 + signature(target, mediaFileId, userId, exp), Instant.ofEpochSecond(exp));
+    }
+
+    /** Paramètres signés d'une ressource de lecture à la volée ({@code u=…&exp=…&sig=…}). */
+    public String liveQuery(long mediaFileId, long userId, long exp) {
+        return "u=" + userId + "&exp=" + exp + "&sig=" + signature(Target.LIVE, mediaFileId, userId, exp);
     }
 
     public Check check(long mediaFileId, long userId, long exp, String sig) {

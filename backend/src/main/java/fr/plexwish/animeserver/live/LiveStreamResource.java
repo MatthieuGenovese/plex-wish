@@ -46,6 +46,18 @@ public class LiveStreamResource {
                 .header("Cache-Control", "private, max-age=0").build();
     }
 
+    /** Piste texte du fichier, extraite (Android) : ASS ou WebVTT. */
+    @GET
+    @Path("/stream/{fileId}/live/sub/{index: [0-9]+}.{ext: ass|vtt}")
+    public Response subtitle(@PathParam("fileId") long fileId, @PathParam("index") int index, @PathParam("ext") String ext,
+                             @QueryParam("u") Long userId, @QueryParam("exp") Long exp, @QueryParam("sig") String sig)
+            throws SQLException {
+        live.authorize(fileId, userId, exp, sig);
+        java.nio.file.Path file = live.subtitle(fileId, index, ext);
+        return Response.ok(file.toFile()).type((ext.equals("ass") ? "text/x-ssa" : "text/vtt") + "; charset=utf-8")
+                .header("Cache-Control", "private, max-age=0").header("X-Content-Type-Options", "nosniff").build();
+    }
+
     @GET
     @Path("/stream/{fileId}/live/{track: v|a[0-9]+}/{index: [0-9]+}.m4s")
     public Response segment(@PathParam("fileId") long fileId, @PathParam("track") String track, @PathParam("index") int index,

@@ -164,6 +164,7 @@ object Diagnostics {
         "ogm", "ogv", "ogg" -> "OGM"
         "webm" -> "WebM"
         "ts", "m2ts" -> "MPEG-TS"
+        "hls" -> "HLS (copie à la volée)"
         else -> ext.uppercase()
     }
 

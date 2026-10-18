@@ -5,7 +5,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /** Faux moteur : enregistre les chargements, et laisse le test simuler lecture, pause, seek et erreurs. */
 class FakeEngine : PlaybackEngine {
-    data class Load(val url: String, val startMs: Long, val play: Boolean, val subtitles: List<ExternalSubtitle> = emptyList())
+    data class Load(val url: String, val startMs: Long, val play: Boolean, val subtitles: List<ExternalSubtitle> = emptyList(), val hls: Boolean = false)
 
     val loads = CopyOnWriteArrayList<Load>()
     @Volatile
@@ -28,8 +28,8 @@ class FakeEngine : PlaybackEngine {
         current = listener
     }
 
-    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>) {
-        loads += Load(url, startMs, playWhenReady, subtitles)
+    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>, hls: Boolean) {
+        loads += Load(url, startMs, playWhenReady, subtitles, hls)
         positionMs = startMs
         this.playWhenReady = playWhenReady
     }

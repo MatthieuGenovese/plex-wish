@@ -26,7 +26,7 @@ public class LiveRepository {
      * ({@code videoCodec} null et {@code audio} vide sans analyse réussie).
      */
     public record Source(long mediaFileId, String relativePath, long fileSize, OffsetDateTime lastModified, String videoCodec,
-                         List<ProbeFacts.Audio> audio) {
+                         List<ProbeFacts.Audio> audio, List<ProbeFacts.Subtitle> subtitles) {
     }
 
     /** Images clés enregistrées, avec l'état du fichier au moment du relevé. */
@@ -39,12 +39,33 @@ public class LiveRepository {
     public Optional<Source> source(long mediaFileId) throws SQLException {
         return db.one("""
                 SELECT f.id, CASE WHEN f.available THEN f.relative_path END, f.file_size, f.last_modified,
-                       CASE WHEN p.status = 'OK' THEN p.video_codec END, CASE WHEN p.status = 'OK' THEN p.audio::text END
+                       CASE WHEN p.status = 'OK' THEN p.video_codec END, CASE WHEN p.status = 'OK' THEN p.audio::text END,
+                       CASE WHEN p.status = 'OK' THEN p.subtitles::text END
                 FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id
                 WHERE f.id = ?""",
                 rs -> new Source(rs.getLong(1), rs.getString(2), rs.getLong(3), rs.getObject(4, OffsetDateTime.class),
-                        rs.getString(5), audio(rs.getString(6))),
+                        rs.getString(5), read(rs.getString(6), new TypeReference<List<ProbeFacts.Audio>>() {
+                        }), read(rs.getString(7), new TypeReference<List<ProbeFacts.Subtitle>>() {
+                        })),
                 mediaFileId);
+    }
+
+    /**
+     * Fichier de l'épisode suivant du même animé (saison puis numéro), s'il est disponible et à remuxer pour Android :
+     * son index est relevé à l'avance pendant que l'utilisateur regarde celui-ci (docs/LIVE-REMUX.md §4).
+     */
+    public Optional<Long> nextRemuxFile(long mediaFileId) throws SQLException {
+        return db.one("""
+                SELECT f2.id
+                FROM episode e JOIN season s ON s.id = e.season_id
+                JOIN season s2 ON s2.anime_id = s.anime_id
+                JOIN episode e2 ON e2.season_id = s2.id
+                JOIN media_file f2 ON f2.id = e2.media_file_id AND f2.available
+                JOIN media_probe p2 ON p2.media_file_id = f2.id AND p2.status = 'OK' AND p2.android_class = 'REMUX'
+                WHERE e.media_file_id = ?
+                  AND (s2.season_number > s.season_number
+                       OR (s2.season_number = s.season_number AND e2.episode_number > e.episode_number))
+                ORDER BY s2.season_number, e2.episode_number LIMIT 1""", rs -> rs.getLong(1), mediaFileId);
     }
 
     /** Utilisateur actif (false : désactivé ou supprimé depuis l'émission du lien). */
@@ -87,13 +108,12 @@ public class LiveRepository {
         });
     }
 
-    private static List<ProbeFacts.Audio> audio(String json) {
+    private static <T> List<T> read(String json, TypeReference<List<T>> type) {
         if (json == null) {
             return List.of();
         }
         try {
-            return JSON.readValue(json, new TypeReference<>() {
-            });
+            return JSON.readValue(json, type);
         } catch (IOException e) {
             throw new IllegalStateException("analyse enregistrée illisible", e);
         }

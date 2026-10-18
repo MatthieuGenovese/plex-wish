@@ -118,7 +118,7 @@ class PlayerViewModel(
         val watching = (phase == PlayerPhase.LOADING || phase == PlayerPhase.PLAYING) && engine.playWhenReady
         val stalled = stall.update(clock(), watching && engine.isBuffering, engine.bufferedPositionMs)
         if (stalled) {
-            val d = Diagnostics.stalled(tracks, episode?.container, stall.bufferingMs, engine.bufferedPositionMs, currentPosition())
+            val d = Diagnostics.stalled(tracks, container(), stall.bufferingMs, engine.bufferedPositionMs, currentPosition())
             SafeLog.w(TAG, "Lecture bloquée en mise en tampon : ${d.details.joinToString { "${it.first}=${it.second}" }}")
             lastPositionMs = currentPosition()
             stall.reset()
@@ -166,7 +166,7 @@ class PlayerViewModel(
     private suspend fun load(fresh: Boolean, positionMs: Long, play: Boolean) {
         if (fresh || stream == null) stream = obtainStream()
         _state.update { it.copy(preparing = null) }
-        engine.load(stream!!.url, positionMs.coerceAtLeast(0), play, stream!!.subtitles)
+        engine.load(stream!!.url, positionMs.coerceAtLeast(0), play, stream!!.subtitles, stream!!.hls)
     }
 
     /**
@@ -185,6 +185,9 @@ class PlayerViewModel(
             }
         }
     }
+
+    /** Format lu, pour le diagnostic : « hls » pour une lecture à la volée (le fichier d'origine n'est pas lu tel quel). */
+    private fun container(): String? = if (stream?.hls == true) "hls" else episode?.container
 
     private fun urlExpiresSoon(): Boolean {
         val exp = stream?.expiresAtMs ?: return false
@@ -224,7 +227,7 @@ class PlayerViewModel(
         this.tracks = tracks
         _state.update { it.copy(tracks = tracks) }
         if (tracks.isEmpty()) return
-        Diagnostics.undecodableVideo(tracks, episode?.container)?.let { d ->
+        Diagnostics.undecodableVideo(tracks, container())?.let { d ->
             engine.pause()
             SafeLog.w(TAG, "Vidéo non décodable : ${d.details.joinToString { "${it.first}=${it.second}" }}")
             fail(d)
@@ -232,7 +235,7 @@ class PlayerViewModel(
         }
         if (!warned) {
             warned = true
-            val w = Diagnostics.warnings(tracks, episode?.container).map { it.second }
+            val w = Diagnostics.warnings(tracks, container()).map { it.second }
             if (w.isNotEmpty()) _state.update { it.copy(warnings = w) }
         }
     }
@@ -249,11 +252,11 @@ class PlayerViewModel(
         SafeLog.w(TAG, "Erreur de lecture ${failure.errorCodeName} (HTTP ${failure.httpStatus}), $kind : ${failure.cause}")
         val decision = policy.decide(kind, networkAttempts, urlRefreshes, urlExpiresSoon())
         val diagnosis = if (kind == FailureKind.STALLED) {
-            val d = Diagnostics.failure(failure, tracks, episode?.container)
+            val d = Diagnostics.failure(failure, tracks, container())
             d.copy(details = d.details + ("Mise en tampon" to "${stall.bufferingMs / 1000} s sans démarrer") +
                 ("Position" to "${position / 1000} s, chargé jusqu'à ${engine.bufferedPositionMs / 1000} s"))
         } else {
-            Diagnostics.failure(failure, tracks, episode?.container)
+            Diagnostics.failure(failure, tracks, container())
         }
         when (decision) {
             Recovery.Fail -> fail(diagnosis, stalled = kind == FailureKind.STALLED)

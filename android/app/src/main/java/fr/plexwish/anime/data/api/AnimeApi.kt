@@ -97,7 +97,8 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
      */
     suspend fun stream(episodeId: Long): StreamAnswer {
         val response = try {
-            call(Request.Builder().url(url("/api/episodes/$episodeId/stream-url")).get().build())
+            // hls=1 : l'app sait lire le HLS ; un fichier à remuxer est alors lu à la volée, sans préparation (serveur 1.4.0).
+            call(Request.Builder().url(url("/api/episodes/$episodeId/stream-url", "hls" to 1)).get().build())
         } catch (e: IOException) {
             throw ApiException.fromNetwork(e)
         }
@@ -115,9 +116,9 @@ class AnimeApi(private val session: SessionStore, private val client: OkHttpClie
         // Sous-titres externes : même serveur obligatoire, sinon la piste est simplement ignorée.
         val subtitles = dto.subtitles.mapNotNull { s ->
             server.resolve(s.url)?.takeIf { it.host == server.host && it.port == server.port }
-                ?.let { ExternalSubtitle(it.toString(), s.label, s.language, s.forced, s.isDefault) }
+                ?.let { ExternalSubtitle(it.toString(), s.label, s.language, s.forced, s.isDefault, s.mimeType) }
         }
-        return StreamAnswer.Ready(SignedStream(absolute.toString(), expires, subtitles))
+        return StreamAnswer.Ready(SignedStream(absolute.toString(), expires, subtitles, hls = dto.kind == "HLS"))
     }
 }
 
@@ -131,12 +132,20 @@ sealed interface StreamAnswer {
     data class Preparing(val position: Int, val progress: Double?, val estimatedSeconds: Long, val retryAfterSeconds: Int) : StreamAnswer
 }
 
-/** URL signée absolue et son expiration (ms epoch, null si inconnue). {@code toString} masqué. */
-class SignedStream(val url: String, val expiresAtMs: Long?, val subtitles: List<ExternalSubtitle> = emptyList()) {
-    override fun toString() = "SignedStream(url=***, expiresAtMs=$expiresAtMs, subtitles=${subtitles.size})"
+/**
+ * URL signée absolue et son expiration (ms epoch, null si inconnue). {@code hls} : playlist HLS d'une lecture à la
+ * volée (fichier remuxé par le serveur pendant la lecture), sinon le fichier lui-même. {@code toString} masqué.
+ */
+class SignedStream(val url: String, val expiresAtMs: Long?, val subtitles: List<ExternalSubtitle> = emptyList(), val hls: Boolean = false) {
+    override fun toString() = "SignedStream(url=***, expiresAtMs=$expiresAtMs, subtitles=${subtitles.size}, hls=$hls)"
 }
 
-/** Sous-titre externe (.ass) à joindre à la vidéo ; {@code url} absolue et signée : jamais journalisée. */
-class ExternalSubtitle(val url: String, val label: String?, val language: String?, val forced: Boolean, val isDefault: Boolean) {
+/**
+ * Sous-titre à joindre à la vidéo (.ass externe, ou piste texte du fichier extraite par le serveur pour une lecture à
+ * la volée) ; {@code mimeType} : {@code text/x-ssa} ou {@code text/vtt} (null : SSA). {@code url} absolue et signée :
+ * jamais journalisée.
+ */
+class ExternalSubtitle(val url: String, val label: String?, val language: String?, val forced: Boolean, val isDefault: Boolean,
+                       val mimeType: String? = null) {
     override fun toString() = "ExternalSubtitle(url=***, label=$label, language=$language, forced=$forced, isDefault=$isDefault)"
 }

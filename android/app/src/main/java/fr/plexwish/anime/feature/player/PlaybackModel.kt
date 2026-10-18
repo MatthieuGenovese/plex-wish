@@ -73,10 +73,10 @@ interface PlaybackEngine {
     fun setListener(listener: Listener?)
 
     /**
-     * Charge l'URL (signée) et se place à {@code startMs}, avec les sous-titres externes (.ass) à joindre. Les URL ne
-     * sont jamais journalisées.
+     * Charge l'URL (signée) et se place à {@code startMs}, avec les sous-titres à joindre. {@code hls} : l'URL est une
+     * playlist HLS (lecture à la volée). Les URL ne sont jamais journalisées.
      */
-    fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle> = emptyList())
+    fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle> = emptyList(), hls: Boolean = false)
 
     /** Position courante (ms), y compris après un seek pendant la pause ou après une erreur. */
     val positionMs: Long

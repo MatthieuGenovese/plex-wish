@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -28,8 +29,12 @@ public class LiveService {
     public sealed interface Start permits Ready, Preparing, Unavailable {
     }
 
-    /** Playlist maîtresse signée (chemin relatif au serveur). */
-    public record Ready(String masterUrl, Instant expiresAt) implements Start {
+    /** Playlist maîtresse signée (chemin relatif au serveur) et pistes texte du fichier, extraites à part. */
+    public record Ready(String masterUrl, Instant expiresAt, List<Subtitle> subtitles) implements Start {
+    }
+
+    /** Piste de sous-titres texte du fichier (URL signée relative, MIME {@code text/x-ssa} ou {@code text/vtt}). */
+    public record Subtitle(int index, String url, String language, boolean forced, boolean isDefault, String mimeType) {
     }
 
     /** Relevé des images clés en cours : redemander dans quelques secondes. */
@@ -52,6 +57,8 @@ public class LiveService {
     StreamSigner signer;
     @Inject
     PlaybackActivity playback;
+    @Inject
+    LiveSubtitleService subtitles;
 
     public Start start(long mediaFileId, long userId) throws SQLException {
         LiveRepository.Source source = repository.source(mediaFileId).orElse(null);
@@ -61,15 +68,35 @@ public class LiveService {
         if (source.videoCodec() == null) {
             return new Unavailable("fichier pas encore analysé");
         }
+        prefetchNext(mediaFileId);
         return switch (keyframes.status(source)) {
             case KeyframeIndexService.Ready r -> {
                 long exp = signer.expiry();
-                yield new Ready(base(mediaFileId) + "master.m3u8?" + signer.liveQuery(mediaFileId, userId, exp),
-                        Instant.ofEpochSecond(exp));
+                String q = signer.liveQuery(mediaFileId, userId, exp);
+                List<Subtitle> subs = LiveSubtitleService.textTracks(source.subtitles()).stream()
+                        .map(t -> new Subtitle(t.index(), base(mediaFileId) + "sub/" + t.index() + "." + t.extension() + "?" + q,
+                                t.language(), t.forced(), t.isDefault(), t.mimeType()))
+                        .toList();
+                yield new Ready(base(mediaFileId) + "master.m3u8?" + q, Instant.ofEpochSecond(exp), subs);
             }
             case KeyframeIndexService.Computing c -> new Preparing();
             case KeyframeIndexService.Failed f -> new Unavailable(f.reason());
         };
+    }
+
+    /** Index de l'épisode suivant relevé à l'avance (rien si déjà fait, en cours, ou pas d'épisode suivant à remuxer). */
+    private void prefetchNext(long mediaFileId) {
+        try {
+            Optional<Long> next = repository.nextRemuxFile(mediaFileId);
+            if (next.isPresent()) {
+                Optional<LiveRepository.Source> s = repository.source(next.get());
+                if (s.isPresent() && s.get().relativePath() != null && s.get().videoCodec() != null) {
+                    keyframes.status(s.get());
+                }
+            }
+        } catch (SQLException | RuntimeException e) {
+            // simple confort : la lecture en cours n'en dépend pas
+        }
     }
 
     // --- Ressources signées -------------------------------------------------------------------------------------------
@@ -163,6 +190,20 @@ public class LiveService {
         }
         playback.mark();
         return run(() -> sessions.segment(userId, sessionSource(p), track, index));
+    }
+
+    /** Piste texte {@code index} du fichier, extraite ({@code extension} : celle annoncée dans le lien). */
+    public Path subtitle(long mediaFileId, int index, String extension) throws SQLException {
+        LiveRepository.Source source = repository.source(mediaFileId).orElse(null);
+        if (source == null || source.relativePath() == null) {
+            throw notReady();
+        }
+        LiveSubtitleService.Track track = LiveSubtitleService.textTracks(source.subtitles()).stream()
+                .filter(t -> t.index() == index && t.extension().equals(extension)).findFirst()
+                .orElseThrow(() -> new ApiException(404, "LIVE_NOT_FOUND", "Ressource inconnue"));
+        Path file = probe.resolve(source.relativePath()).orElseThrow(LiveService::notReady);
+        String codec = source.subtitles().get(index).codec();
+        return run(() -> subtitles.extract(mediaFileId, file, source.fileSize(), source.lastModified(), track, codec));
     }
 
     // --- Interne --------------------------------------------------------------------------------------------------------

@@ -136,6 +136,29 @@ class PlayerViewModelTest : PlayerTestBase() {
     }
 
     @Test
+    fun liveRemuxIsAskedForAndLoadedAsHls() {
+        // Serveur 1.4.0 : fichier à remuxer lu à la volée (playlist HLS), piste texte du fichier extraite en WebVTT.
+        streamExtra = ""","kind":"HLS","subtitles":[
+            {"url":"/api/stream/12/live/sub/0.vtt?u=1&exp=9&sig=SUBSIG","label":"Anglais","language":"eng","forced":false,"isDefault":false,"mimeType":"text/vtt"}]"""
+        val engine = FakeEngine()
+        player(engine)
+        await("chargement") { engine.loads.size == 1 }
+        assertTrue(engine.loads[0].hls)
+        assertEquals("text/vtt", engine.loads[0].subtitles[0].mimeType)
+        val asked = generateSequence { server.takeRequest(0, java.util.concurrent.TimeUnit.SECONDS) }
+            .first { it.requestUrl!!.encodedPath == "/api/episodes/5/stream-url" }
+        assertEquals("1", asked.requestUrl!!.queryParameter("hls"))
+    }
+
+    @Test
+    fun aFileStaysAFileForAnOlderServer() {
+        val engine = FakeEngine()
+        player(engine)
+        await("chargement") { engine.loads.size == 1 }
+        assertTrue(!engine.loads[0].hls)
+    }
+
+    @Test
     fun ffmpegDecoderShowsTheSoftwareDecodingIndicator() {
         val engine = FakeEngine()
         val vm = player(engine)

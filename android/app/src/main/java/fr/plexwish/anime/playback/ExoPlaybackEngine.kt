@@ -199,10 +199,10 @@ class ExoPlaybackEngine(
         this.listener = listener
     }
 
-    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>) {
+    override fun load(url: String, startMs: Long, playWhenReady: Boolean, subtitles: List<ExternalSubtitle>, hls: Boolean) {
         loading = true
         try {
-            player.setMediaItem(mediaItem(url, subtitles), startMs)
+            player.setMediaItem(mediaItem(url, subtitles, hls), startMs)
             player.playWhenReady = playWhenReady
             player.prepare()
         } finally {
@@ -217,12 +217,14 @@ class ExoPlaybackEngine(
      * simples ; les polices du dossier ne sont pas utilisées sur le téléphone). Langue, libellé, « par défaut » et
      * « forcés » viennent du serveur : la sélection de pistes les traite comme celles du fichier.
      */
-    private fun mediaItem(url: String, subtitles: List<ExternalSubtitle>): MediaItem = MediaItem.Builder()
+    private fun mediaItem(url: String, subtitles: List<ExternalSubtitle>, hls: Boolean): MediaItem = MediaItem.Builder()
         .setUri(url)
+        // Lecture à la volée : playlist HLS (le nom de l'URL ne suffit pas à Media3 pour le deviner).
+        .setMimeType(if (hls) MimeTypes.APPLICATION_M3U8 else null)
         .setSubtitleConfigurations(subtitles.mapIndexed { i, s ->
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
                 .setId("externe-$i")
-                .setMimeType(MimeTypes.TEXT_SSA)
+                .setMimeType(if (s.mimeType == MimeTypes.TEXT_VTT) MimeTypes.TEXT_VTT else MimeTypes.TEXT_SSA)
                 .setLanguage(s.language)
                 .setLabel(s.label)
                 .setSelectionFlags((if (s.isDefault) C.SELECTION_FLAG_DEFAULT else 0) or (if (s.forced) C.SELECTION_FLAG_FORCED else 0))

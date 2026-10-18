@@ -279,6 +279,74 @@ class LiveStreamTest {
     }
 
     @Test
+    void textSubtitlesOfTheFileAreExtractedAndTheNextEpisodeIsIndexedAhead() throws Exception {
+        // MKV avec une piste SRT (anglais) et une piste ASS (français, par défaut), classé « remux nécessaire » à la main
+        // (un MKV en mode compatibilité Windows ne se fabrique pas avec ffmpeg).
+        Path dir = ROOT.resolve("Subs");
+        Files.createDirectories(dir);
+        Path srt = dir.resolve("a.srt");
+        Files.writeString(srt, "1\n00:00:01,000 --> 00:00:03,000\nHello there\n");
+        Path ass = dir.resolve("b.ass");
+        Files.writeString(ass, """
+                [Script Info]
+                ScriptType: v4.00+
+
+                [V4+ Styles]
+                Format: Name, Fontname, Fontsize, PrimaryColour, Bold, Italic, Alignment
+                Style: Default,Arial,20,&H00FFFFFF,0,0,2
+
+                [Events]
+                Format: Layer, Start, End, Style, Text
+                Dialogue: 0,0:00:01.00,0:00:03.00,Default,Bonjour
+                """);
+        LiveTools.run("ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-y",
+                "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25:duration=8", "-f", "lavfi", "-i", "sine=duration=8",
+                "-i", srt.toString(), "-i", ass.toString(), "-map", "0", "-map", "1", "-map", "2", "-map", "3",
+                "-c:v", "mpeg4", "-g", "50", "-c:a", "libmp3lame", "-c:s:0", "subrip", "-c:s:1", "ass",
+                "-metadata:s:s:0", "language=eng", "-metadata:s:s:1", "language=fre", "-disposition:s:1", "default",
+                dir.resolve("Subs - S01E01.mkv").toString());
+        Files.delete(srt);
+        Files.delete(ass);
+        assertEquals("SUCCESS", scan(true).getString("status"));
+        for (var w = probe.nextPending(); w.isPresent(); w = probe.nextPending()) {
+            assertEquals("OK", probe.probe(w.get()));
+        }
+        try (var c = ds.getConnection(); var st = c.createStatement()) {
+            st.execute("UPDATE media_probe SET android_class = 'REMUX' WHERE media_file_id = (SELECT id FROM media_file"
+                    + " WHERE file_name = 'Subs - S01E01.mkv')");
+        }
+        master(user, "Subs - S01E01.mkv");
+        Response r = given().auth().oauth2(user).queryParam("hls", true).get("/api/episodes/" + episode("Subs - S01E01.mkv") + "/stream-url");
+        assertEquals(200, r.statusCode(), r.asString());
+        List<Map<String, Object>> subs = r.path("subtitles");
+        assertEquals(2, subs.size(), r.asString());
+        assertEquals("Anglais", subs.get(0).get("label"));
+        assertEquals("text/vtt", subs.get(0).get("mimeType"));
+        assertEquals(false, subs.get(0).get("isDefault"));
+        assertEquals("Français", subs.get(1).get("label"));
+        assertEquals("text/x-ssa", subs.get(1).get("mimeType"));
+        assertEquals(true, subs.get(1).get("isDefault"));
+        Response vtt = given().get((String) subs.get(0).get("url"));
+        assertEquals(200, vtt.statusCode());
+        assertTrue(vtt.asString().startsWith("WEBVTT") && vtt.asString().contains("Hello there"), vtt.asString());
+        Response ssa = given().get((String) subs.get(1).get("url"));
+        assertEquals(200, ssa.statusCode());
+        assertTrue(ssa.asString().contains("Bonjour"), ssa.asString());
+        // Une signature d'un autre fichier n'ouvre pas ces sous-titres.
+        String url = (String) subs.get(0).get("url");
+        given().get(url.replace("/stream/" + fileId("Subs - S01E01.mkv") + "/", "/stream/" + fileId("Gen - S01E01.avi") + "/"))
+                .then().statusCode(403);
+
+        // Pendant la lecture de l'épisode 1, l'index de l'épisode 2 est relevé à l'avance.
+        master(user, "Gen - S01E01.avi");
+        long deadline = System.currentTimeMillis() + 20_000;
+        while (count(ds, "SELECT count(*) FROM media_keyframes WHERE media_file_id = " + fileId("Gen - S01E02.avi")) == 0) {
+            assertTrue(System.currentTimeMillis() < deadline, "épisode suivant non indexé");
+            Thread.sleep(200);
+        }
+    }
+
+    @Test
     void withoutHlsTheAndroidAnswerIsUnchanged() throws Exception {
         Response r = given().auth().oauth2(user).get("/api/episodes/" + episode("Gen - S01E01.avi") + "/stream-url");
         assertTrue(r.statusCode() == 202 || r.statusCode() == 200, r.asString());

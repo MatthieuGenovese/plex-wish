@@ -116,7 +116,8 @@ public class StreamResource {
         if (hls) {
             switch (live.start(fileId, userId)) {
                 case fr.plexwish.animeserver.live.LiveService.Ready r -> {
-                    return Response.ok(new StreamUrl(r.masterUrl(), r.expiresAt(), "application/x-mpegURL", 0, subs, HLS)).build();
+                    return Response.ok(new StreamUrl(r.masterUrl(), r.expiresAt(), "application/x-mpegURL", 0,
+                            withEmbedded(subs, r.subtitles()), HLS)).build();
                 }
                 case fr.plexwish.animeserver.live.LiveService.Preparing p -> {
                     return Response.status(Response.Status.ACCEPTED).header("Retry-After", 2)
@@ -175,6 +176,30 @@ public class StreamResource {
     }
 
     static final String SSA = "text/x-ssa";
+
+    /**
+     * Sous-titres d'une lecture à la volée : les externes d'abord, puis les pistes texte du fichier (extraites à part,
+     * le HLS ne les transporte pas). « Par défaut » : celui des externes s'il y en a un, sinon la piste marquée par
+     * défaut dans le fichier (non forcée).
+     */
+    static List<SubtitleLink> withEmbedded(List<SubtitleLink> external, List<fr.plexwish.animeserver.live.LiveService.Subtitle> embedded) {
+        List<SubtitleLink> out = new ArrayList<>(external);
+        boolean defaultTaken = external.stream().anyMatch(SubtitleLink::isDefault);
+        Set<String> labels = new HashSet<>();
+        external.forEach(s -> labels.add(s.label()));
+        for (var e : embedded) {
+            String name = fr.plexwish.animeserver.webplay.WebDecision.languageName(e.language());
+            String label = (name == null ? "Sous-titres " + (e.index() + 1) : name) + (e.forced() ? " — forcés" : "");
+            String unique = label;
+            for (int i = 2; !labels.add(unique); i++) {
+                unique = label + " " + i;
+            }
+            boolean isDefault = !defaultTaken && e.isDefault() && !e.forced();
+            defaultTaken |= isDefault;
+            out.add(new SubtitleLink(-1 - e.index(), e.url(), unique, e.language(), e.forced(), isDefault, e.mimeType()));
+        }
+        return out;
+    }
 
     /**
      * Sous-titre externe (Android, 1.3.1) : signature liée au fichier et au sous-titre ; le sous-titre doit être associé

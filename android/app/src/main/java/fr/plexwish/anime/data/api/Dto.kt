@@ -171,6 +171,8 @@ data class StreamUrlDto(
     val fileSize: Long = 0,
     /** Sous-titres externes (.ass posés à côté de la vidéo, serveur 1.3.1 et plus), chacun avec son URL signée. */
     val subtitles: List<SubtitleLinkDto> = emptyList(),
+    /** « HLS » : lecture à la volée (serveur 1.4.0 et plus, demandée par hls=1) ; sinon « FILE » ou absent. */
+    val kind: String? = null,
 ) {
     override fun toString() = "StreamUrlDto(url=***, expiresAt=$expiresAt, subtitles=${subtitles.size})"
 }

@@ -118,6 +118,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.5.1")
+    // Lecture à la volée des fichiers à remuxer (HLS, docs/LIVE-REMUX.md ; accord du 2026-10-18).
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     // Décodeurs FFmpeg logiciels (NextLib 0.8.4, GPL-3.0, bâti sur Media3 1.5.1) : repli quand le décodeur matériel
     // refuse un fichier (H.264 10 bits, DTS, TrueHD…). Le matériel reste prioritaire (EXTENSION_RENDERER_MODE_ON).
     implementation("com.github.anilbeesetti.nextlib:nextlib-media3ext:0.8.4")

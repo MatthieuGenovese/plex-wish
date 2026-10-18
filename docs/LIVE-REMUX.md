@@ -1,6 +1,6 @@
 # Remux à la volée (Android et navigateur) — conception
 
-Statut : **validée le 2026-10-18** (sous-titres en image : perte acceptée, à recompter). **L1 (serveur) réalisée** (§13). Essai préalable fait le 2026-10-18 sur le PC (§2).
+Statut : **validée le 2026-10-18** (sous-titres en image : perte acceptée, à recompter). **L1 (serveur) et L2 (Android) réalisées** (§13) ; test sur le S24 à faire. Essai préalable fait le 2026-10-18 sur le PC (§2).
 
 ## 0. Résumé et décisions à valider
 
@@ -296,3 +296,27 @@ Tests : seulement ceux touchés par chaque étape (règle du 2026-10-18).
     une session par utilisateur ; réponse inchangée sans `hls=1`) ;
   - et les tests touchés : `StreamTest`, `SubtitleStreamTest`, `RemuxTest`, `WebSignatureTest`, `LogLeakTest`,
     `ClientDisconnectLogFilterTest`, `SocleTest`, `RepositoryBoundaryTest`.
+
+### L2 — Android et compléments serveur (2026-10-18, version 1.4.0)
+
+- **App** :
+  - dépendance `media3-exoplayer-hls:1.5.1` ;
+  - `stream-url?hls=1` ;
+  - `kind == "HLS"` → `MediaItem` en `APPLICATION_M3U8` ;
+  - sous-titres joints en SSA ou en WebVTT selon le `mimeType` donné par le serveur ;
+  - diagnostic : format « HLS (copie à la volée) » au lieu de l'extension du fichier d'origine.
+
+  Nouvel APK sur un serveur 1.3.x : `hls=1` est ignoré, rien ne change.
+- **Serveur** :
+  - pistes texte du fichier extraites à la première demande (`LiveSubtitleService`, ASS gardé en ASS, SRT et autres
+    en WebVTT), servies par `/api/stream/{id}/live/sub/{n}.ass|vtt` (signature `v1-live`), gardées dans
+    `<remux-cache>/live-subs/` (effacées après 30 jours sans lecture) ;
+  - données à l'app après les sous-titres externes, « par défaut » repris du fichier s'il n'y a pas d'externe par
+    défaut ;
+  - **index de l'épisode suivant** (même animé, saison puis numéro, s'il est à remuxer) relevé en tâche de fond dès
+    qu'une lecture à la volée démarre : l'épisode suivant démarre sans attente. Ceci remplace le préventif
+    « 2 épisodes de chaque animé en cours » de §4, plus simple et suffisant pour enchaîner.
+- **Tests (ciblés)** :
+  - serveur : `LiveStreamTest` (+ MKV à piste SRT et ASS : liens, contenu, signature ; index de l'épisode suivant),
+    `StreamTest`, `SubtitleStreamTest`, `RepositoryBoundaryTest` ;
+  - Android : paquet `feature.player` (45 tests, dont HLS demandé et chargé, et fichier gardé pour un ancien serveur).

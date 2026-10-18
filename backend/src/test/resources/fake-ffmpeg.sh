@@ -24,6 +24,7 @@ case "$out" in
     case "$input" in
       *badcopy*) fixture=copy-short ;;
       *noaudio*) fixture=copy-noaudio ;;
+      *vfwcopy*) fixture=mkv-vfw-dx50-vorbis-srt ;;
       *.ogm) fixture=ogm-mpeg4-vorbis ;;
       *) fixture=avi-xvid-mp3 ;;
     esac

@@ -178,6 +178,26 @@ class MediaProbeTest {
     }
 
     @Test
+    void mkvWithWindowsCompatibilityVideoTrackIsRemuxedForAndroid() throws Exception {
+        // MKV issu d'un AVI, piste vidéo « V_MS/VFW/FOURCC » (DX50) : video/x-unknown pour Media3 (constat 2026-10-18).
+        touch(ROOT, "Chant/Le chant vfw - 1x20.mkv");
+        scan();
+        processAll();
+        assertEquals("REMUX", probe("Le chant vfw - 1x20.mkv", "android_class"));
+        assertEquals("DX50", probe("Le chant vfw - 1x20.mkv", "video_codec_tag"));
+        assertEquals("piste vidéo en mode compatibilité Windows (DX50) : non lue par Android",
+                probe("Le chant vfw - 1x20.mkv", "android_reasons"));
+        // MKV ordinaire : aucun FourCC enregistré, lecture directe.
+        assertEquals(null, probe("Days - S01E03.mkv", "video_codec_tag"));
+        assertEquals("DIRECT", probe("Days - S01E03.mkv", "android_class"));
+        // Reclassement sans nouvelle analyse : le FourCC enregistré est relu.
+        sql("UPDATE media_probe SET rules_version = 0, android_class = 'DIRECT' WHERE status = 'OK'");
+        service.reclassifyOutdated(100);
+        assertEquals("REMUX", probe("Le chant vfw - 1x20.mkv", "android_class"));
+        assertEquals("DIRECT", probe("Days - S01E03.mkv", "android_class"));
+    }
+
+    @Test
     void timeoutAndUnreadableOutputAreFailures() throws Exception {
         touch(ROOT, "Slow/Slow slowprobe - 01.mkv");
         touch(ROOT, "Garbage/Garbage garbage - 01.mkv");

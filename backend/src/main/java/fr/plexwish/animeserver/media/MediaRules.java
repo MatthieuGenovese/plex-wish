@@ -11,13 +11,13 @@ import java.util.Set;
  * nouvelle analyse.
  *
  * <p>Android (Media3 sur le téléphone) : DIRECT (lu tel quel), REMUX (conteneur non lu ou mal lu, contenu lisible :
- * AVI, OGM → MKV sans ré-encodage, phase 9.2), TRANSCODE (codec que le téléphone ne décode pas : seul un
+ * AVI, OGM, MKV à piste vidéo en mode compatibilité Windows → MKV sans ré-encodage, phase 9.2), TRANSCODE (codec que le téléphone ne décode pas : seul un
  * ré-encodage aiderait, hors périmètre). Navigateur (lecteur web, phase 10) : lisible ou non, avec les raisons.
  */
 public final class MediaRules {
 
     /** À augmenter à chaque changement de règle. */
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
 
     public enum Android { DIRECT, REMUX, TRANSCODE }
 
@@ -78,6 +78,11 @@ public final class MediaRules {
         } else if (ANDROID_REMUX_CONTAINERS.contains(container)) {
             android = Android.REMUX;
             reasons.add("ogg".equals(container) ? "conteneur OGM non lu par Android" : "conteneur AVI mal lu par Android (horodatage du son)");
+        } else if ("matroska".equals(container) && v.codecTag() != null) {
+            // Piste « V_MS/VFW/FOURCC » (MKV issus d'AVI) : Media3 ne la lit que pour quelques FourCC, sinon
+            // « video/x-unknown » (constat 2026-10-18, DX50). Le remux en MKV réécrit la piste au format standard.
+            android = Android.REMUX;
+            reasons.add("piste vidéo en mode compatibilité Windows (" + v.codecTag() + ") : non lue par Android");
         } else if (ANDROID_CONTAINERS.contains(container)) {
             android = Android.DIRECT;
         } else {

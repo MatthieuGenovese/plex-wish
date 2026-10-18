@@ -232,6 +232,19 @@ class RemuxTest {
     }
 
     @Test
+    void mkvWithWindowsCompatibilityTrackIsRemuxedAndTheCopyMustBeStandard() throws Exception {
+        // Source MKV « V_MS/VFW/FOURCC » (DX50) : remux nécessaire ; une copie restée dans ce mode n'est jamais servie.
+        library("C/C vfwcopy - 01.mkv");
+        streamUrl("C vfwcopy - 01.mkv").then().statusCode(202);
+        while (remux.processNext()) {
+            // un à la fois
+        }
+        assertEquals("FAILED", job("C vfwcopy - 01.mkv", "status"));
+        assertTrue(job("C vfwcopy - 01.mkv", "error").contains("mode compatibilité Windows"), job("C vfwcopy - 01.mkv", "error"));
+        assertEquals(List.of(), cacheFiles());
+    }
+
+    @Test
     void timeoutLeavesNothingBehind() throws Exception {
         library("A/A slowremux - 01.avi");
         streamUrl("A slowremux - 01.avi").then().statusCode(202);

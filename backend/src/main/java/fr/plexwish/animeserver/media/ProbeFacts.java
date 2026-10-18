@@ -13,7 +13,12 @@ import java.util.Locale;
  */
 public record ProbeFacts(Double durationSeconds, String formatName, Video video, List<Audio> audio, List<Subtitle> subtitles) {
 
-    public record Video(String codec, String profile, Integer bitDepth, Integer width, Integer height, String pixFmt) {
+    /**
+     * {@code codecTag} : FourCC de la piste quand le conteneur en donne un utile (« DX50 », « XVID »…). Dans un MKV,
+     * présent seulement pour une piste en mode compatibilité Windows ({@code V_MS/VFW/FOURCC}), sinon null.
+     */
+    public record Video(String codec, String profile, Integer bitDepth, Integer width, Integer height, String pixFmt,
+                        String codecTag) {
     }
 
     public record Audio(String codec, String profile, Integer channels, String language, boolean isDefault) {
@@ -52,7 +57,8 @@ public record ProbeFacts(Double durationSeconds, String formatName, Video video,
                         continue;
                     }
                     String pix = text(s.path("pix_fmt"));
-                    video = new Video(codec, profile(s), bitDepth(s, pix), integer(s.path("width")), integer(s.path("height")), pix);
+                    video = new Video(codec, profile(s), bitDepth(s, pix), integer(s.path("width")), integer(s.path("height")), pix,
+                            codecTag(s));
                 }
                 case "audio" -> audio.add(new Audio(codec, profile(s), integer(s.path("channels")), lang,
                         disp.path("default").asInt(0) == 1));
@@ -72,6 +78,17 @@ public record ProbeFacts(Double durationSeconds, String formatName, Video video,
             }
         }
         return new ProbeFacts(duration, text(format.path("format_name")), video, List.copyOf(audio), List.copyOf(subs));
+    }
+
+    /** FourCC lisible (« DX50 ») ; null si absent (codec_tag 0, « [0][0][0][0] ») ou illisible. */
+    static String codecTag(JsonNode s) {
+        String tag = text(s.path("codec_tag"));
+        String str = text(s.path("codec_tag_string"));
+        if (str == null || tag == null || tag.matches("0x0+") || !str.matches("[\\x21-\\x7E ]{1,8}")
+                || str.contains("[")) {
+            return null;
+        }
+        return str.strip();
     }
 
     private static String profile(JsonNode s) {

@@ -526,7 +526,7 @@ public class RemuxService {
 
     private volatile java.math.BigDecimal verifiedDuration;
 
-    /** Copie vérifiée avant d'être servie : vidéo et son présents, durée proche de l'original (1 %, 2 s au moins). */
+    /** Copie vérifiée avant d'être servie : vidéo (au format MKV standard) et son présents, durée proche de l'original (1 %, 2 s au moins). */
     String verify(Path copy, Double sourceDuration) throws InterruptedException {
         List<String> cmd = new ArrayList<>(List.of(config.ffprobePath(), "-v", "error", "-hide_banner", "-show_format",
                 "-show_streams", "-of", "json", "-i", "file:" + copy));
@@ -545,6 +545,10 @@ public class RemuxService {
         }
         if (f.audio().isEmpty()) {
             return "pas de piste audio";
+        }
+        if ("matroska".equals(MediaRules.container(f.formatName(), "mkv")) && f.video().codecTag() != null) {
+            // MKV source en mode compatibilité Windows (« V_MS/VFW/FOURCC ») : la copie doit être au format standard.
+            return "piste vidéo toujours en mode compatibilité Windows";
         }
         if (f.durationSeconds() == null || f.durationSeconds() <= 0) {
             return "durée inconnue";

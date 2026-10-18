@@ -60,15 +60,16 @@ public class MediaProbeRepository {
         db.runInTransaction(c -> {
             Jdbc.update(c, """
                     INSERT INTO media_probe (media_file_id, probed_size, probed_modified, status, probed_at, error, duration_seconds,
-                        format_name, container, video_codec, video_profile, video_bit_depth, width, height, audio, subtitles,
-                        android_class, android_reasons, browser_playable, browser_reasons, rules_version)
-                    VALUES (?, ?, ?, 'OK', now(), NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)
+                        format_name, container, video_codec, video_profile, video_bit_depth, width, height, video_codec_tag,
+                        audio, subtitles, android_class, android_reasons, browser_playable, browser_reasons, rules_version)
+                    VALUES (?, ?, ?, 'OK', now(), NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)
                     ON CONFLICT (media_file_id) DO UPDATE SET probed_size = EXCLUDED.probed_size,
                         probed_modified = EXCLUDED.probed_modified, status = 'OK', probed_at = now(), error = NULL,
                         duration_seconds = EXCLUDED.duration_seconds, format_name = EXCLUDED.format_name,
                         container = EXCLUDED.container, video_codec = EXCLUDED.video_codec,
                         video_profile = EXCLUDED.video_profile, video_bit_depth = EXCLUDED.video_bit_depth,
-                        width = EXCLUDED.width, height = EXCLUDED.height, audio = EXCLUDED.audio,
+                        width = EXCLUDED.width, height = EXCLUDED.height, video_codec_tag = EXCLUDED.video_codec_tag,
+                        audio = EXCLUDED.audio,
                         subtitles = EXCLUDED.subtitles, android_class = EXCLUDED.android_class,
                         android_reasons = EXCLUDED.android_reasons, browser_playable = EXCLUDED.browser_playable,
                         browser_reasons = EXCLUDED.browser_reasons, rules_version = EXCLUDED.rules_version""",
@@ -84,6 +85,7 @@ public class MediaProbeRepository {
                     new Jdbc.Typed(v == null ? null : v.bitDepth(), Types.INTEGER),
                     new Jdbc.Typed(v == null ? null : v.width(), Types.INTEGER),
                     new Jdbc.Typed(v == null ? null : v.height(), Types.INTEGER),
+                    Jdbc.varchar(v == null ? null : v.codecTag()),
                     json(f.audio()),
                     json(f.subtitles()),
                     cl.android().name(),
@@ -128,7 +130,8 @@ public class MediaProbeRepository {
     public List<Outdated> outdated(int rulesVersion, int limit) throws SQLException {
         return db.list("""
                 SELECT p.media_file_id, p.duration_seconds, p.format_name, p.video_codec, p.video_profile,
-                       p.video_bit_depth, p.width, p.height, p.audio::text, p.subtitles::text, f.container
+                       p.video_bit_depth, p.width, p.height, p.audio::text, p.subtitles::text, f.container,
+                       p.video_codec_tag
                 FROM media_probe p JOIN media_file f ON f.id = p.media_file_id
                 WHERE p.status = 'OK' AND p.rules_version < ? ORDER BY p.media_file_id LIMIT ?""",
                 rs -> new Outdated(rs.getLong(1), facts(rs), rs.getString(11)), rulesVersion, limit);
@@ -245,11 +248,14 @@ public class MediaProbeRepository {
                 Jdbc.varchar(pathLike), Jdbc.varchar(pathLike), size, offset);
     }
 
-    /** Faits enregistrés (colonnes 2 à 10 de la requête : durée, format, vidéo, audio et sous-titres JSON) → ProbeFacts. */
+    /**
+     * Faits enregistrés (colonnes 2 à 10 de la requête : durée, format, vidéo, audio et sous-titres JSON ; 12 : FourCC
+     * vidéo) → ProbeFacts.
+     */
     static ProbeFacts facts(ResultSet rs) throws SQLException {
         String codec = rs.getString(4);
         ProbeFacts.Video v = codec == null ? null : new ProbeFacts.Video(codec, rs.getString(5),
-                (Integer) rs.getObject(6), (Integer) rs.getObject(7), (Integer) rs.getObject(8), null);
+                (Integer) rs.getObject(6), (Integer) rs.getObject(7), (Integer) rs.getObject(8), null, rs.getString(12));
         BigDecimal d = rs.getBigDecimal(2);
         try {
             List<ProbeFacts.Audio> audio = JSON.readValue(rs.getString(9), new TypeReference<>() {

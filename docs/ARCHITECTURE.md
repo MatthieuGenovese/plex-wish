@@ -839,6 +839,7 @@ Pourquoi : §20.3 (AVI) et test de l'OGM (2026-10-06). Environ 920 fichiers AVI 
 
 ### 22.2 Tâche de fond (`MediaProbeWorker`)
 - Séparée du scan, **en pause pendant un scan** et pendant le test à blanc du remux ; un fichier à la fois ; état en base (reprise après arrêt) ; réveillée à la fin d'un scan.
+- Un fichier dont le classement échoue (défaut inattendu) est enregistré en échec (« classement impossible ») : la file ne reste jamais bloquée sur lui (1.3.6 ; avant, un codec sans nom bloquait toute l'analyse).
 - Fichiers analysés : épisodes disponibles (`kind = EPISODE`) jamais analysés ou **modifiés** (taille ou date différente de celles enregistrées). Les extras ne sont pas analysés.
 - `ffprobe -v error -hide_banner -show_format -show_streams -of json -i file:<fichier>` : en-têtes seulement (mesuré sur 4 vrais fichiers : 0,35 à 1,8 Mo lus par fichier, 4 à 34 ms de calcul ; l'AVI lit aussi son index en fin de fichier).
 - Table `media_probe` (V13) : état du fichier analysé (taille, date), statut OK / FAILED et raison, durée, démultiplexeur et conteneur, vidéo (codec, profil, profondeur, définition), pistes audio (codec, profil, canaux, langue, par défaut) et sous-titres (format, langue, par défaut, forcé) en JSON, classification et version des règles. **V21 (1.3.5)** : FourCC de la piste vidéo (`video_codec_tag`, null quand le conteneur n'en donne pas d'utile, cas normal d'un MKV) ; les MKV déjà analysés sont réanalysés une fois (`probed_size = -1`).

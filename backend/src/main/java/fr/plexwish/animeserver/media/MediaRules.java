@@ -72,10 +72,10 @@ public final class MediaRules {
         if (v == null) {
             android = Android.TRANSCODE;
             reasons.add("aucune piste vidéo");
-        } else if (!ANDROID_VIDEO.contains(v.codec())) {
+        } else if (!in(ANDROID_VIDEO, v.codec())) {
             android = Android.TRANSCODE;
             reasons.add("codec vidéo " + label(v.codec()) + " non décodé par Android");
-        } else if (ANDROID_REMUX_CONTAINERS.contains(container)) {
+        } else if (in(ANDROID_REMUX_CONTAINERS, container)) {
             android = Android.REMUX;
             reasons.add("ogg".equals(container) ? "conteneur OGM non lu par Android" : "conteneur AVI mal lu par Android (horodatage du son)");
         } else if ("matroska".equals(container) && v.codecTag() != null) {
@@ -83,17 +83,17 @@ public final class MediaRules {
             // « video/x-unknown » (constat 2026-10-18, DX50). Le remux en MKV réécrit la piste au format standard.
             android = Android.REMUX;
             reasons.add("piste vidéo en mode compatibilité Windows (" + v.codecTag() + ") : non lue par Android");
-        } else if (ANDROID_CONTAINERS.contains(container)) {
+        } else if (in(ANDROID_CONTAINERS, container)) {
             android = Android.DIRECT;
         } else {
             android = Android.REMUX;
             reasons.add("conteneur " + container.toUpperCase(Locale.ROOT) + " non garanti sur Android");
         }
         if (android != Android.TRANSCODE) {
-            if (!p.audio().isEmpty() && p.audio().stream().noneMatch(a -> ANDROID_AUDIO.contains(a.codec()))) {
+            if (!p.audio().isEmpty() && p.audio().stream().noneMatch(a -> in(ANDROID_AUDIO, a.codec()))) {
                 android = Android.TRANSCODE;
                 reasons.add("son " + label(p.audio().get(0).codec()) + " non lu par Android");
-            } else if (p.audio().stream().allMatch(a -> ANDROID_AUDIO_DEPENDS.contains(a.codec())) && !p.audio().isEmpty()) {
+            } else if (p.audio().stream().allMatch(a -> in(ANDROID_AUDIO_DEPENDS, a.codec())) && !p.audio().isEmpty()) {
                 reasons.add("son " + label(p.audio().get(0).codec()) + " : dépend du téléphone");
             }
             if (v != null && "hevc".equals(v.codec()) && v.bitDepth() != null && v.bitDepth() >= 10) {
@@ -117,17 +117,25 @@ public final class MediaRules {
             browser.add("H.264 10 bits : à convertir pour le navigateur");
         } else if ("mpeg4".equals(v.codec())) {
             browser.add("MPEG-4 ASP (Xvid/DivX) : à convertir pour le navigateur");
-        } else if (!BROWSER_VIDEO.contains(v.codec())) {
+        } else if (!in(BROWSER_VIDEO, v.codec())) {
             browser.add("vidéo " + label(v.codec()) + " : à convertir pour le navigateur");
         }
-        if (!p.audio().isEmpty() && p.audio().stream().noneMatch(a -> BROWSER_AUDIO.contains(a.codec()))) {
+        if (!p.audio().isEmpty() && p.audio().stream().noneMatch(a -> in(BROWSER_AUDIO, a.codec()))) {
             browser.add("son " + label(p.audio().get(0).codec()) + " : à convertir pour le navigateur");
         }
-        if (!p.subtitles().isEmpty() && p.subtitles().stream().allMatch(s -> BROWSER_IMAGE_SUBTITLES.contains(s.codec()))) {
+        if (!p.subtitles().isEmpty() && p.subtitles().stream().allMatch(s -> in(BROWSER_IMAGE_SUBTITLES, s.codec()))) {
             browser.add("sous-titres en image (" + String.join(", ", p.subtitles().stream().map(ProbeFacts.Subtitle::codec)
                     .distinct().map(MediaRules::label).toList()) + ") : non affichables dans un navigateur");
         }
         return new Classification(android, List.copyOf(reasons), browser.isEmpty(), List.copyOf(browser));
+    }
+
+    /**
+     * Appartenance null-safe : ffprobe ne nomme pas toujours le codec d'une piste (codec inconnu de ffmpeg), et
+     * {@code Set.of(...).contains(null)} lève une exception (constat 2026-10-18 : analyse bloquée sur un fichier).
+     */
+    static boolean in(Set<String> set, String value) {
+        return value != null && set.contains(value);
     }
 
     /** Nom lisible d'un codec ffmpeg. */

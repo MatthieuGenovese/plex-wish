@@ -198,6 +198,18 @@ class MediaProbeTest {
     }
 
     @Test
+    void fileWithUnnamedCodecsIsClassifiedAndDoesNotBlockTheQueue() throws Exception {
+        // Pistes sans nom de codec (inconnues de ffmpeg) : l'analyse bloquait sur ce fichier (constat 2026-10-18).
+        touch(ROOT, "Aaa/Aaa unnamedcodec - 01.mkv");
+        scan();
+        assertEquals(7, processAll());
+        assertEquals("OK", probe("Aaa unnamedcodec - 01.mkv", "status"));
+        assertEquals("DIRECT", probe("Aaa unnamedcodec - 01.mkv", "android_class"));
+        assertEquals(0, count(ds, "SELECT count(*) FROM media_file f LEFT JOIN media_probe p ON p.media_file_id = f.id"
+                + " WHERE f.available AND f.kind = 'EPISODE' AND p.media_file_id IS NULL"));
+    }
+
+    @Test
     void timeoutAndUnreadableOutputAreFailures() throws Exception {
         touch(ROOT, "Slow/Slow slowprobe - 01.mkv");
         touch(ROOT, "Garbage/Garbage garbage - 01.mkv");

@@ -149,7 +149,15 @@ public class MediaProbeService {
             saveFailure(w, e.getMessage());
             return "FAILED";
         }
-        save(w, facts);
+        try {
+            save(w, facts);
+        } catch (RuntimeException e) {
+            // Défaut du classement sur un fichier inattendu : enregistré comme échec, sinon la file d'analyse
+            // reprendrait ce même fichier sans fin (constat 2026-10-18 : 2 875 fichiers bloqués derrière un seul).
+            LOG.errorf(e, "Analyse média : classement impossible pour le fichier %d", w.mediaFileId());
+            saveFailure(w, "classement impossible (erreur interne : " + e.getClass().getSimpleName() + ")");
+            return "FAILED";
+        }
         return "OK";
     }
 
@@ -172,7 +180,15 @@ public class MediaProbeService {
     public int reclassifyOutdated(int batch) throws SQLException {
         List<MediaProbeRepository.Outdated> rows = repository.outdated(MediaRules.VERSION, batch);
         for (MediaProbeRepository.Outdated r : rows) {
-            MediaRules.Classification cl = MediaRules.classify(r.facts(), r.extension());
+            MediaRules.Classification cl;
+            try {
+                cl = MediaRules.classify(r.facts(), r.extension());
+            } catch (RuntimeException e) {
+                // Même raison que dans probe() : nouvelle analyse, qui enregistrera l'échec au lieu de boucler.
+                LOG.errorf(e, "Analyse média : reclassement impossible pour le fichier %d, nouvelle analyse", r.mediaFileId());
+                repository.delete(r.mediaFileId());
+                continue;
+            }
             repository.updateClassification(r.mediaFileId(), cl, MediaRules.VERSION);
         }
         return rows.size();

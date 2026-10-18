@@ -54,6 +54,28 @@ class MediaRulesTest {
     }
 
     @Test
+    void tracksWithoutCodecNameDoNotBreakTheClassification() {
+        // ffprobe ne nomme pas un codec inconnu de ffmpeg : codec null (Set.of(...).contains(null) levait une
+        // exception et bloquait toute l'analyse, constat 2026-10-18).
+        ProbeFacts.Audio unnamed = new ProbeFacts.Audio(null, null, 2, "jpn", true);
+        ProbeFacts.Subtitle unnamedSub = new ProbeFacts.Subtitle(null, "fre", true, false);
+        ProbeFacts.Video h264 = new ProbeFacts.Video("h264", "High", 8, 1920, 1080, "yuv420p", null);
+        MediaRules.Classification onlyUnnamed = MediaRules.classify(new ProbeFacts(1.0, "matroska,webm", h264,
+                List.of(unnamed), List.of(unnamedSub)), "mkv");
+        assertEquals(MediaRules.Android.TRANSCODE, onlyUnnamed.android());
+        assertEquals(List.of("son inconnu non lu par Android"), onlyUnnamed.androidReasons());
+        assertTrue(onlyUnnamed.browserReasons().contains("son inconnu : à convertir pour le navigateur"));
+        MediaRules.Classification withAac = MediaRules.classify(new ProbeFacts(1.0, "matroska,webm", h264,
+                List.of(unnamed, new ProbeFacts.Audio("aac", null, 2, "jpn", false)), List.of(unnamedSub)), "mkv");
+        assertEquals(MediaRules.Android.DIRECT, withAac.android());
+        assertTrue(withAac.browserPlayable(), withAac.browserReasons().toString());
+        MediaRules.Classification noVideoCodec = MediaRules.classify(new ProbeFacts(1.0, "matroska,webm",
+                new ProbeFacts.Video(null, null, null, null, null, null, null), List.of(), List.of()), "mkv");
+        assertEquals(MediaRules.Android.TRANSCODE, noVideoCodec.android());
+        assertEquals(List.of("codec vidéo inconnu non décodé par Android"), noVideoCodec.androidReasons());
+    }
+
+    @Test
     void codecTagOnlyMattersInMatroska() throws IOException {
         // MKV ordinaires : pas de FourCC (« [0][0][0][0] »).
         assertNull(fixture("mkv-h264-aac-srt-pgs").video().codecTag());

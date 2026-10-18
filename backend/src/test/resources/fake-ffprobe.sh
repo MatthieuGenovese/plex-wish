@@ -14,6 +14,7 @@ case "$file" in
   *broken*) echo "$file: Invalid data found when processing input" >&2; exit 1 ;;
   *slowprobe*) sleep 5 ;;
   *garbage*) echo "pas du json"; exit 0 ;;
+  *unnamedcodec*) cat "$dir/ffprobe-fixtures/mkv-unnamed-codecs.json"; exit 0 ;;
   *vfw*) cat "$dir/ffprobe-fixtures/mkv-vfw-dx50-vorbis-srt.json"; exit 0 ;;
   *hevc10*) cat "$dir/ffprobe-fixtures/mkv-hevc10-aac-ass.json"; exit 0 ;;
   *.avi) cat "$dir/ffprobe-fixtures/avi-xvid-mp3.json"; exit 0 ;;

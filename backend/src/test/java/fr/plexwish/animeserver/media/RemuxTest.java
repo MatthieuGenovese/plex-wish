@@ -182,6 +182,23 @@ class RemuxTest {
     }
 
     @Test
+    void aCopyDeletedByHandIsPreparedAgain() throws Exception {
+        // 2026-10-21 : copie effacée à la main dans le cache (explorateur du NAS), pendant ou entre deux lectures.
+        library("Air Gear/Air Gear - 1x05.avi");
+        streamUrl("Air Gear - 1x05.avi").then().statusCode(202);
+        assertTrue(remux.processNext());
+        String url = streamUrl("Air Gear - 1x05.avi").then().statusCode(200).extract().path("url");
+        Files.delete(CACHE.resolve(cacheFiles().get(0)));
+        // Pendant la lecture : « copie indisponible », le lecteur redemande un lien.
+        RestAssured.given().get(url).then().statusCode(404).body("error", equalTo("REMUX_NOT_READY"));
+        // La demande suivante relance la préparation, puis la copie est de nouveau servie.
+        streamUrl("Air Gear - 1x05.avi").then().statusCode(202);
+        assertTrue(remux.processNext());
+        String again = streamUrl("Air Gear - 1x05.avi").then().statusCode(200).extract().path("url");
+        RestAssured.given().header("Range", "bytes=0-7").get(again).then().statusCode(206);
+    }
+
+    @Test
     void dryRunWinnerFirstOtherwiseSimplestThenFallback() throws Exception {
         library("A/A genptsfail - 01.avi", "B/B - 01.avi", "C/C remuxfail - 01.avi");
         // A : pas de test à blanc → genpts, échec, repli genpts + unpack.

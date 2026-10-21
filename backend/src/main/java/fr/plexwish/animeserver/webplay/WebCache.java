@@ -152,6 +152,48 @@ public class WebCache {
         }
     }
 
+    /**
+     * Préparation complète sur le disque : dossier présent, et chaque fichier cité par ses playlists présent. Un fichier
+     * effacé à la main dans le dossier (explorateur du NAS) rend la préparation incomplète : elle est alors oubliée et
+     * refaite, au lieu de rester cassée (2026-10-21).
+     */
+    public boolean complete(String key) {
+        if (!exists(key)) {
+            return false;
+        }
+        Path d = dir(key);
+        try (Stream<Path> files = Files.list(d)) {
+            for (Path p : (Iterable<Path>) files.filter(f -> f.getFileName().toString().endsWith(".m3u8"))::iterator) {
+                for (String name : referenced(Files.readString(p, java.nio.charset.StandardCharsets.UTF_8))) {
+                    Path f = d.resolve(name).normalize();
+                    if (!f.startsWith(d) || !Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Fichiers cités par une playlist : lignes d'URI et attributs {@code URI="…"} (noms locaux seulement). */
+    static java.util.Set<String> referenced(String playlist) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("URI=\"([^\"]+)\"").matcher(playlist);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        for (String line : playlist.split("\n")) {
+            String l = line.strip();
+            if (!l.isEmpty() && !l.startsWith("#")) {
+                out.add(l);
+            }
+        }
+        out.removeIf(n -> n.contains("/") || n.contains("?") || n.contains(":"));
+        return out;
+    }
+
     public boolean exists(String key) {
         try {
             return Files.isDirectory(dir(key), LinkOption.NOFOLLOW_LINKS);

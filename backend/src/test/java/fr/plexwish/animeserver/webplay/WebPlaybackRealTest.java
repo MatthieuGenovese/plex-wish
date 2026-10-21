@@ -196,6 +196,36 @@ class WebPlaybackRealTest {
     }
 
     @Test
+    void aCopyWithAFileDeletedByHandIsForgottenAndPreparedAgain() throws Exception {
+        // 2026-10-21 : un fichier effacé à la main (explorateur du NAS) dans une copie prête la laissait cassée.
+        playback("Gen - S01E01.mkv", "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        Response r = playback("Gen - S01E01.mkv", "h264,aac");
+        r.then().statusCode(200);
+        String key = key("Gen - S01E01.mkv");
+        Path dir = cache.dir(key);
+        String master = given().get(r.jsonPath().getString("url")).then().statusCode(200).extract().asString();
+        String videoPl = given().get(urls(master).get(2)).then().statusCode(200).extract().asString();
+        String segment = urls(videoPl).get(1);
+
+        // Pendant la lecture : le fichier manque → « copie indisponible », et la copie est oubliée.
+        Files.delete(dir.resolve("s_0.m4s"));
+        given().get(segment).then().statusCode(404).body("error", equalTo("WEB_NOT_READY"));
+        assertFalse(Files.exists(dir));
+        assertEquals(null, key("Gen - S01E01.mkv"));
+        // Nouvelle demande : préparation refaite, puis copie complète.
+        playback("Gen - S01E01.mkv", "h264,aac").then().statusCode(202);
+        assertTrue(prep.processNext());
+        playback("Gen - S01E01.mkv", "h264,aac").then().statusCode(200);
+        assertTrue(Files.isRegularFile(cache.dir(key("Gen - S01E01.mkv")).resolve("s_0.m4s")));
+
+        // Entre deux lectures : un fichier manquant est vu dès la demande de lecture (pas d'erreur côté lecteur).
+        Files.delete(cache.dir(key("Gen - S01E01.mkv")).resolve("s_1.m4s"));
+        assertFalse(cache.complete(key("Gen - S01E01.mkv")));
+        playback("Gen - S01E01.mkv", "h264,aac").then().statusCode(202);
+    }
+
+    @Test
     void mp4IsReadDirectlyWithItsSubtitlesAsWebVtt() throws Exception {
         playback("Gen - S01E02.mp4", "h264,aac").then().statusCode(202);
         assertTrue(prep.processNext());

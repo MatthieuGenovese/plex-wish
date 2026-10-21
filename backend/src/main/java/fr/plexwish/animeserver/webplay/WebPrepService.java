@@ -204,7 +204,7 @@ public class WebPrepService {
         repository.requeueRunning();
         List<String> lost = new ArrayList<>();
         for (String k : repository.readyKeys()) {
-            if (cache.exists(k)) {
+            if (cache.complete(k)) {
                 keep.add(k);
             } else {
                 lost.add(k);
@@ -322,10 +322,12 @@ public class WebPrepService {
             Job j = job.get();
             switch (j.status()) {
                 case "READY" -> {
-                    if (cache.exists(key) && j.manifest() != null) {
+                    if (cache.complete(key) && j.manifest() != null) {
                         return new Ready(key, j.manifest());
                     }
-                    delete(mediaFileId, kind); // dossier disparu du cache : on refait
+                    // Dossier disparu du cache, ou fichier effacé dedans : on refait.
+                    cache.delete(key);
+                    delete(mediaFileId, kind);
                 }
                 case "FAILED" -> {
                     if (j.nextAttempt() == null || j.nextAttempt().isAfter(Instant.now())) {
@@ -479,6 +481,19 @@ public class WebPrepService {
      * Préparation servie pour {@code /api/stream/{id}/web/{clé}/…} : prête, ou en cours avec sa copie HLS déjà lisible.
      * Marque la lecture (au plus une écriture par minute) : protège la préparation de la purge.
      */
+    /**
+     * Fichier d'une préparation prête introuvable au moment de le servir (effacé à la main) : la préparation entière
+     * est oubliée (dossier et ligne), pour qu'une nouvelle demande la refasse au lieu de resservir une copie cassée.
+     */
+    public void forgetBroken(long mediaFileId, String key) throws SQLException {
+        Optional<Job> j = jobByKey(key);
+        if (j.isPresent() && j.get().mediaFileId() == mediaFileId && "READY".equals(j.get().status())) {
+            LOG.warnf("Préparation web : fichier manquant dans la copie du fichier %d : copie oubliée, elle sera refaite", mediaFileId);
+            cache.delete(key);
+            repository.deleteByKey(key);
+        }
+    }
+
     public Optional<Job> served(long mediaFileId, String key) throws SQLException {
         Optional<Job> j = jobByKey(key);
         if (j.isEmpty() || j.get().mediaFileId() != mediaFileId || !("READY".equals(j.get().status()) || "RUNNING".equals(j.get().status()))) {

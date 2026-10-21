@@ -479,7 +479,13 @@ public class WebPlaybackResource {
             String text = masterPlaylist(m, audio, fileId, key, userId, exp, job.get().sourceSize());
             return playlist(text, body);
         }
-        java.nio.file.Path file = cache.file(key, name, allowPart).orElseThrow(WebPlaybackResource::notReady);
+        java.nio.file.Path file = cache.file(key, name, allowPart).orElse(null);
+        if (file == null) {
+            if (!allowPart) {
+                prep.forgetBroken(fileId, key); // effacé à la main : la copie sera refaite à la prochaine demande
+            }
+            throw notReady();
+        }
         if (name.endsWith(".m3u8")) {
             String text;
             try {

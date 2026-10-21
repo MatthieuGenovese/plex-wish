@@ -52,6 +52,8 @@ class WebPlaybackRealTest {
     WebPrepService prep;
     @Inject
     WebCache cache;
+    @Inject
+    WebPrepSteps steps;
 
     String user;
 
@@ -223,6 +225,28 @@ class WebPlaybackRealTest {
         Files.delete(cache.dir(key("Gen - S01E01.mkv")).resolve("s_1.m4s"));
         assertFalse(cache.complete(key("Gen - S01E01.mkv")));
         playback("Gen - S01E01.mkv", "h264,aac").then().statusCode(202);
+    }
+
+    @Test
+    void subtitlesAreKnownBeforeTheHlsCopySoEarlyPlaybackShowsThem() throws Exception {
+        // 2026-10-21 : en lecture anticipée, les sous-titres n'apparaissaient qu'après avoir rouvert l'épisode.
+        Path source = ROOT.resolve("Gen/Gen - S01E01.mkv").toAbsolutePath();
+        WebManifest m = prep.analyse(source, "mkv");
+        Path part = Files.createTempDirectory("web-part");
+        java.util.concurrent.atomic.AtomicReference<WebManifest> early = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean hlsStarted = new java.util.concurrent.atomic.AtomicBoolean(true);
+        WebManifest done = steps.run(source, part, m, List.of(), (phase, value) -> {
+        }, partial -> {
+            early.set(partial);
+            hlsStarted.set(Files.exists(part.resolve("s_0.m4s")));
+        });
+        assertFalse(hlsStarted.get()); // annoncés avant la copie HLS
+        WebManifest.Subtitle first = early.get().subtitles().get(0);
+        assertTrue(first.ass() != null && Files.isRegularFile(part.resolve(first.ass())), early.get().toString());
+        assertEquals(1, early.get().fonts().size());
+        assertFalse(early.get().hls());
+        assertEquals(first.ass(), done.subtitles().get(0).ass());
+        deleteTree(part);
     }
 
     @Test

@@ -220,6 +220,9 @@ Conversion (W3) : même chose, avec :
   façon reçoit sa vraie raison, pas « plus de place ». La demande répond « le serveur manque
   de place » (comme `REMUX_CACHE_FULL`) et l'admin le voit.
 
+- **Lecture anticipée et sous-titres** (1.4.2) : les sous-titres et polices extraits sont enregistrés dans le
+  manifeste de la préparation avant la copie HLS ; un lecteur qui démarre pendant la préparation les propose dès le
+  début (avant, il fallait rouvrir l'épisode une fois la copie finie).
 - **Fichier effacé à la main** (explorateur du NAS, 1.4.1) : une préparation prête dont un fichier manque (cité par
   ses playlists, ou demandé par le lecteur) est oubliée et refaite à la demande suivante, au lieu de rester cassée.
   Vérifié à chaque demande de lecture et au démarrage ; même chose pour le remux en cache Android (déjà en place).

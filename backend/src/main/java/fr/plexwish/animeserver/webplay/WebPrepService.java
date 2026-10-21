@@ -679,7 +679,14 @@ public class WebPrepService {
         long start = System.currentTimeMillis();
         WebManifest done;
         try {
-            done = steps.run(file.get(), part, m, externals(id), (phase, value) -> progress(job, phase, value));
+            done = steps.run(file.get(), part, m, externals(id), (phase, value) -> progress(job, phase, value),
+                    partial -> {
+                        try {
+                            repository.setPhase(job.mediaFileId(), job.kind(), "SUBS", manifestJson(partial));
+                        } catch (SQLException e) {
+                            LOG.debugf("Préparation web : sous-titres non enregistrés avant la copie (%s)", e.getMessage());
+                        }
+                    });
         } catch (StepFailure e) {
             cache.delete(job.key());
             fail(job, e.getMessage(), false);

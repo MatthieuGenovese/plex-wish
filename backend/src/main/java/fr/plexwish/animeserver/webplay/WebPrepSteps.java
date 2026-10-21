@@ -75,6 +75,17 @@ public class WebPrepSteps {
 
     public WebManifest run(Path source, Path part, WebManifest m, List<ExternalSub> externals, Progress progress)
             throws WebPrepService.StepFailure, InterruptedException {
+        return run(source, part, m, externals, progress, null);
+    }
+
+    /**
+     * {@code subtitlesReady} (facultatif) reçoit le manifeste avec les sous-titres et polices extraits, avant la copie
+     * HLS : un lecteur qui démarre pendant la préparation les voit dès le début (2026-10-21 : ils n'apparaissaient
+     * qu'après avoir rouvert l'épisode).
+     */
+    public WebManifest run(Path source, Path part, WebManifest m, List<ExternalSub> externals, Progress progress,
+                           java.util.function.Consumer<WebManifest> subtitlesReady)
+            throws WebPrepService.StepFailure, InterruptedException {
         boolean anySubs = m.subtitles().stream().anyMatch(s -> "ass".equals(s.kind()) || "text".equals(s.kind()));
         double subsShare = m.wantsHls() ? 0.15 : 0.95;
         List<WebManifest.Subtitle> subs = m.subtitles();
@@ -92,6 +103,9 @@ public class WebPrepSteps {
         }
         boolean hls = false;
         if (m.wantsHls()) {
+            if (subtitlesReady != null) {
+                subtitlesReady.accept(m.withProduced(subs, fonts, false));
+            }
             progress.update("HLS", subsShare);
             copyHls(source, part, m, f -> progress.update(null, subsShare + f * (0.97 - subsShare)));
             progress.update("VERIFY", 0.97);
